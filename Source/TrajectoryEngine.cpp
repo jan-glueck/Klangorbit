@@ -1,4 +1,5 @@
 #include "TrajectoryEngine.h"
+#include "OrbitMath.h"
 
 TrajectoryEngine::TrajectoryEngine (int maxObjects, int grainPoolSizePerCloud)
 {
@@ -208,33 +209,10 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
                 && obj.orbitReferenceObjectId != obj.id)
                 center = objects[(size_t) obj.orbitReferenceObjectId].position;
 
-            // Orthonormal basis (u, v) of the orbit plane from orbitPlaneNormal --
-            // default {0,0,1} reproduces the previous x/y-plane behavior.
-            Vec3 n = obj.orbitPlaneNormal;
-            const float nLen = n.length();
-            n = (nLen > 1.0e-6f) ? (n / nLen) : Vec3 { 0.0f, 0.0f, 1.0f };
-            const Vec3 arbitrary = (std::abs (n.z) < 0.9f) ? Vec3 { 0.0f, 0.0f, 1.0f } : Vec3 { 1.0f, 0.0f, 0.0f };
-            Vec3 u = cross (arbitrary, n);
-            u = u / juce::jmax (u.length(), 1.0e-6f);
-            const Vec3 v = cross (n, u);
-
-            // Rotate the (u, v) basis by orbitOrientation around n, so the
-            // ellipse's major axis can point in any direction within the
-            // orbit plane. orbitOrientation == 0 leaves (u, v) unchanged,
-            // i.e. reproduces the orientation the ellipse formula already
-            // used before this field existed.
-            const float cosO = std::cos (obj.orbitOrientation);
-            const float sinO = std::sin (obj.orbitOrientation);
-            const Vec3 uRot = u * cosO + v * sinO;
-            const Vec3 vRot = v * cosO - u * sinO;
-
-            // Simplified ellipse (semi-axes derived from orbitRadius/orbitEccentricity,
-            // not a focus-based Kepler orbit) -- see SoundObject.h.
-            const float semiMajor = obj.orbitRadius;
-            const float semiMinor = obj.orbitRadius * (1.0f - juce::jlimit (0.0f, 0.95f, obj.orbitEccentricity));
-
-            const Vec3 newPos = center + uRot * (semiMajor * std::cos (obj.orbitPhase))
-                                        + vRot * (semiMinor * std::sin (obj.orbitPhase));
+            // Ellipse formula factored out to OrbitMath.h so PluginEditor
+            // can sample the same curve for an orbit-path preview instead
+            // of reimplementing it -- see OrbitMath.h.
+            const Vec3 newPos = OrbitMath::computePosition (obj, center, obj.orbitPhase);
 
             obj.velocity = (newPos - obj.position) / juce::jmax (fdt, 1.0e-6f);
             obj.position = newPos;

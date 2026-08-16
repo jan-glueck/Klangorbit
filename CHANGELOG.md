@@ -153,6 +153,57 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   default to the old circular/unrotated behavior, and the
   `SlingGesture.h` pull-vector/direction-sign/orientation math against
   known geometry.
+- **3D orbit-camera view**, replacing the previous fixed top-down 2D
+  rendering path -- one projection, not a 2D/3D mode switch.
+  - New `Camera3D` (`Source/Camera3D.h/.cpp`): azimuth/elevation/distance
+    orbit camera around the world origin, hand-written perspective
+    projection (no OpenGL, no `juce_graphics` dependency in the class
+    itself -- pure `Vec3`/float math, same spirit as `SlingGesture.h`).
+    Its default state (straight down) is mathematically the exact same
+    screen mapping the old fixed 2D view always used, which is what lets
+    the old view be replaced by this camera's default framing rather than
+    kept as a second rendering path.
+  - Interaction: drag on empty space (no object/grain under the cursor --
+    object and sling gestures always take priority when something is
+    actually hit) orbits the camera; mouse wheel zooms
+    (`SpatialAudioPOCEditor::mouseDrag()`/`mouseWheelMove()`). Dragging an
+    object now works via a camera ray cast onto the world's ground plane
+    (`Camera3D::screenToGroundPlane()`) instead of a fixed inverse-
+    projection formula, so it keeps following the cursor correctly at any
+    camera angle/zoom.
+  - Rendering: objects and grains are projected, depth-sorted back-to-
+    front, and drawn in that order (`PluginEditor::paint()`) so nearer
+    things correctly occlude farther ones; marker size and opacity scale
+    with camera distance for a spatial depth cue. The room boundary
+    (`SceneSettings.roomSize`, already conceptually spherical) now renders
+    as an actual wireframe sphere (three orthogonal great circles) instead
+    of a flat reference circle.
+  - Orbit-path preview: an object in `Mode::Orbit` draws its whole
+    ellipse, not just the current point. The ellipse formula was factored
+    out of `TrajectoryEngine::integrate()` into `Source/OrbitMath.h`
+    specifically so this preview samples the exact same math the physics
+    itself uses, rather than a separate (and driftable) reimplementation.
+  - Visual refresh: distinct, consistent per-object color (golden-ratio
+    hue stepping, scales to any object count without a fixed palette
+    table); grains render in a paler variant of their parent's color;
+    short fading movement trails behind moving objects (a handful of
+    recent positions, not a particle system); a clearly stronger highlight
+    while an object is actively being dragged/slung, on top of the
+    existing selection ring.
+  - Performance: object/grain counts are already bounded (<= 8 objects,
+    <= `maxConcurrentGrainsGlobal` = 32 grains, see the GrainCloud entry
+    above), so depth-sorting and re-projecting every repaint needed no
+    additional pooling/caching -- `Camera3D` itself still avoids
+    recomputing its own basis vectors per drawn point, only when the
+    camera actually moves (see its class comment).
+  - Preset schema unaffected (the camera is pure view state, not part of
+    the scene); the new `SoundObject::orbitOrientation` field (see above)
+    is unrelated to this entry, just landed alongside it.
+- `Tools/verify_camera`: CLI tool, checks `Camera3D`'s default-state basis
+  vectors against the old 2D view's exact mapping, projection axis
+  directions/signs, rotation/zoom clamping, near-clip visibility,
+  perspective size scaling, and the ground-plane raycast's round-trip
+  accuracy with `project()` (including after rotating the camera).
 
 ### Changed
 - Clicking an object (without dragging) selects it for the parameter
@@ -196,6 +247,14 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   global budget is currently a first-come-first-served allocation across
   clouds each control-rate tick, not prioritized by e.g. object gain or
   distance to the listener.
+- The 3D camera's drag/zoom direction sign conventions are untested by
+  hand (no interactive GUI testing available in this environment) -- the
+  underlying projection math is verified (`Tools/verify_camera`), but the
+  drag/scroll polarity itself is a reasonable guess that may feel
+  inverted; each is a one-line sign flip in `PluginEditor` if so.
+- Object dragging is still constrained to the ground plane (z=0), now via
+  a camera ray cast rather than a fixed formula, but still no direct way
+  to drag an object's height with the mouse.
 
 ## [0.1.0] - POC skeleton
 ### Added

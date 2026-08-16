@@ -70,6 +70,7 @@ target_sources(SpatialAudioPOC
         Source/ParameterPanel.cpp
         Source/PropagationProcessor.cpp
         Source/GrainCloud.cpp
+        Source/Camera3D.cpp
 )
 
 target_link_libraries(SpatialAudioPOC
@@ -177,6 +178,30 @@ target_sources(verify_orbit
 )
 
 target_link_libraries(verify_orbit
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- 3D camera math verification ------------------------------------------
+# Runs Camera3D (default-state basis vectors, projection axis directions,
+# rotation/zoom clamping, near-clip visibility, perspective size scaling)
+# against known geometry. Camera3D.h itself has no juce_graphics/GUI
+# dependency (see its class comment), so this stays a lightweight
+# juce_core-only console app like the other verify_ tools.
+juce_add_console_app(verify_camera
+    PRODUCT_NAME "verify_camera"
+)
+
+target_sources(verify_camera
+    PRIVATE
+        Tools/verify_camera.cpp
+        Source/Camera3D.cpp
+)
+
+target_link_libraries(verify_camera
     PRIVATE
         juce::juce_core
     PUBLIC

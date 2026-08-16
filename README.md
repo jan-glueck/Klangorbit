@@ -66,7 +66,7 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
    audio interface channel) to Input 0.
 2. Route the Ambisonics output (16 channels) to a bus with AmbiBIN (SPARTA)
    or the IEM BinauralDecoder.
-3. Drag object 0 in the 2D window with the mouse -> the position change
+3. Drag object 0 in the scene view with the mouse -> the position change
    should show up as a change in direction in the binaural playback.
 4. Double-clicking an object starts an orbit motion around the origin
    (demo for the trajectory mode).
@@ -88,6 +88,12 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
    from the object fires the shot; releasing very close to the anchor
    (a barely-there pull) cancels it, same as a plain click. See
    `SlingGesture.h`/`PluginEditor::startSling()` for the full mechanics.
+8. Drag on EMPTY space (no object/grain under the cursor) -> orbits the
+   camera around the scene instead of moving anything; scroll the mouse
+   wheel to zoom. The view starts pointing straight down (the same
+   framing the old fixed 2D view always had) -- rotate it to see orbits
+   tilted out of the ground plane, movement trails, and the room-boundary
+   sphere from any angle. See "3D camera view" below.
 
 ## Objects, motion physics, and the parameter panel
 
@@ -105,8 +111,9 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
   `velocitySnapThreshold` hard-stops very slow residual motion instead of
   letting it decay asymptotically forever.
 - **Room boundary.** `SceneSettings::roomSize` (spherical around the
-  origin, shown as a red reference line in the 2D window) with three
-  behaviors (`reflect` with per-object `restitution` / `wrap` / `absorb`).
+  origin, shown as a red wireframe sphere in the scene view -- see "3D
+  camera view" below) with three behaviors (`reflect` with per-object
+  `restitution` / `wrap` / `absorb`).
 - **n-body refinement:** `forceExponent`, `minDistance`, and `maxRange` are
   now per object (previously a global constant); periodic modulation of the
   attraction strength via `attractionPulseRate`/`-Depth`.
@@ -119,10 +126,68 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
   force/mass, like wind/gravity, affects Impulse/Attracted objects) and
   `timeScale` (fast-forward/slow-motion for the whole simulation).
 - **Parameter panel** (right side of the editor window): shows/edits all
-  parameters of the object selected in the 2D view, as well as the scene
-  parameters. Writes directly to the engine, no preset file needed to try
-  things out. Full field reference including defaults in
+  parameters of the object selected in the scene view, as well as the
+  scene parameters. Writes directly to the engine, no preset file needed
+  to try things out. Full field reference including defaults in
   `Presets/schema/README.md`.
+
+## 3D camera view
+
+The scene view is a single orbit-camera projection (`Source/Camera3D.h/.cpp`)
+around the world origin -- there is no separate 2D/3D mode and no OpenGL;
+the camera projects world positions to screen pixels with a hand-written
+perspective projection, drawn with plain `juce::Graphics`. The view's
+*default* state (looking straight down) is mathematically the exact same
+mapping the old fixed top-down view always used, so nothing about the
+existing gestures/interaction changed at that default framing -- rotating
+away from it is purely additive.
+
+- **Orbit/zoom.** Drag on empty space (no object or grain under the
+  cursor -- an object/sling drag always takes priority when something is
+  actually hit) to rotate the camera's azimuth/elevation; scroll to zoom
+  (changes the camera's distance from the origin). Elevation is clamped to
+  straight-down..straight-up, azimuth is unbounded.
+- **Dragging objects now happens on the ground plane (z=0)**, via a
+  camera ray cast onto that plane (`Camera3D::screenToGroundPlane()`)
+  instead of the old fixed screen<->world formula -- works the same as
+  before at the default top-down framing, and correctly follows the
+  cursor at any camera angle/zoom.
+- **Depth sorting.** Objects and grains are projected, sorted back-to-front
+  by camera-space depth, and drawn in that order each frame
+  (`PluginEditor::paint()`) so nearer things correctly draw over farther
+  ones. Bounded, small item count (<= 8 objects + <= 32 grains), so this
+  (and the perspective math itself) is cheap enough to redo every repaint
+  without caching -- see the Performance note below.
+- **Size and opacity scale with camera distance** for a spatial depth cue,
+  on top of the perspective projection's natural size falloff.
+- **Room boundary** renders as a wireframe sphere (three orthogonal great
+  circles) instead of the old flat reference circle -- `SceneSettings.roomSize`
+  was already conceptually spherical, this just makes that visible from
+  any angle. A flat ground grid (1m/2m/3m circles) and a small "Front"
+  marker/label at the origin remain as orientation aids.
+- **Orbit-path preview.** An object currently in `Mode::Orbit` draws its
+  full ellipse, not just the current point, sampled via the same formula
+  `TrajectoryEngine` itself uses to move it (`Source/OrbitMath.h`, factored
+  out specifically so this preview can't drift out of sync with the actual
+  physics).
+- **Distinct per-object color**, consistent across selection/drag state
+  (golden-ratio hue stepping, so any number of objects stays visually
+  distinguishable without a fixed-size palette table). Grains render in a
+  paler variant of their parent object's color, additionally fading with
+  age (existing behavior) and now also with camera distance.
+- **Short, fading movement trail** behind each moving object (a handful of
+  recent positions, captured at a decimated rate -- not a particle
+  system).
+- **Stronger highlight while actively dragging/slinging** an object, on
+  top of the existing selection ring, so "selected" and "currently being
+  manipulated" read as visibly different states.
+- **Performance.** Everything above (camera basis, depth sort, per-point
+  projection, trail/orbit-path sampling) runs on the bounded, small object
+  and grain counts already established by the room boundary and the
+  grain-cloud global spawn cap -- no pooling or extra caching was needed
+  beyond what `Camera3D` already does internally (its own basis vectors
+  are recomputed only when the camera actually moves, not per drawn point,
+  see its class comment).
 
 ## Sling launch gesture
 
@@ -269,7 +334,9 @@ purely random.
   shared across all clouds each control-rate tick, since every active grain
   costs a full Ambisonics encoding pass regardless of cloud.
 - **GUI:** active grains render as small dots around their parent object in
-  the 2D editor, fading out with age; a "Grain Cloud" category in the
+  the scene view, in a paler variant of the parent's color, fading out
+  with age (and now also with camera distance -- see "3D camera view"
+  above); a "Grain Cloud" category in the
   parameter panel exposes all cloud-level parameters (one parameter set per
   cloud, not per individual grain).
 - **Verification:** `Tools/verify_grain_cloud.cpp` exercises the exact
@@ -289,6 +356,7 @@ SpatialAudioPOC/
     verify_propagation.cpp   <- CLI tool, checks PropagationProcessor DSP math (delay/Doppler/absorption/directivity)
     verify_grain_cloud.cpp   <- CLI tool, checks GrainCloud (5 movement modes, spawn caps) + grain rendering
     verify_orbit.cpp         <- CLI tool, checks the ellipse/orbitOrientation math and SlingGesture.h helpers
+    verify_camera.cpp        <- CLI tool, checks Camera3D's projection/rotation/zoom/ground-plane math
   Presets/
     schema/README.md    <- preset format, own schemaVersion
     factory/             <- curated, checked-in scenes
@@ -311,9 +379,28 @@ Docs/WORKFLOW.md.
 
 ## Known limitations / next steps
 
-- **2D interaction only.** The mouse moves objects in the x/y plane
-  (height z fixed at 0). 3D view/interaction is planned as a next step,
-  same data backing (TrajectoryEngine/SoundObject are already 3D).
+- **3D camera view interaction is unverified by hand.** `Camera3D`'s
+  projection/rotation/zoom math is covered by `Tools/verify_camera`
+  (19+ passing checks, including that the default framing exactly matches
+  the old fixed top-down view), but the actual *feel* of dragging to
+  rotate and scrolling to zoom hasn't been manually tried in a running
+  app in this environment (no interactive GUI testing available here) --
+  in particular the drag/zoom direction sign conventions
+  (`PluginEditor::mouseDrag()`/`mouseWheelMove()`) are a reasonable but
+  untested guess and may feel inverted; each is a one-line sign flip if so.
+- **Object dragging is still constrained to the ground plane (z=0)**,
+  now via a camera ray cast onto that plane rather than a fixed formula
+  (see "3D camera view" above) -- there's no way to drag an object's
+  height directly with the mouse yet (it still only changes through
+  physics: orbit planes, global field, n-body forces, etc.).
+- **No MIDI mapping.** The `InputMapper` module from the architecture
+  sketch isn't implemented yet; MIDI CC on object parameters is missing.
+- **Ambisonics order is fixed per instance.** `AmbisonicsEncoder::setOrder()`
+  exists, but the output bus is fixed at prepare/construction time (VST3
+  buses aren't trivially reconfigurable at runtime). For runtime order
+  switching: easier to implement in the standalone case than in the plugin
+  context, since no host bus contract exists there -- possibly extend the
+  standalone case first.
 - **No MIDI mapping.** The `InputMapper` module from the architecture
   sketch isn't implemented yet; MIDI CC on object parameters is missing.
 - **Ambisonics order is fixed per instance.** `AmbisonicsEncoder::setOrder()`

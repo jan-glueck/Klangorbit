@@ -91,6 +91,7 @@ defaults for everything new.
       // Orbit extensions
       "orbitPlaneNormal": [0.0, 0.0, 1.0], // default = previous x/y plane
       "orbitEccentricity": 0.0,       // 0 = circle, <1 = ellipse (simplified approximation, not a real Kepler orbit)
+      "orbitOrientation": 0.0,        // radians, rotation of the ellipse's major axis within the orbit plane; irrelevant when orbitEccentricity is 0
       "orbitDecay": 0.0,              // m/s, radius change over time
       "orbitReferenceObjectId": -1,   // -1 = orbitCenter (fixed point), otherwise the id of another object
 

@@ -119,6 +119,40 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     automatically (`PresetManager::migrateSchemaV1toV2()`); presets
     outside `[1, 2]` are rejected with a clear error. See
     `Presets/schema/README.md`.
+- **Sling launch gesture**: Shift+drag+release an object to launch it like
+  a catapult, as an alternative to the plain throw gesture -- launch
+  direction/strength come from how far and which way it was pulled, not
+  from release velocity.
+  - The object's real position stays frozen at the "anchor" (its position
+    when the gesture started) while aiming; only a visual marker follows
+    the cursor, connected to the anchor by a bow line
+    (`PluginEditor::startSling()`/`paint()`).
+  - Two launch modes, switchable mid-gesture without releasing Shift:
+    free throw (default, reuses the existing `TrajectoryEngine::throwObject()`
+    Impulse physics) and orbit shot (hold Ctrl to switch, tap Alt to step
+    through circular/elliptical shapes) via `TrajectoryEngine::startOrbit()`.
+  - `SoundObject::orbitOrientation` (new field): rotates an elliptical
+    orbit's major axis within its plane. `TrajectoryEngine::startOrbit()`
+    gained optional `eccentricity`/`orientation` parameters (default 0 =
+    unchanged circular behavior, so the existing double-click orbit
+    gesture and every preset written before this feature are unaffected).
+  - Orbit shots are always centered on the world origin (same convention
+    as the double-click gesture); the spin direction (CW/CCW) is derived
+    from the gesture's own geometry (a signed 2D cross product of the
+    anchor's position relative to the center and the launch direction)
+    rather than a separate control.
+  - `Source/SlingGesture.h`: header-only, JUCE-GUI-free math (pull vector,
+    orbit direction sign, orbit orientation, the fixed eccentricity-step
+    list) shared between `PluginEditor` and `Tools/verify_orbit`, same
+    "shared, not reimplemented" pattern as `GrainRenderer.h`.
+  - Preset schema extended with per-object `orbitOrientation` (optional,
+    additive, no schemaVersion bump).
+- `Tools/verify_orbit`: CLI tool, checks that `orbitOrientation` rotates
+  the ellipse's major axis by exactly the given angle, that a circular
+  orbit is unaffected by it, that `startOrbit()`'s new optional arguments
+  default to the old circular/unrotated behavior, and the
+  `SlingGesture.h` pull-vector/direction-sign/orientation math against
+  known geometry.
 
 ### Changed
 - Clicking an object (without dragging) selects it for the parameter

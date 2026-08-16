@@ -82,8 +82,12 @@ public:
     // "Throws" an object: sets Mode=Impulse and an initial velocity
     void throwObject (int objectIndex, Vec3 initialVelocity);
 
-    // Starts orbit motion around a point
-    void startOrbit (int objectIndex, Vec3 center, float radius, float angularSpeed);
+    // Starts orbit motion around a point. eccentricity/orientation are
+    // optional (default = circular orbit, matching the pre-ellipse
+    // behavior) -- see SoundObject::orbitEccentricity/orbitOrientation.
+    // angularSpeed's sign sets the rotation direction (CW vs CCW).
+    void startOrbit (int objectIndex, Vec3 center, float semiMajorAxis, float angularSpeed,
+                      float eccentricity = 0.0f, float orientation = 0.0f);
 
     // Activates n-body attraction/repulsion towards all other "Attracted"/Orbit objects
     void setAttraction (int objectIndex, float strength);

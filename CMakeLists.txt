@@ -158,3 +158,28 @@ target_link_libraries(verify_grain_cloud
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Orbit/sling-gesture math verification -------------------------------
+# Runs TrajectoryEngine's Orbit-mode ellipse formula (orbitOrientation
+# rotation, backward compatibility of startOrbit()'s new optional args) and
+# the pure-math SlingGesture.h helpers (pull vector, orbit direction sign,
+# orbit orientation) against known-correct geometry, no GUI/audio device
+# needed.
+juce_add_console_app(verify_orbit
+    PRODUCT_NAME "verify_orbit"
+)
+
+target_sources(verify_orbit
+    PRIVATE
+        Tools/verify_orbit.cpp
+        Source/TrajectoryEngine.cpp
+        Source/GrainCloud.cpp
+)
+
+target_link_libraries(verify_orbit
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)

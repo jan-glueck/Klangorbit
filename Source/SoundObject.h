@@ -100,6 +100,12 @@ struct SoundObject
     // orbit with variable angular speed) -- deliberately kept simple for
     // the POC.
     float orbitEccentricity = 0.0f;
+    // Rotation (radians) of the ellipse's major axis within the orbit
+    // plane, around orbitPlaneNormal. Irrelevant when orbitEccentricity is
+    // 0 (a circle has no distinguishable axis). Default 0 reproduces the
+    // orientation the ellipse formula already used before this field
+    // existed (major axis along the plane's default reference direction).
+    float orbitOrientation = 0.0f;
     // Radius change per second while in Orbit mode, 0 = stable orbit.
     float orbitDecay = 0.0f;
     // -1 = orbitCenter is a fixed point (previous behavior). Otherwise the

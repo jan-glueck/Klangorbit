@@ -77,6 +77,17 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
    appear in the panel on the right. "+ Object" activates the next free
    object (only object 0 is active at startup), "- Remove Object"
    deactivates the selected one.
+7. Shift+drag an object -> "sling" launch gesture: pull it away from its
+   position like a catapult (an orange bow line follows the cursor) and
+   release to fire it in the opposite direction. Try it a few times to
+   compare with the plain throw gesture (4) -- the sling's launch speed is
+   proportional to how far you pulled, not to how fast you moved the
+   mouse. While pulling, hold Ctrl to switch the shot from a free throw to
+   an orbit shot (the bow line turns violet); with Ctrl held, tap Alt to
+   step through circular/elliptical orbit shapes. Releasing far enough
+   from the object fires the shot; releasing very close to the anchor
+   (a barely-there pull) cancels it, same as a plain click. See
+   `SlingGesture.h`/`PluginEditor::startSling()` for the full mechanics.
 
 ## Objects, motion physics, and the parameter panel
 
@@ -100,10 +111,10 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
   now per object (previously a global constant); periodic modulation of the
   attraction strength via `attractionPulseRate`/`-Depth`.
 - **Orbit extensions:** tilted orbit plane (`orbitPlaneNormal`), elliptical
-  orbits (`orbitEccentricity`, simplified approximation, see below),
-  shrinking/growing orbits (`orbitDecay`), orbiting around another,
-  itself-moving object instead of just a fixed point
-  (`orbitReferenceObjectId`).
+  orbits (`orbitEccentricity`, simplified approximation, see below) with a
+  rotatable major axis (`orbitOrientation`), shrinking/growing orbits
+  (`orbitDecay`), orbiting around another, itself-moving object instead of
+  just a fixed point (`orbitReferenceObjectId`).
 - **Global field & time scale:** `SceneSettings::globalField` (constant
   force/mass, like wind/gravity, affects Impulse/Attracted objects) and
   `timeScale` (fast-forward/slow-motion for the whole simulation).
@@ -112,6 +123,56 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
   parameters. Writes directly to the engine, no preset file needed to try
   things out. Full field reference including defaults in
   `Presets/schema/README.md`.
+
+## Sling launch gesture
+
+Shift+drag+release on an object -- a catapult-style alternative to the
+plain throw gesture (4 in "Testing with Reaper" above), for launching an
+object with a precisely aimed direction and strength instead of however
+fast the mouse happened to move.
+
+- **The gesture.** Shift+click an object to grab it -- its real position
+  freezes at that "anchor" point (`PluginEditor::startSling()`) and is not
+  touched again until release; only a visual marker follows the cursor,
+  connected to the anchor by a bow line, so pulling the marker away and
+  releasing reads as drawing back and firing a catapult. The pull vector
+  (anchor minus release point, `SlingGesture::computePullVector()`)
+  determines both the launch direction (opposite the pull) and its
+  strength (proportional to the pull distance). Pulling less than ~15 cm
+  cancels the shot, same as a plain click.
+- **Two launch modes, switchable mid-gesture.** While still holding Shift
+  and dragging:
+  - **Free throw** (default): reuses the existing throw/`Impulse` physics
+    (`TrajectoryEngine::throwObject()`), just aimed by the pull instead of
+    by release velocity.
+  - **Orbit shot** (hold Ctrl to switch into it, tap Alt to step through
+    circular/elliptical shapes): launches the object directly onto an
+    orbit instead of a free trajectory
+    (`TrajectoryEngine::startOrbit()`). Pull distance sets the orbit's
+    size (semi-major axis), the pull line's own direction sets the
+    ellipse's orientation (`SoundObject::orbitOrientation`, new field, see
+    below), and the spin direction (CW/CCW) is derived from the gesture's
+    geometry rather than a separate control -- pulling to one side of the
+    object versus the other naturally produces the opposite spin
+    (`SlingGesture::computeOrbitDirectionSign()`, a signed 2D cross
+    product of the anchor's position relative to the orbit center and the
+    launch direction). The orbit is always centered on the world origin,
+    consistent with the existing double-click orbit gesture.
+- **`SoundObject::orbitOrientation`** (new field): rotates an elliptical
+  orbit's major axis within its orbit plane, radians, irrelevant at
+  `orbitEccentricity=0`. `TrajectoryEngine::startOrbit()` gained matching
+  optional `eccentricity`/`orientation` parameters (default 0 = unchanged,
+  circular behavior, so the existing double-click gesture and any preset
+  written before this feature keep working exactly as before).
+- **All pull-to-launch math lives in `SlingGesture.h`**, deliberately
+  separate from the JUCE mouse-handling code in `PluginEditor`, so the
+  exact same functions run in the editor and in
+  `Tools/verify_orbit.cpp` (checks the direction-sign/orientation math
+  plus the ellipse-rotation formula in `TrajectoryEngine`) -- not a test
+  reimplementation.
+- **Trajectory/orbit-shape preview while aiming is not implemented yet**
+  (only the bow line itself) -- a natural follow-up once the basic gesture
+  has been tried out.
 
 ## Acoustic propagation: Doppler, delay, air absorption, directivity
 
@@ -227,6 +288,7 @@ SpatialAudioPOC/
     validate_presets.cpp     <- CLI tool, checks Presets/factory/*.json (see Docs/WORKFLOW.md)
     verify_propagation.cpp   <- CLI tool, checks PropagationProcessor DSP math (delay/Doppler/absorption/directivity)
     verify_grain_cloud.cpp   <- CLI tool, checks GrainCloud (5 movement modes, spawn caps) + grain rendering
+    verify_orbit.cpp         <- CLI tool, checks the ellipse/orbitOrientation math and SlingGesture.h helpers
   Presets/
     schema/README.md    <- preset format, own schemaVersion
     factory/             <- curated, checked-in scenes
@@ -290,6 +352,15 @@ Docs/WORKFLOW.md.
 - **`orbitEccentricity` is a simplified approximation**, not a
   focus-based Kepler orbit (fixed semi-axes instead of variable angular
   speed per Kepler's second law) -- deliberately kept simple for the POC.
+- **Sling gesture has no live trajectory/orbit-shape preview yet.** Only
+  the bow line (anchor -> cursor) is drawn while aiming; showing the
+  predicted orbit ellipse or throw arc before release is a natural
+  follow-up (see "Sling launch gesture" above).
+- **Sling orbit shots are always centered on the origin**, matching the
+  existing double-click orbit gesture -- a freely positionable orbit
+  center (e.g. via a separate marking click) was considered but
+  deliberately left out to keep the gesture to a single, uninterrupted
+  Shift+drag+release motion.
 - **DAW session persistence is still missing.** `getStateInformation`/
   `setStateInformation` are still stubs -- the scene is NOT automatically
   saved/restored in the host project. Deliberately not short-circuited

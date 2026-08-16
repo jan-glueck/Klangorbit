@@ -1,0 +1,19 @@
+# Changelog
+
+Format nach [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
+Versionierung nach [SemVer](https://semver.org/lang/de/) -- solange die
+Major-Version 0 ist, gilt: jede Minor-Version (0.X.0) kann Presets brechen
+(siehe Presets/schema/), Patch-Versionen (0.X.Y) nicht.
+
+## [Unreleased]
+
+## [0.1.0] - POC-Grundgeruest
+### Hinzugefuegt
+- TrajectoryEngine: Static/Manual/Orbit/Impulse/Attracted-Modi
+- AmbisonicsEncoder: generische SH-Berechnung, Ordnung 0-7, SN3D/ACN
+- PluginProcessor: 8 Mono-Inputs -> Ambisonics-Bus (Ordnung 3 = 16 Kan.)
+- 2D-Editor: Maus-Drag, Wurf-Geste, Orbit per Doppelklick
+### Bekannte Einschraenkungen
+- Kein Dopplereffekt, keine frequenzabhaengige Distanzdaempfung
+- Keine 3D-Interaktion, kein MIDI-Mapping
+- Keine Preset-Persistenz (State-Save ist Stub)

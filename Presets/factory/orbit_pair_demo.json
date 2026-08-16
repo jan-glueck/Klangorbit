@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "name": "orbit_pair_demo",
+  "objects": [
+    {
+      "id": 0,
+      "inputChannel": 0,
+      "position": [1.5, 0.0, 0.0],
+      "mode": "orbit",
+      "orbitCenter": [0.0, 0.0, 0.0],
+      "orbitRadius": 1.5,
+      "orbitAngularSpeed": 0.8,
+      "attractionStrength": 0.0,
+      "mass": 1.0,
+      "damping": 0.02,
+      "gain": 1.0
+    },
+    {
+      "id": 1,
+      "inputChannel": 1,
+      "position": [-1.5, 0.0, 0.0],
+      "mode": "orbit",
+      "orbitCenter": [0.0, 0.0, 0.0],
+      "orbitRadius": 1.5,
+      "orbitAngularSpeed": -0.5,
+      "attractionStrength": 0.0,
+      "mass": 1.0,
+      "damping": 0.02,
+      "gain": 1.0
+    }
+  ]
+}

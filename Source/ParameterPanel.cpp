@@ -1,4 +1,5 @@
 #include "ParameterPanel.h"
+#include <cmath>
 
 namespace
 {
@@ -119,16 +120,30 @@ void ComboRowComponent::resized()
 
 // ============================================================== ParameterPanel
 
+bool ParameterPanel::categoryRequiresObject (Category category)
+{
+    return category == Category::Object || category == Category::Attraction
+        || category == Category::Orbit || category == Category::Doppler;
+}
+
 ParameterPanel::ParameterPanel()
 {
+    styleRowLabel (objectHeaderLabel, "No object selected", 15.0f, juce::Colours::white);
+    addAndMakeVisible (objectHeaderLabel);
+
     addAndMakeVisible (viewport);
     viewport.setViewedComponent (&content, false);
     viewport.setScrollBarsShown (true, false);
 
-    // --- Scene (always visible) -----------------------------------------
-    addHeader ("Scene");
+    addCategoryButton ("Scene", Category::Scene);
+    addCategoryButton ("Acoustics", Category::Acoustics);
+    addCategoryButton ("Object", Category::Object);
+    addCategoryButton ("Attraction", Category::Attraction);
+    addCategoryButton ("Orbit", Category::Orbit);
+    addCategoryButton ("Doppler", Category::Doppler);
 
-    addSceneFloatRow ("Room Size (0 = no boundary)", &SceneSettings::roomSize, 0.0, 50.0, 0.1);
+    // --- Scene ------------------------------------------------------------
+    addSceneFloatRow ("Room Size (0 = no boundary)", &SceneSettings::roomSize, 0.0, 50.0, 0.1, Category::Scene);
 
     boundaryRow = std::make_unique<ComboRowComponent> ("Boundary Behavior");
     boundaryRow->combo.addItem ("Reflect", 1);
@@ -140,27 +155,23 @@ ParameterPanel::ParameterPanel()
             sceneSettings->boundaryBehavior = (SceneSettings::BoundaryBehavior) index;
     };
     content.addAndMakeVisible (*boundaryRow);
-    addToLayout (*boundaryRow, ComboRowComponent::preferredHeight);
+    addToLayout (*boundaryRow, ComboRowComponent::preferredHeight, Category::Scene);
 
     globalFieldRow = std::make_unique<Vec3RowComponent> ("Global Field (Wind/Gravity)", -20.0, 20.0, 0.01);
     globalFieldRow->onValueChanged = [this] (Vec3 v) { if (sceneSettings != nullptr) sceneSettings->globalField = v; };
     content.addAndMakeVisible (*globalFieldRow);
-    addToLayout (*globalFieldRow, Vec3RowComponent::preferredHeight);
+    addToLayout (*globalFieldRow, Vec3RowComponent::preferredHeight, Category::Scene);
 
-    addSceneFloatRow ("Time Scale (timeScale)", &SceneSettings::timeScale, 0.05, 5.0, 0.01);
+    addSceneFloatRow ("Time Scale (timeScale)", &SceneSettings::timeScale, 0.05, 5.0, 0.01, Category::Scene);
 
-    addHeader ("Acoustic Propagation");
-    addSceneFloatRow ("Speed of Sound (m/s)", &SceneSettings::speedOfSound, 1.0, 400.0, 1.0);
-    addSceneFloatRow ("Temperature (C)", &SceneSettings::temperature, -20.0, 45.0, 0.5);
-    addSceneFloatRow ("Relative Humidity (%)", &SceneSettings::relativeHumidity, 0.0, 100.0, 1.0);
-    addSceneFloatRow ("Atmospheric Pressure (kPa)", &SceneSettings::atmosphericPressure, 80.0, 110.0, 0.1);
-    addSceneVec3Row ("Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1);
+    // --- Acoustics ----------------------------------------------------------
+    addSceneFloatRow ("Speed of Sound (m/s)", &SceneSettings::speedOfSound, 1.0, 400.0, 1.0, Category::Acoustics);
+    addSceneFloatRow ("Temperature (C)", &SceneSettings::temperature, -20.0, 45.0, 0.5, Category::Acoustics);
+    addSceneFloatRow ("Relative Humidity (%)", &SceneSettings::relativeHumidity, 0.0, 100.0, 1.0, Category::Acoustics);
+    addSceneFloatRow ("Atmospheric Pressure (kPa)", &SceneSettings::atmosphericPressure, 80.0, 110.0, 0.1, Category::Acoustics);
+    addSceneVec3Row ("Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1, Category::Acoustics);
 
-    // --- Object ------------------------------------------------------------
-    styleRowLabel (objectHeaderLabel, "No object selected", 15.0f, juce::Colours::white);
-    content.addAndMakeVisible (objectHeaderLabel);
-    addToLayout (objectHeaderLabel, 24);
-
+    // --- Object -------------------------------------------------------------
     modeRow = std::make_unique<ComboRowComponent> ("Mode");
     modeRow->combo.addItem ("Static", 1);
     modeRow->combo.addItem ("Manual", 2);
@@ -173,33 +184,31 @@ ParameterPanel::ParameterPanel()
             editedObject->mode = (SoundObject::Mode) index;
     };
     content.addAndMakeVisible (*modeRow);
-    addToLayout (*modeRow, ComboRowComponent::preferredHeight);
-    objectOnlyComponents.push_back (modeRow.get());
+    addToLayout (*modeRow, ComboRowComponent::preferredHeight, Category::Object);
 
-    addHeader ("Motion / Inertia");
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Mass", &SoundObject::mass, 0.01, 20.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Gain", &SoundObject::gain, 0.0, 2.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Damping (simple decay)", &SoundObject::damping, 0.0, 1.0, 0.001));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Max Velocity (0 = unlimited)", &SoundObject::maxVelocity, 0.0, 30.0, 0.1));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Drag Coefficient", &SoundObject::dragCoefficient, 0.0, 10.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Restitution (wall bounce)", &SoundObject::restitution, 0.0, 1.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Stop Threshold (velocitySnapThreshold)", &SoundObject::velocitySnapThreshold, 0.0, 1.0, 0.001));
+    addObjectFloatRow ("Mass", &SoundObject::mass, 0.01, 20.0, 0.01, Category::Object);
+    addObjectFloatRow ("Gain", &SoundObject::gain, 0.0, 2.0, 0.01, Category::Object);
+    addObjectFloatRow ("Damping (simple decay)", &SoundObject::damping, 0.0, 1.0, 0.001, Category::Object);
+    addObjectFloatRow ("Max Velocity (0 = unlimited)", &SoundObject::maxVelocity, 0.0, 30.0, 0.1, Category::Object);
+    addObjectFloatRow ("Drag Coefficient", &SoundObject::dragCoefficient, 0.0, 10.0, 0.01, Category::Object);
+    addObjectFloatRow ("Restitution (wall bounce)", &SoundObject::restitution, 0.0, 1.0, 0.01, Category::Object);
+    addObjectFloatRow ("Stop Threshold (velocitySnapThreshold)", &SoundObject::velocitySnapThreshold, 0.0, 1.0, 0.001, Category::Object);
 
-    addHeader ("Attraction / Repulsion (as source)");
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Strength (negative = repulsive)", &SoundObject::attractionStrength, -10.0, 10.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Force Exponent", &SoundObject::forceExponent, 1.0, 3.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Min. Distance (softening)", &SoundObject::minDistance, 0.01, 2.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Max. Range (0 = unlimited)", &SoundObject::maxRange, 0.0, 20.0, 0.1));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Pulse Rate (Hz, 0 = off)", &SoundObject::attractionPulseRate, 0.0, 5.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Pulse Depth", &SoundObject::attractionPulseDepth, 0.0, 1.0, 0.01));
+    // --- Attraction -----------------------------------------------------
+    addObjectFloatRow ("Strength (negative = repulsive)", &SoundObject::attractionStrength, -10.0, 10.0, 0.01, Category::Attraction);
+    addObjectFloatRow ("Force Exponent", &SoundObject::forceExponent, 1.0, 3.0, 0.01, Category::Attraction);
+    addObjectFloatRow ("Min. Distance (softening)", &SoundObject::minDistance, 0.01, 2.0, 0.01, Category::Attraction);
+    addObjectFloatRow ("Max. Range (0 = unlimited)", &SoundObject::maxRange, 0.0, 20.0, 0.1, Category::Attraction);
+    addObjectFloatRow ("Pulse Rate (Hz, 0 = off)", &SoundObject::attractionPulseRate, 0.0, 5.0, 0.01, Category::Attraction);
+    addObjectFloatRow ("Pulse Depth", &SoundObject::attractionPulseDepth, 0.0, 1.0, 0.01, Category::Attraction);
 
-    addHeader ("Orbit");
-    objectOnlyComponents.push_back (&addObjectVec3Row ("Orbit Center (fixed point)", &SoundObject::orbitCenter, -20.0, 20.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit Radius", &SoundObject::orbitRadius, 0.05, 10.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit Angular Speed (rad/s)", &SoundObject::orbitAngularSpeed, -10.0, 10.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectVec3Row ("Orbit Plane Normal", &SoundObject::orbitPlaneNormal, -1.0, 1.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit Eccentricity", &SoundObject::orbitEccentricity, 0.0, 0.95, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit Decay (m/s)", &SoundObject::orbitDecay, -2.0, 2.0, 0.01));
+    // --- Orbit ----------------------------------------------------------
+    addObjectVec3Row ("Orbit Center (fixed point)", &SoundObject::orbitCenter, -20.0, 20.0, 0.01, Category::Orbit);
+    addObjectFloatRow ("Orbit Radius", &SoundObject::orbitRadius, 0.05, 10.0, 0.01, Category::Orbit);
+    addObjectFloatRow ("Orbit Angular Speed (rad/s)", &SoundObject::orbitAngularSpeed, -10.0, 10.0, 0.01, Category::Orbit);
+    addObjectVec3Row ("Orbit Plane Normal", &SoundObject::orbitPlaneNormal, -1.0, 1.0, 0.01, Category::Orbit);
+    addObjectFloatRow ("Orbit Eccentricity", &SoundObject::orbitEccentricity, 0.0, 0.95, 0.01, Category::Orbit);
+    addObjectFloatRow ("Orbit Decay (m/s)", &SoundObject::orbitDecay, -2.0, 2.0, 0.01, Category::Orbit);
 
     orbitRefRow = std::make_unique<ComboRowComponent> ("Orbit Reference Object");
     orbitRefRow->onSelected = [this] (int index)
@@ -208,12 +217,11 @@ ParameterPanel::ParameterPanel()
             editedObject->orbitReferenceObjectId = index - 1; // index 0 = "Fixed", see rebuildOrbitReferenceItems()
     };
     content.addAndMakeVisible (*orbitRefRow);
-    addToLayout (*orbitRefRow, ComboRowComponent::preferredHeight);
-    objectOnlyComponents.push_back (orbitRefRow.get());
+    addToLayout (*orbitRefRow, ComboRowComponent::preferredHeight, Category::Orbit);
 
-    addHeader ("Doppler / Directivity");
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Doppler Factor (0=off, 1=physical)", &SoundObject::dopplerFactor, 0.0, 5.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Doppler Smoothing (s)", &SoundObject::dopplerSmoothing, 0.0, 2.0, 0.01));
+    // --- Doppler ----------------------------------------------------------
+    addObjectFloatRow ("Doppler Factor (0=off, 1=physical)", &SoundObject::dopplerFactor, 0.0, 5.0, 0.01, Category::Doppler);
+    addObjectFloatRow ("Doppler Smoothing (s)", &SoundObject::dopplerSmoothing, 0.0, 2.0, 0.01, Category::Doppler);
 
     directivityRow = std::make_unique<ComboRowComponent> ("Directivity Pattern");
     directivityRow->combo.addItem ("Omni", 1);
@@ -225,78 +233,78 @@ ParameterPanel::ParameterPanel()
             editedObject->directivityPattern = (SoundObject::DirectivityPattern) index;
     };
     content.addAndMakeVisible (*directivityRow);
-    addToLayout (*directivityRow, ComboRowComponent::preferredHeight);
-    objectOnlyComponents.push_back (directivityRow.get());
+    addToLayout (*directivityRow, ComboRowComponent::preferredHeight, Category::Doppler);
 
-    objectOnlyComponents.push_back (&addObjectVec3Row ("Source Orientation", &SoundObject::sourceOrientation, -1.0, 1.0, 0.01));
+    addObjectVec3Row ("Source Orientation", &SoundObject::sourceOrientation, -1.0, 1.0, 0.01, Category::Doppler);
 
-    for (auto* c : objectOnlyComponents)
-        c->setEnabled (false);
+    updateCategoryButtonsEnabled();
+    selectCategory (Category::Scene);
+}
+
+void ParameterPanel::addCategoryButton (const juce::String& label, Category category)
+{
+    auto button = std::make_unique<juce::TextButton> (label);
+    button->setClickingTogglesState (false); // state is driven entirely by selectCategory(), see there
+    button->setColour (juce::TextButton::buttonOnColourId, juce::Colours::steelblue);
+    button->onClick = [this, category] { selectCategory (category); };
+    addAndMakeVisible (*button);
+
+    categoryButtons.push_back ({ std::move (button), category });
 }
 
 FloatRowComponent& ParameterPanel::addSceneFloatRow (const juce::String& name, float SceneSettings::* member,
-                                                       double min, double max, double step)
+                                                       double min, double max, double step, Category category)
 {
     auto row = std::make_unique<FloatRowComponent> (name, min, max, step);
     row->onValueChanged = [this, member] (float v) { if (sceneSettings != nullptr) sceneSettings->*member = v; };
     content.addAndMakeVisible (*row);
-    addToLayout (*row, FloatRowComponent::preferredHeight);
+    addToLayout (*row, FloatRowComponent::preferredHeight, category);
 
     sceneFloatRows.push_back ({ std::move (row), member });
     return *sceneFloatRows.back().row;
 }
 
 Vec3RowComponent& ParameterPanel::addSceneVec3Row (const juce::String& name, Vec3 SceneSettings::* member,
-                                                     double min, double max, double step)
+                                                     double min, double max, double step, Category category)
 {
     auto row = std::make_unique<Vec3RowComponent> (name, min, max, step);
     row->onValueChanged = [this, member] (Vec3 v) { if (sceneSettings != nullptr) sceneSettings->*member = v; };
     content.addAndMakeVisible (*row);
-    addToLayout (*row, Vec3RowComponent::preferredHeight);
+    addToLayout (*row, Vec3RowComponent::preferredHeight, category);
 
     sceneVec3Rows.push_back ({ std::move (row), member });
     return *sceneVec3Rows.back().row;
 }
 
 FloatRowComponent& ParameterPanel::addObjectFloatRow (const juce::String& name, float SoundObject::* member,
-                                                        double min, double max, double step)
+                                                        double min, double max, double step, Category category)
 {
     auto row = std::make_unique<FloatRowComponent> (name, min, max, step);
     row->onValueChanged = [this, member] (float v) { if (editedObject != nullptr) editedObject->*member = v; };
     content.addAndMakeVisible (*row);
-    addToLayout (*row, FloatRowComponent::preferredHeight);
+    addToLayout (*row, FloatRowComponent::preferredHeight, category);
 
     objectFloatRows.push_back ({ std::move (row), member });
     return *objectFloatRows.back().row;
 }
 
 Vec3RowComponent& ParameterPanel::addObjectVec3Row (const juce::String& name, Vec3 SoundObject::* member,
-                                                      double min, double max, double step)
+                                                      double min, double max, double step, Category category)
 {
     auto row = std::make_unique<Vec3RowComponent> (name, min, max, step);
     row->onValueChanged = [this, member] (Vec3 v) { if (editedObject != nullptr) editedObject->*member = v; };
     content.addAndMakeVisible (*row);
-    addToLayout (*row, Vec3RowComponent::preferredHeight);
+    addToLayout (*row, Vec3RowComponent::preferredHeight, category);
 
     objectVec3Rows.push_back ({ std::move (row), member });
     return *objectVec3Rows.back().row;
 }
 
-juce::Label& ParameterPanel::addHeader (const juce::String& text)
-{
-    auto header = std::make_unique<juce::Label>();
-    styleRowLabel (*header, text, 15.0f, juce::Colours::white);
-    content.addAndMakeVisible (*header);
-    addToLayout (*header, 24);
-
-    headers.push_back (std::move (header));
-    return *headers.back();
-}
-
-void ParameterPanel::addToLayout (juce::Component& c, int height)
+void ParameterPanel::addToLayout (juce::Component& c, int height, Category category)
 {
     layoutOrder.push_back (&c);
     layoutHeights.push_back (height);
+    layoutCategory.push_back (category);
 }
 
 void ParameterPanel::setSceneSettings (SceneSettings* settings)
@@ -313,6 +321,27 @@ void ParameterPanel::rebuildOrbitReferenceItems (int numObjects, int selfId)
         combo.addItem ("Object " + juce::String (i) + (i == selfId ? " (itself -- ignored)" : ""), i + 2);
 }
 
+void ParameterPanel::updateCategoryButtonsEnabled()
+{
+    const bool hasObject = editedObject != nullptr;
+    for (auto& cb : categoryButtons)
+        cb.button->setEnabled (! categoryRequiresObject (cb.category) || hasObject);
+}
+
+void ParameterPanel::selectCategory (Category category)
+{
+    currentCategory = category;
+
+    for (size_t i = 0; i < layoutOrder.size(); ++i)
+        layoutOrder[i]->setVisible (layoutCategory[i] == category);
+
+    for (auto& cb : categoryButtons)
+        cb.button->setToggleState (cb.category == category, juce::dontSendNotification);
+
+    viewport.setViewPosition (0, 0);
+    layoutContent();
+}
+
 void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects)
 {
     editedObject = obj;
@@ -320,14 +349,17 @@ void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader
     if (obj == nullptr)
     {
         objectHeaderLabel.setText ("No object selected", juce::dontSendNotification);
-        for (auto* c : objectOnlyComponents)
-            c->setEnabled (false);
+        updateCategoryButtonsEnabled();
+
+        // Don't leave the panel stuck showing a page for an object that no
+        // longer exists.
+        if (categoryRequiresObject (currentCategory))
+            selectCategory (Category::Scene);
         return;
     }
 
     objectHeaderLabel.setText ("Object " + juce::String (objectIndexForHeader), juce::dontSendNotification);
-    for (auto* c : objectOnlyComponents)
-        c->setEnabled (true);
+    updateCategoryButtonsEnabled();
 
     rebuildOrbitReferenceItems (numObjects, obj->id);
     refreshFromModel();
@@ -359,16 +391,43 @@ void ParameterPanel::refreshFromModel()
     directivityRow->combo.setSelectedItemIndex ((int) editedObject->directivityPattern, juce::dontSendNotification);
 }
 
-void ParameterPanel::resized()
+void ParameterPanel::layoutContent()
 {
-    viewport.setBounds (getLocalBounds());
-
-    const int width = juce::jmax (140, getWidth() - 24);
+    const int width = juce::jmax (140, viewport.getWidth() - 24);
     int y = 6;
     for (size_t i = 0; i < layoutOrder.size(); ++i)
     {
+        if (! layoutOrder[i]->isVisible())
+            continue;
         layoutOrder[i]->setBounds (6, y, width, layoutHeights[i]);
         y += layoutHeights[i] + 6;
     }
     content.setSize (width + 18, y);
+}
+
+void ParameterPanel::resized()
+{
+    auto bounds = getLocalBounds();
+
+    objectHeaderLabel.setBounds (bounds.removeFromTop (24).reduced (6, 0));
+
+    constexpr int buttonHeight = 26;
+    constexpr int buttonsPerRow = 2;
+    const int numRows = (int) std::ceil ((double) categoryButtons.size() / (double) buttonsPerRow);
+
+    for (int r = 0; r < numRows; ++r)
+    {
+        auto row = bounds.removeFromTop (buttonHeight);
+        const int buttonWidth = row.getWidth() / buttonsPerRow;
+        for (int c = 0; c < buttonsPerRow; ++c)
+        {
+            const size_t idx = (size_t) (r * buttonsPerRow + c);
+            if (idx >= categoryButtons.size())
+                break;
+            categoryButtons[idx].button->setBounds (row.removeFromLeft (buttonWidth).reduced (2));
+        }
+    }
+
+    viewport.setBounds (bounds);
+    layoutContent();
 }

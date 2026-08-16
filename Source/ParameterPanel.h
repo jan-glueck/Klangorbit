@@ -62,8 +62,16 @@ public:
 };
 
 /**
-    Scrollable side panel: scene parameters (always visible/editable) and
-    the parameters of the object currently selected in the 2D view.
+    Side panel: a fixed row of category buttons at the top (Scene,
+    Acoustics, Object, Attraction, Orbit, Doppler), and a scrollable area
+    below showing only the currently selected category's parameters --
+    not one long list.
+
+    Categories Object/Attraction/Orbit/Doppler need a selected object;
+    their buttons are disabled without one, and the panel force-switches
+    away from them back to Scene if the selection is cleared while one of
+    them is showing (so the panel never gets stuck showing a page with
+    nothing behind it).
 
     Writes directly to the SoundObject and SceneSettings pointers passed
     in -- same access rules as everywhere else in the GUI (message thread).
@@ -76,6 +84,8 @@ public:
 class ParameterPanel : public juce::Component
 {
 public:
+    enum class Category { Scene, Acoustics, Object, Attraction, Orbit, Doppler };
+
     ParameterPanel();
 
     // Set once by the editor (never null again afterwards).
@@ -91,17 +101,22 @@ public:
 
 private:
     FloatRowComponent& addSceneFloatRow (const juce::String& name, float SceneSettings::* member,
-                                          double min, double max, double step);
+                                          double min, double max, double step, Category category);
     Vec3RowComponent& addSceneVec3Row (const juce::String& name, Vec3 SceneSettings::* member,
-                                        double min, double max, double step);
+                                        double min, double max, double step, Category category);
     FloatRowComponent& addObjectFloatRow (const juce::String& name, float SoundObject::* member,
-                                           double min, double max, double step);
+                                           double min, double max, double step, Category category);
     Vec3RowComponent& addObjectVec3Row (const juce::String& name, Vec3 SoundObject::* member,
-                                         double min, double max, double step);
-    juce::Label& addHeader (const juce::String& text);
-    void addToLayout (juce::Component& c, int height);
+                                         double min, double max, double step, Category category);
+    void addToLayout (juce::Component& c, int height, Category category);
+    void addCategoryButton (const juce::String& label, Category category);
 
     void rebuildOrbitReferenceItems (int numObjects, int selfId);
+
+    void selectCategory (Category category);
+    void updateCategoryButtonsEnabled();
+    void layoutContent(); // lays out only the currently visible rows within the viewport
+    static bool categoryRequiresObject (Category category);
 
     juce::Viewport viewport;
     juce::Component content;
@@ -109,8 +124,13 @@ private:
     SceneSettings* sceneSettings = nullptr;
     SoundObject* editedObject = nullptr;
 
+    Category currentCategory = Category::Scene;
+    struct CategoryButton { std::unique_ptr<juce::TextButton> button; Category category; };
+    std::vector<CategoryButton> categoryButtons;
+
     std::vector<juce::Component*> layoutOrder;
     std::vector<int> layoutHeights;
+    std::vector<Category> layoutCategory;
 
     struct SceneFloatBinding { std::unique_ptr<FloatRowComponent> row; float SceneSettings::* member; };
     std::vector<SceneFloatBinding> sceneFloatRows;
@@ -124,16 +144,10 @@ private:
     struct ObjectVec3Binding { std::unique_ptr<Vec3RowComponent> row; Vec3 SoundObject::* member; };
     std::vector<ObjectVec3Binding> objectVec3Rows;
 
-    std::vector<std::unique_ptr<juce::Label>> headers;
-
     juce::Label objectHeaderLabel;
     std::unique_ptr<ComboRowComponent> modeRow;
     std::unique_ptr<ComboRowComponent> boundaryRow;
     std::unique_ptr<Vec3RowComponent> globalFieldRow; // SceneSettings::globalField, not a SoundObject field -> its own binding
     std::unique_ptr<ComboRowComponent> orbitRefRow;
     std::unique_ptr<ComboRowComponent> directivityRow;
-
-    // Everything that only makes sense while an object is selected -- gets
-    // enabled/disabled in setEditedObject().
-    std::vector<juce::Component*> objectOnlyComponents;
 };

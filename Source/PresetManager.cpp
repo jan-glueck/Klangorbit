@@ -45,6 +45,65 @@ namespace
         if (s == "attracted") { out = SoundObject::Mode::Attracted; return true; }
         return false;
     }
+
+    juce::String boundaryBehaviorToString (SceneSettings::BoundaryBehavior b)
+    {
+        switch (b)
+        {
+            case SceneSettings::BoundaryBehavior::Reflect: return "reflect";
+            case SceneSettings::BoundaryBehavior::Wrap:    return "wrap";
+            case SceneSettings::BoundaryBehavior::Absorb:  return "absorb";
+        }
+        return "reflect";
+    }
+
+    bool boundaryBehaviorFromString (const juce::String& s, SceneSettings::BoundaryBehavior& out)
+    {
+        if (s == "reflect") { out = SceneSettings::BoundaryBehavior::Reflect; return true; }
+        if (s == "wrap")    { out = SceneSettings::BoundaryBehavior::Wrap;    return true; }
+        if (s == "absorb")  { out = SceneSettings::BoundaryBehavior::Absorb;  return true; }
+        return false;
+    }
+
+    juce::var sceneSettingsToVar (const SceneSettings& s)
+    {
+        auto* obj = new juce::DynamicObject();
+        obj->setProperty ("roomSize", (double) s.roomSize);
+        obj->setProperty ("boundaryBehavior", boundaryBehaviorToString (s.boundaryBehavior));
+        obj->setProperty ("globalField", vecToVar (s.globalField));
+        obj->setProperty ("timeScale", (double) s.timeScale);
+        return juce::var (obj);
+    }
+
+    // "scene" ist optional -- fehlt es komplett, bleiben die SceneSettings-Defaults
+    // unveraendert (wichtig fuer Abwaertskompatibilitaet mit Presets ohne diesen Block).
+    juce::Result sceneSettingsFromVar (const juce::var& sceneVar, SceneSettings& out)
+    {
+        if (sceneVar.isVoid())
+            return juce::Result::ok();
+
+        if (! sceneVar.isObject())
+            return juce::Result::fail ("'scene' ist kein JSON-Objekt.");
+
+        out.roomSize = (float) sceneVar.getProperty ("roomSize", (double) out.roomSize);
+
+        if (sceneVar.hasProperty ("boundaryBehavior"))
+        {
+            const auto s = sceneVar.getProperty ("boundaryBehavior", juce::var()).toString();
+            if (! boundaryBehaviorFromString (s, out.boundaryBehavior))
+                return juce::Result::fail ("'scene.boundaryBehavior': unbekannter Wert '" + s + "'.");
+        }
+
+        if (sceneVar.hasProperty ("globalField"))
+        {
+            if (! varToVec (sceneVar.getProperty ("globalField", juce::var()), out.globalField))
+                return juce::Result::fail ("'scene.globalField' ist kein 3er-Array.");
+        }
+
+        out.timeScale = (float) sceneVar.getProperty ("timeScale", (double) out.timeScale);
+
+        return juce::Result::ok();
+    }
 }
 
 juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::String& name)
@@ -52,6 +111,7 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
     auto* root = new juce::DynamicObject();
     root->setProperty ("schemaVersion", currentSchemaVersion);
     root->setProperty ("name", name);
+    root->setProperty ("scene", sceneSettingsToVar (engine.getSceneSettings()));
 
     juce::Array<juce::var> objectsArray;
     for (int i = 0; i < engine.getNumObjects(); ++i)
@@ -72,6 +132,25 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         objVar->setProperty ("mass", (double) obj.mass);
         objVar->setProperty ("damping", (double) obj.damping);
         objVar->setProperty ("gain", (double) obj.gain);
+
+        // Traegheit/Bewegungsgrenzen (optionale Felder, siehe Presets/schema/README.md)
+        objVar->setProperty ("maxVelocity", (double) obj.maxVelocity);
+        objVar->setProperty ("dragCoefficient", (double) obj.dragCoefficient);
+        objVar->setProperty ("restitution", (double) obj.restitution);
+        objVar->setProperty ("velocitySnapThreshold", (double) obj.velocitySnapThreshold);
+
+        // n-Body-Verfeinerung (optional)
+        objVar->setProperty ("forceExponent", (double) obj.forceExponent);
+        objVar->setProperty ("minDistance", (double) obj.minDistance);
+        objVar->setProperty ("maxRange", (double) obj.maxRange);
+        objVar->setProperty ("attractionPulseRate", (double) obj.attractionPulseRate);
+        objVar->setProperty ("attractionPulseDepth", (double) obj.attractionPulseDepth);
+
+        // Orbit-Erweiterungen (optional)
+        objVar->setProperty ("orbitPlaneNormal", vecToVar (obj.orbitPlaneNormal));
+        objVar->setProperty ("orbitEccentricity", (double) obj.orbitEccentricity);
+        objVar->setProperty ("orbitDecay", (double) obj.orbitDecay);
+        objVar->setProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
         objectsArray.add (juce::var (objVar));
     }
@@ -108,6 +187,14 @@ juce::Result PresetManager::loadFromVar (const juce::var& root, TrajectoryEngine
         engine.getObject (i) = SoundObject { id };
     }
 
+    // Szene-weite Parameter -- fehlt der Block, bleiben die Defaults aus
+    // SceneSettings unveraendert (Abwaertskompatibilitaet).
+    SceneSettings sceneSettings;
+    auto sceneResult = sceneSettingsFromVar (root.getProperty ("scene", juce::var()), sceneSettings);
+    if (sceneResult.failed())
+        return sceneResult;
+    engine.getSceneSettings() = sceneSettings;
+
     for (auto& element : *objectsArray)
     {
         if (! element.isObject())
@@ -140,10 +227,31 @@ juce::Result PresetManager::loadFromVar (const juce::var& root, TrajectoryEngine
         obj.damping              = (float) element.getProperty ("damping", (double) obj.damping);
         obj.gain                 = (float) element.getProperty ("gain", (double) obj.gain);
 
+        // Traegheit/Bewegungsgrenzen (optional, Default aus SoundObject{})
+        obj.maxVelocity           = (float) element.getProperty ("maxVelocity", (double) obj.maxVelocity);
+        obj.dragCoefficient       = (float) element.getProperty ("dragCoefficient", (double) obj.dragCoefficient);
+        obj.restitution           = (float) element.getProperty ("restitution", (double) obj.restitution);
+        obj.velocitySnapThreshold = (float) element.getProperty ("velocitySnapThreshold", (double) obj.velocitySnapThreshold);
+
+        // n-Body-Verfeinerung (optional)
+        obj.forceExponent         = (float) element.getProperty ("forceExponent", (double) obj.forceExponent);
+        obj.minDistance           = (float) element.getProperty ("minDistance", (double) obj.minDistance);
+        obj.maxRange              = (float) element.getProperty ("maxRange", (double) obj.maxRange);
+        obj.attractionPulseRate   = (float) element.getProperty ("attractionPulseRate", (double) obj.attractionPulseRate);
+        obj.attractionPulseDepth  = (float) element.getProperty ("attractionPulseDepth", (double) obj.attractionPulseDepth);
+
+        // Orbit-Erweiterungen (optional)
+        varToVec (element.getProperty ("orbitPlaneNormal", juce::var()), obj.orbitPlaneNormal); // Default {0,0,1} bleibt bei Fehlen
+        obj.orbitEccentricity     = (float) element.getProperty ("orbitEccentricity", (double) obj.orbitEccentricity);
+        obj.orbitDecay            = (float) element.getProperty ("orbitDecay", (double) obj.orbitDecay);
+        obj.orbitReferenceObjectId = (int) element.getProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
+
         // Nicht Teil des Schemas (Laufzeitzustand, kein Startparameter):
-        // sauber auf Null, damit ein frisch geladenes Orbit-Objekt nicht mit
-        // der Phase/Geschwindigkeit eines vorherigen Zustands weiterlaeuft.
+        // sauber auf Null, damit ein frisch geladenes Orbit-/Puls-Objekt
+        // nicht mit der Phase/Geschwindigkeit eines vorherigen Zustands
+        // weiterlaeuft.
         obj.orbitPhase = 0.0f;
+        obj.attractionPulsePhase = 0.0f;
         obj.velocity = {};
     }
 

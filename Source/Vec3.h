@@ -22,4 +22,12 @@ struct Vec3
     Vec3& operator*= (float s) noexcept { x *= s; y *= s; z *= s; return *this; }
 
     float length() const noexcept { return std::sqrt (x * x + y * y + z * z); }
+    float dot (Vec3 o) const noexcept { return x * o.x + y * o.y + z * o.z; }
 };
+
+inline Vec3 cross (Vec3 a, Vec3 b) noexcept
+{
+    return { a.y * b.z - a.z * b.y,
+             a.z * b.x - a.x * b.z,
+             a.x * b.y - a.y * b.x };
+}

@@ -50,7 +50,47 @@ System-Plugin-Ordner (`COPY_PLUGIN_AFTER_BUILD TRUE`).
 4. Doppelklick auf ein Objekt startet eine Orbit-Bewegung um den Ursprung
    (Demo fuer den Trajektorien-Modus).
 5. Objekt schnell ziehen und loslassen -> Wurf-Geste, Objekt bewegt sich
-   danach frei weiter und wird durch `damping` abgebremst.
+   danach frei weiter und wird durch `damping`/`dragCoefficient` abgebremst
+   und an der Raumgrenze (`roomSize`) reflektiert/gewrappt/absorbiert.
+6. Objekt anklicken (ohne zu ziehen) waehlt es aus -- Parameter erscheinen
+   im Panel rechts. "+ Objekt" aktiviert das naechste freie Objekt (Start
+   ist immer nur Objekt 0 aktiv), "- Objekt entfernen" deaktiviert das
+   ausgewaehlte.
+
+## Objekte, Bewegungsphysik und Parameter-Panel
+
+- **Objektzahl ist dynamisch.** Start ist immer nur Objekt 0 aktiv (nicht
+  mehr alle `SAPOC_MAX_LIVE_INPUTS`). "+ Objekt"/"- Objekt entfernen" in
+  der Toolbar aktivieren/deaktivieren einzelne der max. 8 Objekt-Slots
+  (`TrajectoryEngine::activateObject()`/`deactivateObject()`). Der
+  Audio-Bus selbst bleibt fix bei 8 Kanaelen (siehe Bus-Layout-Einschraenkung
+  oben) -- "hinzufuegen/entfernen" ist rein eine Frage von
+  `SoundObject::inputChannel >= 0`, dieselbe Konvention, die Encoder/Snapshot/
+  Preset-Speicherung schon vorher genutzt haben.
+- **Objekte bremsen jetzt aus, statt endlos zu gleiten.** `maxVelocity`
+  deckelt die Geschwindigkeit, `dragCoefficient` ist eine echte,
+  geschwindigkeitsproportionale Bremskraft (zusaetzlich zum bisherigen
+  `damping`), `velocitySnapThreshold` stoppt sehr langsame Restbewegung
+  hart statt sie asymptotisch nie ganz ausklingen zu lassen.
+- **Raumgrenze.** `SceneSettings::roomSize` (kugelfoermig um den Ursprung,
+  im 2D-Fenster als rote Referenzlinie sichtbar) mit drei Verhaltensweisen
+  (`reflect` mit `restitution` pro Objekt / `wrap` / `absorb`).
+- **n-Body-Verfeinerung:** `forceExponent`, `minDistance` und `maxRange`
+  jetzt pro Objekt (vorher globale Konstante), periodische Modulation der
+  Attraktionsstaerke ueber `attractionPulseRate`/`-Depth`.
+- **Orbit-Erweiterungen:** geneigte Bahnebene (`orbitPlaneNormal`),
+  elliptische Bahnen (`orbitEccentricity`, vereinfachte Naeherung, siehe
+  unten), schrumpfende/wachsende Bahnen (`orbitDecay`), Orbit um ein
+  anderes, selbst bewegtes Objekt statt nur um einen fixen Punkt
+  (`orbitReferenceObjectId`).
+- **Globales Feld & Zeitraffer:** `SceneSettings::globalField` (konstante
+  Kraft/Masse, wie Wind/Gravitation, wirkt auf Impulse/Attracted-Objekte)
+  und `timeScale` (Zeitraffer/Zeitlupe fuer die gesamte Physik).
+- **Parameter-Panel** (rechts im Editor-Fenster): zeigt/editiert alle
+  Parameter des in der 2D-Ansicht ausgewaehlten Objekts sowie die
+  Szene-Parameter. Schreibt direkt auf die Engine, keine Preset-Datei
+  noetig zum Ausprobieren. Vollstaendige Feldreferenz inkl. Defaults in
+  `Presets/schema/README.md`.
 
 ## Projektstruktur
 
@@ -102,8 +142,25 @@ Branch-/Release-Ablauf in Docs/WORKFLOW.md.
   Encoder noch nicht in eine Pitch-/Delay-Modulation umgesetzt.
 - **n-Body-Attraktion ist ungetestet bei vielen gleichzeitig aktiven
   Attraktoren** -- inverses Quadratgesetz kann bei sehr kleinen Distanzen
-  trotz `minDistance`-Clamp zu harten Sprüngen fuehren. Bei Bedarf
-  weicheres Kraftgesetz (z.B. Plummer-Potential) nachruesten.
+  trotz `minDistance`-Clamp zu harten Sprüngen fuehren. `forceExponent`
+  (< 2 = weicher/weitreichender) und `maxRange` (Cutoff-Radius) geben jetzt
+  Werkzeuge dagegen an die Hand, sind aber kein Ersatz fuer ein echtes
+  weicheres Kraftgesetz (z.B. Plummer-Potential), falls das noetig wird.
+- **Kollision zwischen Objekten ist nicht implementiert.** Objekte
+  durchdringen sich; ein `collisionRadius`/`onCollision`-Mechanismus
+  (bounce/merge/trigger) ist ein moeglicher naechster Schritt, aber
+  bewusst nicht Teil dieser Aenderung -- "merge" wuerfe z.B. die Frage auf,
+  was mit der festen Input-Kanal-Zuordnung eines verschmolzenen Objekts
+  passiert, das ist eine eigene Architekturentscheidung.
+- **Keine audio-reaktive Kopplung.** Parameter wie Attraktionsstaerke oder
+  Orbit-Geschwindigkeit koennten vom Eingangspegel des jeweiligen Objekts
+  moduliert werden (`attractionModulatedByAmplitude` o.ae.) -- braucht einen
+  neuen Datenpfad vom Audio-Thread (Pegel-/Envelope-Follower pro Kanal)
+  zurueck zum Message-Thread, existiert noch nicht.
+- **`orbitEccentricity` ist eine vereinfachte Naeherung**, keine
+  fokuspunktbasierte Kepler-Bahn (feste Halbachsen statt variabler
+  Winkelgeschwindigkeit nach Keplers zweitem Gesetz) -- fuer den POC
+  bewusst einfach gehalten.
 - **DAW-Session-Persistenz fehlt weiterhin.** `getStateInformation`/
   `setStateInformation` sind noch Stubs -- die Szene wird NICHT automatisch
   im Host-Projekt gespeichert/wiederhergestellt. Bewusst nicht mit dem

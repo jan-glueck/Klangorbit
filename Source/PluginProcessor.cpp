@@ -24,17 +24,11 @@ SpatialAudioPOCProcessor::SpatialAudioPOCProcessor()
 {
     encoder.setOrder (SAPOC_DEFAULT_AMBI_ORDER);
 
-    // Standard-Zuordnung: Input-Kanal i -> Objekt i, sinnvoller Default fuer
-    // den POC. Kann spaeter per GUI/InputMapper frei umgemappt werden.
-    for (int i = 0; i < numLiveInputs; ++i)
-    {
-        auto& obj = trajectoryEngine.getObject (i);
-        obj.inputChannel = i;
-        // Objekte im Kreis um den Ursprung verteilen, damit sie beim
-        // ersten Start nicht alle uebereinander liegen.
-        const float angle = juce::MathConstants<float>::twoPi * (float) i / (float) numLiveInputs;
-        obj.position = { std::cos (angle), std::sin (angle), 0.0f };
-    }
+    // Nur Objekt 0 startet aktiv (Input-Kanal 0). Weitere Objekte werden
+    // ueber die GUI hinzugefuegt (TrajectoryEngine::activateObject()) --
+    // Input-Kanal-Zuordnung bleibt dabei die einfache 1:1-Zuordnung
+    // Objektindex == Kanalindex.
+    trajectoryEngine.activateObject (0);
 
     previousGainsPerObject.resize ((size_t) numLiveInputs);
     for (auto& g : previousGainsPerObject)

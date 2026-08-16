@@ -15,6 +15,55 @@ SoundObject& TrajectoryEngine::getObject (int index)
     return objects[(size_t) index];
 }
 
+bool TrajectoryEngine::activateObject (int index)
+{
+    if (! juce::isPositiveAndBelow (index, (int) objects.size()))
+        return false;
+
+    auto& obj = objects[(size_t) index];
+    if (obj.inputChannel >= 0)
+        return false; // schon aktiv
+
+    obj.inputChannel = index;
+    // Auf dem Referenzkreis platzieren, damit neu hinzugefuegte Objekte
+    // nicht alle uebereinander auf dem Ursprung landen.
+    const float angle = juce::MathConstants<float>::twoPi * (float) index / (float) objects.size();
+    obj.position = { std::cos (angle), std::sin (angle), 0.0f };
+    return true;
+}
+
+bool TrajectoryEngine::deactivateObject (int index)
+{
+    if (! juce::isPositiveAndBelow (index, (int) objects.size()))
+        return false;
+
+    auto& obj = objects[(size_t) index];
+    if (obj.inputChannel < 0)
+        return false; // schon inaktiv
+
+    const int id = obj.id;
+    obj = SoundObject {};
+    obj.id = id;
+    return true;
+}
+
+int TrajectoryEngine::getNumActiveObjects() const
+{
+    int n = 0;
+    for (auto& o : objects)
+        if (o.inputChannel >= 0)
+            ++n;
+    return n;
+}
+
+int TrajectoryEngine::findNextInactiveObject() const
+{
+    for (int i = 0; i < (int) objects.size(); ++i)
+        if (objects[(size_t) i].inputChannel < 0)
+            return i;
+    return -1;
+}
+
 void TrajectoryEngine::beginDrag (int objectIndex)
 {
     getObject (objectIndex).mode = SoundObject::Mode::Manual;
@@ -68,15 +117,64 @@ Vec3 TrajectoryEngine::computeAttractionForce (const SoundObject& obj) const
 
         auto diff = other.position - obj.position;
         float dist = diff.length();
-        dist = juce::jmax (dist, minDistance);
 
-        // Inverses Quadratgesetz, Vorzeichen von other.attractionStrength
-        // bestimmt Anziehung (positiv) oder Abstossung (negativ).
-        float magnitude = gravityLikeConstant * other.attractionStrength * other.mass / (dist * dist);
+        if (other.maxRange > 0.0f && dist > other.maxRange)
+            continue;
+
+        dist = juce::jmax (dist, other.minDistance);
+
+        // Periodische Modulation der Quellstaerke (attractionPulseRate == 0 => keine Aenderung).
+        const float effectiveStrength = other.attractionStrength
+            * (1.0f + other.attractionPulseDepth * std::sin (other.attractionPulsePhase));
+
+        // Verallgemeinertes Kraftgesetz: forceExponent == 2 => klassisches
+        // inverses Quadratgesetz (bisheriges Verhalten).
+        const float magnitude = gravityLikeConstant * effectiveStrength * other.mass
+            / std::pow (dist, other.forceExponent);
         auto dir = diff / dist;
         force += dir * magnitude;
     }
     return force;
+}
+
+void TrajectoryEngine::applyBoundary (SoundObject& obj)
+{
+    // Waehrend der Nutzer das Objekt aktiv per Maus fuehrt, nicht clampen --
+    // das wuerde sich wie ein Rucken/Widerstand gegen die Maus anfuehlen.
+    if (obj.mode == SoundObject::Mode::Manual)
+        return;
+    if (sceneSettings.roomSize <= 0.0f)
+        return;
+
+    const float dist = obj.position.length();
+    if (dist <= sceneSettings.roomSize)
+        return;
+
+    const auto normal = obj.position / juce::jmax (dist, 1.0e-6f);
+
+    switch (sceneSettings.boundaryBehavior)
+    {
+        case SceneSettings::BoundaryBehavior::Reflect:
+        {
+            obj.position = normal * sceneSettings.roomSize;
+
+            const float vDotN = obj.velocity.dot (normal);
+            if (vDotN > 0.0f) // nur reflektieren, wenn das Objekt sich tatsaechlich nach aussen bewegt
+                obj.velocity -= normal * (vDotN * (1.0f + obj.restitution));
+            break;
+        }
+
+        case SceneSettings::BoundaryBehavior::Wrap:
+            obj.position = normal * -sceneSettings.roomSize; // gegenueberliegende Seite
+            break;
+
+        case SceneSettings::BoundaryBehavior::Absorb:
+            obj.position = normal * sceneSettings.roomSize;
+            obj.velocity = {};
+            obj.mode = SoundObject::Mode::Static;
+            obj.gain = 0.0f; // sofort stumm -- ein weiches Fade waere ein spaeterer Ausbauschritt
+            break;
+    }
 }
 
 void TrajectoryEngine::integrate (SoundObject& obj, double dt)
@@ -93,12 +191,33 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
         case SoundObject::Mode::Orbit:
         {
             obj.orbitPhase += obj.orbitAngularSpeed * fdt;
-            // Kreisbewegung in der x/y-Ebene um orbitCenter; z bleibt konstant
-            // relativ zum Zentrum -- fuer geneigte Bahnen spaeter Rotation der
-            // Ebene selbst ergaenzen.
-            float x = obj.orbitCenter.x + obj.orbitRadius * std::cos (obj.orbitPhase);
-            float y = obj.orbitCenter.y + obj.orbitRadius * std::sin (obj.orbitPhase);
-            Vec3 newPos { x, y, obj.position.z };
+
+            if (obj.orbitDecay != 0.0f)
+                obj.orbitRadius = juce::jmax (0.05f, obj.orbitRadius + obj.orbitDecay * fdt);
+
+            Vec3 center = obj.orbitCenter;
+            if (juce::isPositiveAndBelow (obj.orbitReferenceObjectId, (int) objects.size())
+                && obj.orbitReferenceObjectId != obj.id)
+                center = objects[(size_t) obj.orbitReferenceObjectId].position;
+
+            // Orthonormale Basis (u,v) der Bahnebene aus orbitPlaneNormal --
+            // Default {0,0,1} ergibt wieder die x/y-Ebene wie bisher.
+            Vec3 n = obj.orbitPlaneNormal;
+            const float nLen = n.length();
+            n = (nLen > 1.0e-6f) ? (n / nLen) : Vec3 { 0.0f, 0.0f, 1.0f };
+            const Vec3 arbitrary = (std::abs (n.z) < 0.9f) ? Vec3 { 0.0f, 0.0f, 1.0f } : Vec3 { 1.0f, 0.0f, 0.0f };
+            Vec3 u = cross (arbitrary, n);
+            u = u / juce::jmax (u.length(), 1.0e-6f);
+            const Vec3 v = cross (n, u);
+
+            // Vereinfachte Ellipse (Halbachsen aus orbitRadius/orbitEccentricity,
+            // kein fokuspunktbasierter Kepler-Orbit) -- siehe SoundObject.h.
+            const float semiMajor = obj.orbitRadius;
+            const float semiMinor = obj.orbitRadius * (1.0f - juce::jlimit (0.0f, 0.95f, obj.orbitEccentricity));
+
+            const Vec3 newPos = center + u * (semiMajor * std::cos (obj.orbitPhase))
+                                        + v * (semiMinor * std::sin (obj.orbitPhase));
+
             obj.velocity = (newPos - obj.position) / juce::jmax (fdt, 1.0e-6f);
             obj.position = newPos;
             break;
@@ -108,20 +227,39 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
         case SoundObject::Mode::Attracted:
         {
             auto force = computeAttractionForce (obj);
-            // F = m*a -> a = F/m
+            force += sceneSettings.globalField * obj.mass; // globalField ist Kraft/Masse, wie bei Gravitation
+            force -= obj.velocity * obj.dragCoefficient;    // echte, geschwindigkeitsproportionale Bremskraft
+
             auto accel = force / juce::jmax (obj.mass, 1.0e-3f);
             obj.velocity += accel * fdt;
-            obj.velocity *= (1.0f - juce::jlimit (0.0f, 1.0f, obj.damping));
+            obj.velocity *= (1.0f - juce::jlimit (0.0f, 1.0f, obj.damping)); // bestehender einfacher Zusatz-Decay
+
+            if (obj.maxVelocity > 0.0f && obj.velocity.length() > obj.maxVelocity)
+                obj.velocity = obj.velocity * (obj.maxVelocity / obj.velocity.length());
+
+            if (obj.velocity.length() < obj.velocitySnapThreshold)
+                obj.velocity = {};
+
             obj.position += obj.velocity * fdt;
             break;
         }
     }
+
+    applyBoundary (obj);
 }
 
 void TrajectoryEngine::update (double dtSeconds)
 {
+    const double scaledDt = dtSeconds * (double) sceneSettings.timeScale;
+
+    // Puls-Phase fuer die Attraktions-Modulation laeuft unabhaengig vom
+    // eigenen Modus des Objekts weiter -- es wirkt ja als Quelle auf andere.
     for (auto& obj : objects)
-        integrate (obj, dtSeconds);
+        if (obj.attractionPulseRate != 0.0f)
+            obj.attractionPulsePhase += juce::MathConstants<float>::twoPi * obj.attractionPulseRate * (float) scaledDt;
+
+    for (auto& obj : objects)
+        integrate (obj, scaledDt);
 
     // Snapshot fuer Audio-Thread aktualisieren
     juce::ScopedLock lock (snapshotLock);

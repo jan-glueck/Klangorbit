@@ -64,6 +64,7 @@ target_sources(SpatialAudioPOC
         Source/AmbisonicsEncoder.cpp
         Source/TrajectoryEngine.cpp
         Source/PresetManager.cpp
+        Source/ParameterPanel.cpp
 )
 
 target_link_libraries(SpatialAudioPOC

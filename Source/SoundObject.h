@@ -44,11 +44,66 @@ struct SoundObject
     float orbitAngularSpeed = 1.0f; // rad/s
     float orbitPhase = 0.0f;        // aktueller Winkel, wird fortgeschrieben
 
-    // Fuer Attraction/Repulsion: Staerke, Vorzeichen negativ = abstossend
+    // Fuer Attraction/Repulsion: Staerke, Vorzeichen negativ = abstossend.
+    // Gilt, wenn DIESES Objekt als Quelle auf andere wirkt (siehe auch
+    // forceExponent/minDistance/maxRange/attractionPulse* unten -- alle
+    // ebenfalls Eigenschaften der Quelle, nicht des angezogenen Objekts).
     float attractionStrength = 0.0f;
 
-    // Reibung/Daempfung fuer Impulse-Modus, 0 = keine Daempfung, 1 = sofort stehen
+    // Reibung/Daempfung fuer Impulse-Modus, 0 = keine Daempfung, 1 = sofort stehen.
+    // Einfacher multiplikativer Decay pro Simulationsschritt (schnell, aber
+    // schrittraten-abhaengig). Fuer eine physikalisch konsistentere,
+    // geschwindigkeitsproportionale Bremse siehe dragCoefficient.
     float damping = 0.02f;
 
     float gain = 1.0f; // manuelles Objekt-Gain, zusaetzlich zur Distanzdaempfung
+
+    // --- Traegheit / Bewegungsgrenzen ---------------------------------
+    // <= 0 = unbegrenzt.
+    float maxVelocity = 6.0f;
+    // Echte, geschwindigkeitsproportionale Bremskraft (F = -dragCoefficient * velocity),
+    // zusaetzlich zu damping. 0 = aus.
+    float dragCoefficient = 0.0f;
+    // Elastizitaet beim Abprall an der Raumgrenze (SceneSettings::roomSize,
+    // Reflect-Modus). 0 = die nach aussen zeigende Geschwindigkeitskomponente
+    // wird entfernt (Objekt gleitet hoechstens noch tangential an der Wand),
+    // 1 = perfekt elastischer Abprall.
+    float restitution = 0.6f;
+    // Geschwindigkeiten unterhalb dieses Betrags werden hart auf 0 gesetzt.
+    // Ohne das naehert sich ein gedaempftes Objekt der Ruhe nur asymptotisch
+    // an (kommt rechnerisch nie ganz zum Stillstand).
+    float velocitySnapThreshold = 0.01f;
+
+    // --- n-Body-Verfeinerung (gilt, wenn dieses Objekt als Quelle wirkt) ---
+    // Exponent im Kraftgesetz, 2 = klassisches inverses Quadratgesetz
+    // (Standardverhalten, unveraendert gegenueber frueheren Versionen).
+    float forceExponent = 2.0f;
+    // Softening-Radius, verhindert harte Kraft-Spruenge bei sehr kleiner
+    // Distanz (ersetzt die vorherige globale Konstante gleichen Namens).
+    float minDistance = 0.05f;
+    // Cutoff-Radius, jenseits dessen diese Quelle keine Kraft mehr ausuebt.
+    // <= 0 = unbegrenzte Reichweite.
+    float maxRange = 0.0f;
+    // Periodische Modulation von attractionStrength: effektive Staerke =
+    // attractionStrength * (1 + attractionPulseDepth * sin(Phase)).
+    // attractionPulseRate = 0 (Default) => keine Modulation.
+    float attractionPulseRate = 0.0f;  // Hz
+    float attractionPulseDepth = 0.0f; // 0..1
+    float attractionPulsePhase = 0.0f; // Laufzeitzustand, kein Startparameter
+
+    // --- Orbit-Erweiterungen ------------------------------------------
+    // Normalenvektor der Umlaufbahn-Ebene, Default {0,0,1} = bisheriges
+    // Verhalten (Kreis/Ellipse in der x/y-Ebene).
+    Vec3 orbitPlaneNormal { 0.0f, 0.0f, 1.0f };
+    // 0 = Kreisbahn, <1 = Ellipse. Vereinfachte Naeherung (fixe Halbachsen
+    // orbitRadius/orbitRadius*(1-e), keine Fokuspunkt-basierte Kepler-Bahn
+    // mit variabler Winkelgeschwindigkeit) -- fuer den POC bewusst einfach
+    // gehalten.
+    float orbitEccentricity = 0.0f;
+    // Radiusaenderung pro Sekunde waehrend Orbit-Modus, 0 = stabile Bahn.
+    float orbitDecay = 0.0f;
+    // -1 = orbitCenter ist ein fixer Punkt (bisheriges Verhalten). Sonst id
+    // eines anderen SoundObject, um das herum kreisen wird (z.B. Mond-um-
+    // Planet-Hierarchien).
+    int orbitReferenceObjectId = -1;
 };

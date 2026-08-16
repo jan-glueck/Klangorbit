@@ -1,9 +1,21 @@
 #include "PluginEditor.h"
+#include "PresetManager.h"
 
 SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
     : juce::AudioProcessorEditor (&p), audioProcessor (p)
 {
-    setSize (700, 700);
+    addAndMakeVisible (loadPresetButton);
+    addAndMakeVisible (savePresetButton);
+    addAndMakeVisible (presetStatusLabel);
+
+    loadPresetButton.onClick = [this] { loadPresetClicked(); };
+    savePresetButton.onClick = [this] { savePresetClicked(); };
+
+    presetStatusLabel.setText (currentPresetName, juce::dontSendNotification);
+    presetStatusLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    presetStatusLabel.setJustificationType (juce::Justification::centredLeft);
+
+    setSize (700, 700 + toolbarHeight);
     setWantsKeyboardFocus (true);
     lastTimerMs = juce::Time::getMillisecondCounter();
     startTimerHz (90); // Control-Rate fuer die TrajectoryEngine
@@ -26,7 +38,7 @@ void SpatialAudioPOCEditor::timerCallback()
 
 juce::Point<float> SpatialAudioPOCEditor::objectToScreen (Vec3 pos) const
 {
-    const auto c = getLocalBounds().toFloat().getCentre();
+    const auto c = viewArea.toFloat().getCentre();
     // Bildschirm-y zeigt nach unten, Raum-y (links) soll optisch nach oben-links,
     // daher x -> Bildschirm-y (vorne = oben), y -> Bildschirm-x (links = links).
     return { c.x - pos.y * pixelsPerMeter, c.y - pos.x * pixelsPerMeter };
@@ -34,7 +46,7 @@ juce::Point<float> SpatialAudioPOCEditor::objectToScreen (Vec3 pos) const
 
 Vec3 SpatialAudioPOCEditor::screenToObject (juce::Point<float> screenPos) const
 {
-    const auto c = getLocalBounds().toFloat().getCentre();
+    const auto c = viewArea.toFloat().getCentre();
     const float raumX = (c.y - screenPos.y) / pixelsPerMeter;
     const float raumY = (c.x - screenPos.x) / pixelsPerMeter;
     return { raumX, raumY, 0.0f };
@@ -56,7 +68,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colours::black);
 
-    const auto centre = getLocalBounds().toFloat().getCentre();
+    const auto centre = viewArea.toFloat().getCentre();
 
     // Referenzkreise (1m/2m/3m) als Orientierungshilfe
     g.setColour (juce::Colours::darkgrey);
@@ -86,7 +98,91 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
     }
 }
 
-void SpatialAudioPOCEditor::resized() {}
+void SpatialAudioPOCEditor::resized()
+{
+    auto bounds = getLocalBounds();
+    auto toolbar = bounds.removeFromTop (toolbarHeight);
+
+    loadPresetButton.setBounds (toolbar.removeFromLeft (140).reduced (4));
+    savePresetButton.setBounds (toolbar.removeFromLeft (140).reduced (4));
+    presetStatusLabel.setBounds (toolbar.reduced (4));
+
+    viewArea = bounds;
+}
+
+void SpatialAudioPOCEditor::showPresetError (const juce::String& title, const juce::String& message)
+{
+    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, title, message);
+}
+
+void SpatialAudioPOCEditor::loadPresetClicked()
+{
+    juce::File startDir (juce::File::getCurrentWorkingDirectory());
+#if defined (SAPOC_PRESETS_USER_DIR)
+    if (juce::File (SAPOC_PRESETS_USER_DIR).isDirectory())
+        startDir = juce::File (SAPOC_PRESETS_USER_DIR);
+#endif
+
+    fileChooser = std::make_unique<juce::FileChooser> ("Preset laden", startDir, "*.json");
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+            if (! file.existsAsFile())
+                return;
+
+            juce::String loadedName;
+            const auto result = PresetManager::loadFile (file, audioProcessor.getTrajectoryEngine(), &loadedName);
+
+            if (result.failed())
+            {
+                showPresetError ("Preset konnte nicht geladen werden", result.getErrorMessage());
+                return;
+            }
+
+            currentPresetName = loadedName;
+            presetStatusLabel.setText ("Geladen: " + currentPresetName, juce::dontSendNotification);
+        });
+}
+
+void SpatialAudioPOCEditor::savePresetClicked()
+{
+    juce::File startDir (juce::File::getCurrentWorkingDirectory());
+#if defined (SAPOC_PRESETS_USER_DIR)
+    startDir = juce::File (SAPOC_PRESETS_USER_DIR);
+    if (! startDir.isDirectory())
+        startDir.createDirectory();
+#endif
+
+    fileChooser = std::make_unique<juce::FileChooser> ("Preset speichern",
+                                                        startDir.getChildFile (currentPresetName + ".json"),
+                                                        "*.json");
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                               | juce::FileBrowserComponent::warnAboutOverwriting,
+        [this] (const juce::FileChooser& fc)
+        {
+            auto file = fc.getResult();
+            if (file == juce::File())
+                return;
+
+            if (! file.hasFileExtension ("json"))
+                file = file.withFileExtension ("json");
+
+            const auto name = file.getFileNameWithoutExtension();
+            const auto result = PresetManager::saveFile (file, audioProcessor.getTrajectoryEngine(), name);
+
+            if (result.failed())
+            {
+                showPresetError ("Preset konnte nicht gespeichert werden", result.getErrorMessage());
+                return;
+            }
+
+            currentPresetName = name;
+            presetStatusLabel.setText ("Gespeichert: " + currentPresetName, juce::dontSendNotification);
+        });
+}
 
 void SpatialAudioPOCEditor::mouseDown (const juce::MouseEvent& e)
 {

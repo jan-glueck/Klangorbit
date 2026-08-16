@@ -9,6 +9,8 @@
     - Linksklick+Ziehen auf ein Objekt: manuelle Bewegung (Mode::Manual)
     - Loslassen mit Schwung: Impuls (Mode::Impulse) -- einfache Wurf-Geste
     - Doppelklick auf ein Objekt: Orbit um Ursprung starten/stoppen (Demo)
+    - Toolbar oben: komplette Szene als Preset-JSON laden/speichern
+      (siehe PresetManager, Presets/schema/README.md)
 
     Die eigentliche Physik-Aktualisierung laeuft ueber einen juce::Timer,
     der TrajectoryEngine::update() mit der gemessenen Zeit seit dem letzten
@@ -33,7 +35,12 @@ public:
 private:
     void timerCallback() override;
 
-    // Bildschirm- <-> Raumkoordinaten (metrische x/y-Ebene, 1m = pixelsPerMeter)
+    void loadPresetClicked();
+    void savePresetClicked();
+    void showPresetError (const juce::String& title, const juce::String& message);
+
+    // Bildschirm- <-> Raumkoordinaten (metrische x/y-Ebene, 1m = pixelsPerMeter),
+    // relativ zu viewArea (Fenster ohne Toolbar-Streifen oben).
     juce::Point<float> objectToScreen (Vec3 pos) const;
     Vec3 screenToObject (juce::Point<float> screenPos) const;
     int findObjectNear (juce::Point<float> screenPos) const;
@@ -50,4 +57,13 @@ private:
     juce::int64 lastTimerMs = 0;
     static constexpr float pixelsPerMeter = 80.0f;
     static constexpr float hitRadiusPixels = 16.0f;
+
+    static constexpr int toolbarHeight = 32;
+    juce::Rectangle<int> viewArea;
+
+    juce::TextButton loadPresetButton { "Preset laden..." };
+    juce::TextButton savePresetButton { "Preset speichern..." };
+    juce::Label presetStatusLabel;
+    juce::String currentPresetName { "(kein Preset geladen)" };
+    std::unique_ptr<juce::FileChooser> fileChooser;
 };

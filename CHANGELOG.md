@@ -6,6 +6,14 @@ Major-Version 0 ist, gilt: jede Minor-Version (0.X.0) kann Presets brechen
 (siehe Presets/schema/), Patch-Versionen (0.X.Y) nicht.
 
 ## [Unreleased]
+### Hinzugefuegt
+- PresetManager: Laden/Speichern von Szenen im Preset-JSON-Format
+  (schemaVersion 1), zwei Buttons in der Editor-Toolbar. Unbekannte
+  schemaVersion oder kaputtes JSON werden mit Fehlermeldung abgelehnt.
+- `Tools/validate_presets`: CLI-Tool, prueft alle Presets in einem Ordner
+  ueber denselben Codepfad wie die GUI (Vorbereitung fuer CI, siehe
+  Docs/WORKFLOW.md).
+
 ### Behoben
 - Erster lauffaehiger Build (VST3 + Standalone): eigener `Vec3`-Typ statt
   `juce::Vector3D` (das im `juce_opengl`-Modul liegt und eine unnoetige

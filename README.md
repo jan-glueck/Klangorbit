@@ -59,6 +59,8 @@ SpatialAudioPOC/
   CMakeLists.txt
   CHANGELOG.md          <- Code-Versionierung (SemVer)
   Source/                <- C++ Code
+  Tools/
+    validate_presets.cpp  <- CLI-Tool, prueft Presets/factory/*.json (siehe Docs/WORKFLOW.md)
   Presets/
     schema/README.md    <- Preset-Format, eigenes schemaVersion
     factory/             <- kuratierte, eingecheckte Szenen
@@ -102,5 +104,23 @@ Branch-/Release-Ablauf in Docs/WORKFLOW.md.
   Attraktoren** -- inverses Quadratgesetz kann bei sehr kleinen Distanzen
   trotz `minDistance`-Clamp zu harten Sprüngen fuehren. Bei Bedarf
   weicheres Kraftgesetz (z.B. Plummer-Potential) nachruesten.
-- **Keine Persistenz.** `getStateInformation`/`setStateInformation` sind
-  Stubs -- Szene/Objektkonfiguration wird beim Neuladen nicht gespeichert.
+- **DAW-Session-Persistenz fehlt weiterhin.** `getStateInformation`/
+  `setStateInformation` sind noch Stubs -- die Szene wird NICHT automatisch
+  im Host-Projekt gespeichert/wiederhergestellt. Bewusst nicht mit dem
+  Preset-JSON kurzgeschlossen: der Host kann `setStateInformation` von
+  einem beliebigen Thread aufrufen, `TrajectoryEngine::getObject()` ist das
+  aber nicht (siehe Klassenkommentar, "nur vom Message-Thread aus"). Ohne
+  zusaetzliche Synchronisierung der Objektliste selbst (aktuell nur der
+  Audio-Thread-Snapshot ist gelockt) waere das ein Race. Preset-Laden ueber
+  die GUI ist davon nicht betroffen (laeuft immer auf dem Message-Thread).
+- **Preset laden/speichern ist implementiert.** `PresetManager`
+  (`Source/PresetManager.h/.cpp`) liest/schreibt Szenen im schemaVersion-1-
+  Format (siehe `Presets/schema/README.md`), ueber zwei Buttons in der
+  Editor-Toolbar. Laden ersetzt die komplette Szene; nicht unterstuetzte
+  `schemaVersion` oder kaputtes JSON werden mit Fehlermeldung abgelehnt statt
+  stillschweigend interpretiert. `Tools/validate_presets` prueft alle
+  Presets in einem Ordner ueber denselben Codepfad (fuer CI vorbereitet,
+  siehe `Docs/WORKFLOW.md`). Der Standard-Ordner im Dateidialog
+  (`Presets/user/`) ist nur ein Komfort-Default fuer lokale Dev-Builds aus
+  diesem Checkout (absoluter Pfad zur Build-Zeit via CMake) -- nicht
+  portabel auf ein an anderer Stelle installiertes Plugin.

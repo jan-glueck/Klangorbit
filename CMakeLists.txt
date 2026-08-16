@@ -45,6 +45,13 @@ target_compile_definitions(SpatialAudioPOC
     PUBLIC
         SAPOC_DEFAULT_AMBI_ORDER=${SAPOC_DEFAULT_AMBI_ORDER}
         SAPOC_MAX_LIVE_INPUTS=${SAPOC_MAX_LIVE_INPUTS}
+        # Nur Komfort-Startordner fuer den Preset-Dateidialog waehrend der
+        # Entwicklung -- absoluter Pfad, gilt daher nur fuer lokale Builds
+        # aus diesem Checkout, nicht fuer ein an anderer Stelle installiertes
+        # Plugin (dort faellt der Dialog auf das zuletzt genutzte Verzeichnis
+        # zurueck).
+        SAPOC_PRESETS_USER_DIR="${CMAKE_SOURCE_DIR}/Presets/user"
+        SAPOC_PRESETS_FACTORY_DIR="${CMAKE_SOURCE_DIR}/Presets/factory"
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
@@ -56,6 +63,7 @@ target_sources(SpatialAudioPOC
         Source/PluginEditor.cpp
         Source/AmbisonicsEncoder.cpp
         Source/TrajectoryEngine.cpp
+        Source/PresetManager.cpp
 )
 
 target_link_libraries(SpatialAudioPOC
@@ -65,5 +73,33 @@ target_link_libraries(SpatialAudioPOC
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Preset-Validierung -------------------------------------------------
+# Laedt alle Presets/factory/*.json ueber denselben PresetManager-Codepfad
+# wie das Plugin und schlaegt bei ungueltigem Preset fehl (schemaVersion,
+# Feldvalidierung). Vorbereitung fuer CI, siehe Docs/WORKFLOW.md.
+juce_add_console_app(validate_presets
+    PRODUCT_NAME "validate_presets"
+)
+
+target_compile_definitions(validate_presets
+    PRIVATE
+        SAPOC_MAX_LIVE_INPUTS=${SAPOC_MAX_LIVE_INPUTS}
+)
+
+target_sources(validate_presets
+    PRIVATE
+        Tools/validate_presets.cpp
+        Source/PresetManager.cpp
+        Source/TrajectoryEngine.cpp
+)
+
+target_link_libraries(validate_presets
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
 )

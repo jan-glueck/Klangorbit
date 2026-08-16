@@ -34,16 +34,18 @@ private:
     void timerCallback() override;
 
     // Bildschirm- <-> Raumkoordinaten (metrische x/y-Ebene, 1m = pixelsPerMeter)
-    juce::Point<float> objectToScreen (juce::Vector3D<float> pos) const;
-    juce::Vector3D<float> screenToObject (juce::Point<float> screenPos) const;
+    juce::Point<float> objectToScreen (Vec3 pos) const;
+    Vec3 screenToObject (juce::Point<float> screenPos) const;
     int findObjectNear (juce::Point<float> screenPos) const;
 
-    SpatialAudioPOCProcessor& processor;
+    // Nicht "processor" -- der Name ist bereits (als Basisklassenreferenz auf
+    // die Basisklasse juce::AudioProcessor) in AudioProcessorEditor vergeben.
+    SpatialAudioPOCProcessor& audioProcessor;
 
     int draggedObjectIndex = -1;
     juce::Point<float> lastDragScreenPos;
     juce::int64 lastDragTimeMs = 0;
-    juce::Vector3D<float> estimatedDragVelocity;
+    Vec3 estimatedDragVelocity;
 
     juce::int64 lastTimerMs = 0;
     static constexpr float pixelsPerMeter = 80.0f;

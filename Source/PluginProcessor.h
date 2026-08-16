@@ -49,6 +49,11 @@ public:
     int getNumLiveInputs() const { return numLiveInputs; }
 
 private:
+    // BusesProperties ist ein geschuetztes Nested-Type von juce::AudioProcessor --
+    // nur ueber eine Methode der abgeleiteten Klasse konstruierbar, nicht ueber
+    // eine freie Funktion.
+    static BusesProperties makeBusLayout();
+
     static constexpr int numLiveInputs = SAPOC_MAX_LIVE_INPUTS;
 
     TrajectoryEngine trajectoryEngine { numLiveInputs };

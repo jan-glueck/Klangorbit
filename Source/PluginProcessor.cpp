@@ -3,20 +3,20 @@
 
 namespace
 {
-    juce::AudioProcessor::BusesProperties makeBusLayout()
-    {
-        return juce::AudioProcessor::BusesProperties()
-            .withInput  ("Live Inputs", juce::AudioChannelSet::discreteChannels (SAPOC_MAX_LIVE_INPUTS), true)
-            .withOutput ("Ambisonics", juce::AudioChannelSet::discreteChannels ((SAPOC_DEFAULT_AMBI_ORDER + 1) * (SAPOC_DEFAULT_AMBI_ORDER + 1)), true);
-    }
-
     // Kartesisch (x=vorne, y=links, z=oben) -> Kugelkoordinaten fuer den Encoder.
-    void cartesianToSpherical (juce::Vector3D<float> pos, float& azimuth, float& elevation, float& distance)
+    void cartesianToSpherical (Vec3 pos, float& azimuth, float& elevation, float& distance)
     {
         distance = juce::jmax (pos.length(), 0.001f);
         azimuth  = std::atan2 (pos.y, pos.x);
         elevation = std::asin (juce::jlimit (-1.0f, 1.0f, pos.z / distance));
     }
+}
+
+SpatialAudioPOCProcessor::BusesProperties SpatialAudioPOCProcessor::makeBusLayout()
+{
+    return BusesProperties()
+        .withInput  ("Live Inputs", juce::AudioChannelSet::discreteChannels (SAPOC_MAX_LIVE_INPUTS), true)
+        .withOutput ("Ambisonics", juce::AudioChannelSet::discreteChannels ((SAPOC_DEFAULT_AMBI_ORDER + 1) * (SAPOC_DEFAULT_AMBI_ORDER + 1)), true);
 }
 
 SpatialAudioPOCProcessor::SpatialAudioPOCProcessor()

@@ -1,7 +1,7 @@
 #include "PluginEditor.h"
 
 SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
-    : juce::AudioProcessorEditor (&p), processor (p)
+    : juce::AudioProcessorEditor (&p), audioProcessor (p)
 {
     setSize (700, 700);
     setWantsKeyboardFocus (true);
@@ -20,11 +20,11 @@ void SpatialAudioPOCEditor::timerCallback()
     const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastTimerMs) / 1000.0); // clamp gegen Ausreisser
     lastTimerMs = now;
 
-    processor.getTrajectoryEngine().update (dt);
+    audioProcessor.getTrajectoryEngine().update (dt);
     repaint();
 }
 
-juce::Point<float> SpatialAudioPOCEditor::objectToScreen (juce::Vector3D<float> pos) const
+juce::Point<float> SpatialAudioPOCEditor::objectToScreen (Vec3 pos) const
 {
     const auto c = getLocalBounds().toFloat().getCentre();
     // Bildschirm-y zeigt nach unten, Raum-y (links) soll optisch nach oben-links,
@@ -32,7 +32,7 @@ juce::Point<float> SpatialAudioPOCEditor::objectToScreen (juce::Vector3D<float> 
     return { c.x - pos.y * pixelsPerMeter, c.y - pos.x * pixelsPerMeter };
 }
 
-juce::Vector3D<float> SpatialAudioPOCEditor::screenToObject (juce::Point<float> screenPos) const
+Vec3 SpatialAudioPOCEditor::screenToObject (juce::Point<float> screenPos) const
 {
     const auto c = getLocalBounds().toFloat().getCentre();
     const float raumX = (c.y - screenPos.y) / pixelsPerMeter;
@@ -42,7 +42,7 @@ juce::Vector3D<float> SpatialAudioPOCEditor::screenToObject (juce::Point<float> 
 
 int SpatialAudioPOCEditor::findObjectNear (juce::Point<float> screenPos) const
 {
-    auto& engine = processor.getTrajectoryEngine();
+    auto& engine = audioProcessor.getTrajectoryEngine();
     for (int i = 0; i < engine.getNumObjects(); ++i)
     {
         auto p = objectToScreen (engine.getObject (i).position);
@@ -69,9 +69,9 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colours::white);
     g.drawLine (centre.x - 10, centre.y, centre.x + 10, centre.y);
     g.drawLine (centre.x, centre.y - 10, centre.x, centre.y + 10);
-    g.drawText ("Vorne", centre.x - 30, centre.y - pixelsPerMeter * 3 - 20, 60, 20, juce::Justification::centred);
+    g.drawText ("Vorne", (int) (centre.x - 30), (int) (centre.y - pixelsPerMeter * 3 - 20), 60, 20, juce::Justification::centred);
 
-    auto& engine = processor.getTrajectoryEngine();
+    auto& engine = audioProcessor.getTrajectoryEngine();
     for (int i = 0; i < engine.getNumObjects(); ++i)
     {
         auto& obj = engine.getObject (i);
@@ -93,7 +93,7 @@ void SpatialAudioPOCEditor::mouseDown (const juce::MouseEvent& e)
     draggedObjectIndex = findObjectNear (e.position);
     if (draggedObjectIndex >= 0)
     {
-        processor.getTrajectoryEngine().beginDrag (draggedObjectIndex);
+        audioProcessor.getTrajectoryEngine().beginDrag (draggedObjectIndex);
         lastDragScreenPos = e.position;
         lastDragTimeMs = juce::Time::getMillisecondCounter();
         estimatedDragVelocity = { 0.0f, 0.0f, 0.0f };
@@ -108,7 +108,7 @@ void SpatialAudioPOCEditor::mouseDrag (const juce::MouseEvent& e)
     const double dt = juce::jmax (0.001, (double) (now - lastDragTimeMs) / 1000.0);
 
     auto newPos = screenToObject (e.position);
-    auto& engine = processor.getTrajectoryEngine();
+    auto& engine = audioProcessor.getTrajectoryEngine();
     auto oldPos = engine.getObject (draggedObjectIndex).position;
 
     estimatedDragVelocity = (newPos - oldPos) / (float) dt;
@@ -122,7 +122,7 @@ void SpatialAudioPOCEditor::mouseUp (const juce::MouseEvent&)
 {
     if (draggedObjectIndex < 0) return;
 
-    auto& engine = processor.getTrajectoryEngine();
+    auto& engine = audioProcessor.getTrajectoryEngine();
 
     // Wenn beim Loslassen noch spuerbar Schwung da ist: als Wurf interpretieren.
     if (estimatedDragVelocity.length() > 0.3f)
@@ -138,7 +138,7 @@ void SpatialAudioPOCEditor::mouseDoubleClick (const juce::MouseEvent& e)
     const int idx = findObjectNear (e.position);
     if (idx < 0) return;
 
-    auto& engine = processor.getTrajectoryEngine();
+    auto& engine = audioProcessor.getTrajectoryEngine();
     auto& obj = engine.getObject (idx);
 
     if (obj.mode == SoundObject::Mode::Orbit)

@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_core/juce_core.h>
+#include "Vec3.h"
 
 /**
     Zustand eines einzelnen Klangobjekts im Raum.
@@ -22,8 +23,8 @@ struct SoundObject
     // -1 = kein Input zugeordnet (Objekt stumm / nur Platzhalter).
     int inputChannel = -1;
 
-    juce::Vector3D<float> position   { 1.0f, 0.0f, 0.0f }; // Startposition: 1m vorne
-    juce::Vector3D<float> velocity   { 0.0f, 0.0f, 0.0f };
+    Vec3 position   { 1.0f, 0.0f, 0.0f }; // Startposition: 1m vorne
+    Vec3 velocity   { 0.0f, 0.0f, 0.0f };
     float mass = 1.0f; // fuer n-Body-Attraktion/Repulsion
 
     // Bewegungsmodus, von der TrajectoryEngine ausgewertet
@@ -38,7 +39,7 @@ struct SoundObject
     Mode mode = Mode::Static;
 
     // Parameter fuer Orbit-Modus
-    juce::Vector3D<float> orbitCenter { 0.0f, 0.0f, 0.0f };
+    Vec3 orbitCenter { 0.0f, 0.0f, 0.0f };
     float orbitRadius = 1.0f;
     float orbitAngularSpeed = 1.0f; // rad/s
     float orbitPhase = 0.0f;        // aktueller Winkel, wird fortgeschrieben

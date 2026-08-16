@@ -27,25 +27,25 @@ public:
 
     // Manuelle Interaktion (Maus/MIDI)
     void beginDrag (int objectIndex);
-    void dragTo (int objectIndex, juce::Vector3D<float> newPosition);
+    void dragTo (int objectIndex, Vec3 newPosition);
     void endDrag (int objectIndex);
 
     // "Wirft" ein Objekt: setzt Mode=Impulse und Anfangsgeschwindigkeit
-    void throwObject (int objectIndex, juce::Vector3D<float> initialVelocity);
+    void throwObject (int objectIndex, Vec3 initialVelocity);
 
     // Startet Orbit-Bewegung um einen Punkt
-    void startOrbit (int objectIndex, juce::Vector3D<float> center, float radius, float angularSpeed);
+    void startOrbit (int objectIndex, Vec3 center, float radius, float angularSpeed);
 
     // Aktiviert n-Body Attraktion/Repulsion zu allen anderen "Attracted"/Orbit-Objekten
     void setAttraction (int objectIndex, float strength);
 
     // Lock-freier Snapshot fuer den Audio-Thread: Position + Geschwindigkeit je Objekt.
-    struct Snapshot { juce::Vector3D<float> position, velocity; bool active; };
+    struct Snapshot { Vec3 position, velocity; bool active; };
     void getSnapshot (std::vector<Snapshot>& out) const;
 
 private:
     void integrate (SoundObject& obj, double dt);
-    juce::Vector3D<float> computeAttractionForce (const SoundObject& obj) const;
+    Vec3 computeAttractionForce (const SoundObject& obj) const;
 
     std::vector<SoundObject> objects;
 

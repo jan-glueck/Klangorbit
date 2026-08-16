@@ -20,7 +20,7 @@ void TrajectoryEngine::beginDrag (int objectIndex)
     getObject (objectIndex).mode = SoundObject::Mode::Manual;
 }
 
-void TrajectoryEngine::dragTo (int objectIndex, juce::Vector3D<float> newPosition)
+void TrajectoryEngine::dragTo (int objectIndex, Vec3 newPosition)
 {
     auto& o = getObject (objectIndex);
     o.velocity = (newPosition - o.position); // grobe Geschwindigkeitsschaetzung, wird in update() skaliert
@@ -32,14 +32,14 @@ void TrajectoryEngine::endDrag (int objectIndex)
     getObject (objectIndex).mode = SoundObject::Mode::Static;
 }
 
-void TrajectoryEngine::throwObject (int objectIndex, juce::Vector3D<float> initialVelocity)
+void TrajectoryEngine::throwObject (int objectIndex, Vec3 initialVelocity)
 {
     auto& o = getObject (objectIndex);
     o.mode = SoundObject::Mode::Impulse;
     o.velocity = initialVelocity;
 }
 
-void TrajectoryEngine::startOrbit (int objectIndex, juce::Vector3D<float> center, float radius, float angularSpeed)
+void TrajectoryEngine::startOrbit (int objectIndex, Vec3 center, float radius, float angularSpeed)
 {
     auto& o = getObject (objectIndex);
     o.mode = SoundObject::Mode::Orbit;
@@ -57,9 +57,9 @@ void TrajectoryEngine::setAttraction (int objectIndex, float strength)
         o.mode = SoundObject::Mode::Attracted;
 }
 
-juce::Vector3D<float> TrajectoryEngine::computeAttractionForce (const SoundObject& obj) const
+Vec3 TrajectoryEngine::computeAttractionForce (const SoundObject& obj) const
 {
-    juce::Vector3D<float> force { 0.0f, 0.0f, 0.0f };
+    Vec3 force { 0.0f, 0.0f, 0.0f };
 
     for (auto& other : objects)
     {
@@ -98,7 +98,7 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
             // Ebene selbst ergaenzen.
             float x = obj.orbitCenter.x + obj.orbitRadius * std::cos (obj.orbitPhase);
             float y = obj.orbitCenter.y + obj.orbitRadius * std::sin (obj.orbitPhase);
-            juce::Vector3D<float> newPos { x, y, obj.position.z };
+            Vec3 newPos { x, y, obj.position.z };
             obj.velocity = (newPos - obj.position) / juce::jmax (fdt, 1.0e-6f);
             obj.position = newPos;
             break;

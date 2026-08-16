@@ -35,6 +35,10 @@ juce_add_plugin(SpatialAudioPOC
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD TRUE
+    # System-wide plugin folder (all users, root of the boot volume) instead
+    # of JUCE's per-user default (~/Library/Audio/Plug-Ins/VST3) -- world-
+    # writable on this Mac, no sudo needed for the build.
+    VST3_COPY_DIR "/Library/Audio/Plug-Ins/VST3"
     PLUGIN_MANUFACTURER_CODE Yrnm
     PLUGIN_CODE Sapc
     FORMATS VST3 Standalone

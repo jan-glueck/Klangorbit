@@ -45,6 +45,10 @@ void SpatialAudioPOCEditor::timerCallback()
     const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastTimerMs) / 1000.0); // clamp against outliers
     lastTimerMs = now;
 
+    // Polled here (not from mouseDrag) so a Ctrl/Alt press registers
+    // immediately even while the mouse itself isn't moving.
+    updateSlingModifiers();
+
     audioProcessor.getTrajectoryEngine().update (dt);
     repaint();
 }
@@ -126,8 +130,20 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 
         auto p = objectToScreen (obj.position);
 
-        g.setColour (i == draggedObjectIndex ? juce::Colours::yellow : juce::Colours::cyan);
-        g.fillEllipse (p.x - 8, p.y - 8, 16, 16);
+        if (slingActive && i == slingObjectIndex)
+        {
+            // While aiming, the object's real position stays frozen at the
+            // anchor (see startSling()) -- draw that as a hollow marker;
+            // the solid "object following the cursor" marker is drawn
+            // separately below.
+            g.setColour (juce::Colours::grey);
+            g.drawEllipse (p.x - 8, p.y - 8, 16, 16, 1.5f);
+        }
+        else
+        {
+            g.setColour (i == draggedObjectIndex ? juce::Colours::yellow : juce::Colours::cyan);
+            g.fillEllipse (p.x - 8, p.y - 8, 16, 16);
+        }
 
         if (i == selectedObjectIndex)
         {
@@ -137,6 +153,26 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 
         g.setColour (juce::Colours::white);
         g.drawText (juce::String (i), (int) p.x - 20, (int) p.y + 10, 40, 16, juce::Justification::centred);
+    }
+
+    if (slingActive)
+    {
+        const auto anchorScreen = objectToScreen (slingAnchorWorldPos);
+        const auto isOrbit = slingWantsOrbit;
+        const auto slingColour = isOrbit ? juce::Colours::violet : juce::Colours::orange;
+
+        // The "bow": anchor -> current cursor position.
+        g.setColour (slingColour);
+        g.drawLine (anchorScreen.x, anchorScreen.y, slingCursorScreenPos.x, slingCursorScreenPos.y, 2.0f);
+
+        // The object visually following the cursor while pulled back.
+        g.fillEllipse (slingCursorScreenPos.x - 8, slingCursorScreenPos.y - 8, 16, 16);
+
+        const auto label = isOrbit
+            ? juce::String ("Orbit: ") + SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].label
+            : juce::String ("Free Throw");
+        g.setColour (juce::Colours::white);
+        g.drawText (label, (int) slingCursorScreenPos.x - 60, (int) slingCursorScreenPos.y + 12, 120, 16, juce::Justification::centred);
     }
 
     g.restoreState();
@@ -284,9 +320,100 @@ void SpatialAudioPOCEditor::updateObjectUiState()
     removeObjectButton.setEnabled (selectedObjectIndex >= 0);
 }
 
+void SpatialAudioPOCEditor::startSling (int objectIndex)
+{
+    auto& engine = audioProcessor.getTrajectoryEngine();
+
+    slingActive = true;
+    slingObjectIndex = objectIndex;
+    slingAnchorWorldPos = engine.getObject (objectIndex).position;
+    slingCursorScreenPos = objectToScreen (slingAnchorWorldPos);
+
+    // If Ctrl/Alt already happen to be held when the gesture starts, take
+    // that as the starting state directly (rather than requiring a
+    // press-transition first) -- but don't auto-cycle the eccentricity
+    // step just because Alt happens to already be down; that only
+    // advances on an actual press (see updateSlingModifiers()).
+    const auto mods = juce::ModifierKeys::getCurrentModifiers();
+    slingWantsOrbit = mods.isCtrlDown();
+    slingEccentricityStepIndex = 0;
+    slingPrevCtrlDown = mods.isCtrlDown();
+    slingPrevAltDown = mods.isAltDown();
+}
+
+void SpatialAudioPOCEditor::updateSlingModifiers()
+{
+    if (! slingActive) return;
+
+    const auto mods = juce::ModifierKeys::getCurrentModifiers();
+    const bool ctrlDown = mods.isCtrlDown();
+    const bool altDown = mods.isAltDown();
+
+    // Edge-detected (only on the down-transition), so holding a key
+    // doesn't repeatedly toggle/cycle every timer tick.
+    if (ctrlDown && ! slingPrevCtrlDown)
+        slingWantsOrbit = ! slingWantsOrbit;
+
+    if (altDown && ! slingPrevAltDown)
+        slingEccentricityStepIndex = (slingEccentricityStepIndex + 1)
+                                      % (int) SlingGesture::orbitEccentricitySteps.size();
+
+    slingPrevCtrlDown = ctrlDown;
+    slingPrevAltDown = altDown;
+}
+
+void SpatialAudioPOCEditor::releaseSling()
+{
+    auto& engine = audioProcessor.getTrajectoryEngine();
+    const Vec3 releasePoint = screenToObject (slingCursorScreenPos);
+    const Vec3 pullVector = SlingGesture::computePullVector (slingAnchorWorldPos, releasePoint);
+
+    // Below the threshold: treat like a plain click that didn't turn into
+    // a real drag -- no shot, object keeps whatever mode/position it had
+    // (it was never touched while aiming).
+    if (pullVector.length() >= SlingGesture::minPullDistanceMeters)
+    {
+        const Vec3 launchDirection = pullVector; // already points opposite the drag, i.e. the launch direction
+
+        if (slingWantsOrbit)
+        {
+            const Vec3 center { 0.0f, 0.0f, 0.0f }; // always the origin, see design decision in the feature discussion
+            const float semiMajor = juce::jmax (SlingGesture::minOrbitRadiusMeters,
+                                                 pullVector.length() * SlingGesture::orbitRadiusScale);
+            const float orientation = SlingGesture::computeOrbitOrientation (pullVector);
+            const float directionSign = SlingGesture::computeOrbitDirectionSign (slingAnchorWorldPos - center, launchDirection);
+            const float eccentricity = SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].eccentricity;
+
+            engine.startOrbit (slingObjectIndex, center, semiMajor,
+                                directionSign * SlingGesture::orbitAngularSpeedMagnitude,
+                                eccentricity, orientation);
+        }
+        else
+        {
+            engine.throwObject (slingObjectIndex, launchDirection * SlingGesture::throwVelocityScale);
+        }
+    }
+
+    slingActive = false;
+    slingObjectIndex = -1;
+}
+
 void SpatialAudioPOCEditor::mouseDown (const juce::MouseEvent& e)
 {
-    draggedObjectIndex = findObjectNear (e.position);
+    const int hit = findObjectNear (e.position);
+
+    // Shift+click on an object starts the sling gesture instead of the
+    // ordinary free drag -- deliberately a modifier key, not just "drag
+    // starts a sling", so the two remain clearly distinguishable (see
+    // class comment).
+    if (hit >= 0 && e.mods.isShiftDown())
+    {
+        selectObject (hit);
+        startSling (hit);
+        return;
+    }
+
+    draggedObjectIndex = hit;
     selectObject (draggedObjectIndex); // -1 on click on empty space -> clear selection
 
     if (draggedObjectIndex >= 0)
@@ -299,6 +426,16 @@ void SpatialAudioPOCEditor::mouseDown (const juce::MouseEvent& e)
 
 void SpatialAudioPOCEditor::mouseDrag (const juce::MouseEvent& e)
 {
+    if (slingActive)
+    {
+        // The real object position is never touched while aiming (see
+        // startSling()) -- only this cursor position, which paint() uses
+        // to draw the object "following" the cursor and the bow line.
+        slingCursorScreenPos = e.position;
+        repaint();
+        return;
+    }
+
     if (draggedObjectIndex < 0) return;
 
     if (! physicsDragActive)
@@ -329,6 +466,12 @@ void SpatialAudioPOCEditor::mouseDrag (const juce::MouseEvent& e)
 
 void SpatialAudioPOCEditor::mouseUp (const juce::MouseEvent&)
 {
+    if (slingActive)
+    {
+        releaseSling();
+        return;
+    }
+
     if (draggedObjectIndex < 0) return;
 
     if (physicsDragActive)

@@ -88,13 +88,16 @@ void TrajectoryEngine::throwObject (int objectIndex, Vec3 initialVelocity)
     o.velocity = initialVelocity;
 }
 
-void TrajectoryEngine::startOrbit (int objectIndex, Vec3 center, float radius, float angularSpeed)
+void TrajectoryEngine::startOrbit (int objectIndex, Vec3 center, float semiMajorAxis, float angularSpeed,
+                                    float eccentricity, float orientation)
 {
     auto& o = getObject (objectIndex);
     o.mode = SoundObject::Mode::Orbit;
     o.orbitCenter = center;
-    o.orbitRadius = radius;
+    o.orbitRadius = semiMajorAxis;
     o.orbitAngularSpeed = angularSpeed;
+    o.orbitEccentricity = eccentricity;
+    o.orbitOrientation = orientation;
     o.orbitPhase = 0.0f;
 }
 
@@ -210,13 +213,23 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
             u = u / juce::jmax (u.length(), 1.0e-6f);
             const Vec3 v = cross (n, u);
 
+            // Rotate the (u, v) basis by orbitOrientation around n, so the
+            // ellipse's major axis can point in any direction within the
+            // orbit plane. orbitOrientation == 0 leaves (u, v) unchanged,
+            // i.e. reproduces the orientation the ellipse formula already
+            // used before this field existed.
+            const float cosO = std::cos (obj.orbitOrientation);
+            const float sinO = std::sin (obj.orbitOrientation);
+            const Vec3 uRot = u * cosO + v * sinO;
+            const Vec3 vRot = v * cosO - u * sinO;
+
             // Simplified ellipse (semi-axes derived from orbitRadius/orbitEccentricity,
             // not a focus-based Kepler orbit) -- see SoundObject.h.
             const float semiMajor = obj.orbitRadius;
             const float semiMinor = obj.orbitRadius * (1.0f - juce::jlimit (0.0f, 0.95f, obj.orbitEccentricity));
 
-            const Vec3 newPos = center + u * (semiMajor * std::cos (obj.orbitPhase))
-                                        + v * (semiMinor * std::sin (obj.orbitPhase));
+            const Vec3 newPos = center + uRot * (semiMajor * std::cos (obj.orbitPhase))
+                                        + vRot * (semiMinor * std::sin (obj.orbitPhase));
 
             obj.velocity = (newPos - obj.position) / juce::jmax (fdt, 1.0e-6f);
             obj.position = newPos;

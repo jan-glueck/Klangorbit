@@ -189,6 +189,7 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         // Orbit extensions (optional)
         objVar->setProperty ("orbitPlaneNormal", vecToVar (obj.orbitPlaneNormal));
         objVar->setProperty ("orbitEccentricity", (double) obj.orbitEccentricity);
+        objVar->setProperty ("orbitOrientation", (double) obj.orbitOrientation);
         objVar->setProperty ("orbitDecay", (double) obj.orbitDecay);
         objVar->setProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
@@ -289,6 +290,7 @@ juce::Result PresetManager::loadFromVar (const juce::var& root, TrajectoryEngine
         // Orbit extensions (optional)
         varToVec (element.getProperty ("orbitPlaneNormal", juce::var()), obj.orbitPlaneNormal); // default {0,0,1} stays if missing
         obj.orbitEccentricity     = (float) element.getProperty ("orbitEccentricity", (double) obj.orbitEccentricity);
+        obj.orbitOrientation      = (float) element.getProperty ("orbitOrientation", (double) obj.orbitOrientation);
         obj.orbitDecay            = (float) element.getProperty ("orbitDecay", (double) obj.orbitDecay);
         obj.orbitReferenceObjectId = (int) element.getProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 

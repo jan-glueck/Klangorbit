@@ -84,6 +84,67 @@ namespace
         return false;
     }
 
+    juce::String windowShapeToString (GrainWindowShape s)
+    {
+        switch (s)
+        {
+            case GrainWindowShape::Hann: return "hann";
+        }
+        return "hann";
+    }
+
+    bool windowShapeFromString (const juce::String& s, GrainWindowShape& out)
+    {
+        if (s == "hann") { out = GrainWindowShape::Hann; return true; }
+        return false;
+    }
+
+    juce::String movementModeToString (GrainMovementMode m)
+    {
+        switch (m)
+        {
+            case GrainMovementMode::RandomWalk:          return "randomWalk";
+            case GrainMovementMode::Bounce:               return "bounce";
+            case GrainMovementMode::RadialExplosion:      return "radialExplosion";
+            case GrainMovementMode::OrbitAroundParent:    return "orbitAroundParent";
+            case GrainMovementMode::AttractRepelSiblings: return "attractRepelSiblings";
+        }
+        return "randomWalk";
+    }
+
+    bool movementModeFromString (const juce::String& s, GrainMovementMode& out)
+    {
+        if (s == "randomWalk")          { out = GrainMovementMode::RandomWalk;          return true; }
+        if (s == "bounce")               { out = GrainMovementMode::Bounce;               return true; }
+        if (s == "radialExplosion")      { out = GrainMovementMode::RadialExplosion;      return true; }
+        if (s == "orbitAroundParent")    { out = GrainMovementMode::OrbitAroundParent;    return true; }
+        if (s == "attractRepelSiblings") { out = GrainMovementMode::AttractRepelSiblings; return true; }
+        return false;
+    }
+
+    juce::String jitterTargetToString (GrainJitterTarget t)
+    {
+        switch (t)
+        {
+            case GrainJitterTarget::None:           return "none";
+            case GrainJitterTarget::InitialSpeed:    return "initialSpeed";
+            case GrainJitterTarget::Lifetime:        return "lifetime";
+            case GrainJitterTarget::BoundaryRadius:  return "boundaryRadius";
+            case GrainJitterTarget::OrbitRadius:     return "orbitRadius";
+        }
+        return "none";
+    }
+
+    bool jitterTargetFromString (const juce::String& s, GrainJitterTarget& out)
+    {
+        if (s == "none")           { out = GrainJitterTarget::None;          return true; }
+        if (s == "initialSpeed")   { out = GrainJitterTarget::InitialSpeed;   return true; }
+        if (s == "lifetime")       { out = GrainJitterTarget::Lifetime;       return true; }
+        if (s == "boundaryRadius") { out = GrainJitterTarget::BoundaryRadius; return true; }
+        if (s == "orbitRadius")    { out = GrainJitterTarget::OrbitRadius;    return true; }
+        return false;
+    }
+
     juce::var sceneSettingsToVar (const SceneSettings& s)
     {
         auto* obj = new juce::DynamicObject();
@@ -144,6 +205,97 @@ namespace
 
         return juce::Result::ok();
     }
+
+    juce::var grainCloudSettingsToVar (const GrainCloudSettings& s)
+    {
+        auto* obj = new juce::DynamicObject();
+        obj->setProperty ("enabled", s.enabled);
+        obj->setProperty ("grainRate", (double) s.grainRate);
+        obj->setProperty ("grainDuration", (double) s.grainDuration);
+        obj->setProperty ("pitchJitter", (double) s.pitchJitter);
+        obj->setProperty ("positionJitterInBuffer", (double) s.positionJitterInBuffer);
+        obj->setProperty ("maxConcurrentGrains", s.maxConcurrentGrains);
+        obj->setProperty ("windowShape", windowShapeToString (s.windowShape));
+        obj->setProperty ("movementMode", movementModeToString (s.movementMode));
+        obj->setProperty ("randomWalkSpeed", (double) s.randomWalkSpeed);
+        obj->setProperty ("boundaryRadius", (double) s.boundaryRadius);
+        obj->setProperty ("restitution", (double) s.restitution);
+        obj->setProperty ("initialSpeed", (double) s.initialSpeed);
+        obj->setProperty ("acceleration", (double) s.acceleration);
+        obj->setProperty ("orbitRadius", (double) s.orbitRadius);
+        obj->setProperty ("orbitAngularSpeed", (double) s.orbitAngularSpeed);
+        obj->setProperty ("attractionStrength", (double) s.attractionStrength);
+        obj->setProperty ("jitterTarget", jitterTargetToString (s.jitterTarget));
+        obj->setProperty ("jitterRange", (double) s.jitterRange);
+        return juce::var (obj);
+    }
+
+    // "grainCloud" is optional -- if missing entirely (always true for
+    // schemaVersion 1 presets, migrated or not), the GrainCloudSettings
+    // defaults stay unchanged, i.e. the cloud stays disabled.
+    juce::Result grainCloudSettingsFromVar (const juce::var& gcVar, GrainCloudSettings& out)
+    {
+        if (gcVar.isVoid())
+            return juce::Result::ok();
+
+        if (! gcVar.isObject())
+            return juce::Result::fail ("'grainCloud' is not a JSON object.");
+
+        if (gcVar.hasProperty ("enabled"))
+            out.enabled = (bool) gcVar.getProperty ("enabled", out.enabled);
+
+        out.grainRate               = (float) gcVar.getProperty ("grainRate", (double) out.grainRate);
+        out.grainDuration           = (float) gcVar.getProperty ("grainDuration", (double) out.grainDuration);
+        out.pitchJitter             = (float) gcVar.getProperty ("pitchJitter", (double) out.pitchJitter);
+        out.positionJitterInBuffer = (float) gcVar.getProperty ("positionJitterInBuffer", (double) out.positionJitterInBuffer);
+        out.maxConcurrentGrains     = (int) gcVar.getProperty ("maxConcurrentGrains", out.maxConcurrentGrains);
+
+        if (gcVar.hasProperty ("windowShape"))
+        {
+            const auto s = gcVar.getProperty ("windowShape", juce::var()).toString();
+            if (! windowShapeFromString (s, out.windowShape))
+                return juce::Result::fail ("'grainCloud.windowShape': unknown value '" + s + "'.");
+        }
+        if (gcVar.hasProperty ("movementMode"))
+        {
+            const auto s = gcVar.getProperty ("movementMode", juce::var()).toString();
+            if (! movementModeFromString (s, out.movementMode))
+                return juce::Result::fail ("'grainCloud.movementMode': unknown value '" + s + "'.");
+        }
+
+        out.randomWalkSpeed     = (float) gcVar.getProperty ("randomWalkSpeed", (double) out.randomWalkSpeed);
+        out.boundaryRadius      = (float) gcVar.getProperty ("boundaryRadius", (double) out.boundaryRadius);
+        out.restitution          = (float) gcVar.getProperty ("restitution", (double) out.restitution);
+        out.initialSpeed         = (float) gcVar.getProperty ("initialSpeed", (double) out.initialSpeed);
+        out.acceleration         = (float) gcVar.getProperty ("acceleration", (double) out.acceleration);
+        out.orbitRadius          = (float) gcVar.getProperty ("orbitRadius", (double) out.orbitRadius);
+        out.orbitAngularSpeed   = (float) gcVar.getProperty ("orbitAngularSpeed", (double) out.orbitAngularSpeed);
+        out.attractionStrength  = (float) gcVar.getProperty ("attractionStrength", (double) out.attractionStrength);
+
+        if (gcVar.hasProperty ("jitterTarget"))
+        {
+            const auto s = gcVar.getProperty ("jitterTarget", juce::var()).toString();
+            if (! jitterTargetFromString (s, out.jitterTarget))
+                return juce::Result::fail ("'grainCloud.jitterTarget': unknown value '" + s + "'.");
+        }
+        out.jitterRange = (float) gcVar.getProperty ("jitterRange", (double) out.jitterRange);
+
+        return juce::Result::ok();
+    }
+}
+
+juce::var PresetManager::migrateSchemaV1toV2 (const juce::var& v1Root)
+{
+    // Every schemaVersion-2 addition (per-object "grainCloud") is optional
+    // with a sensible default -- v1 content is already valid v2 content,
+    // this just needs to relabel it. A real field rename/removal in a
+    // future version would do its actual transformation work here instead.
+    if (! v1Root.isObject())
+        return v1Root;
+
+    auto* migrated = new juce::DynamicObject (*v1Root.getDynamicObject());
+    migrated->setProperty ("schemaVersion", currentSchemaVersion);
+    return juce::var (migrated);
 }
 
 juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::String& name)
@@ -198,6 +350,9 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         objVar->setProperty ("directivityPattern", directivityPatternToString (obj.directivityPattern));
         objVar->setProperty ("sourceOrientation", vecToVar (obj.sourceOrientation));
 
+        // GrainCloud (optional, schemaVersion 2+, see Grain.h)
+        objVar->setProperty ("grainCloud", grainCloudSettingsToVar (engine.getGrainCloud (i).getSettings()));
+
         objectsArray.add (juce::var (objVar));
     }
 
@@ -205,32 +360,39 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
     return juce::var (root);
 }
 
-juce::Result PresetManager::loadFromVar (const juce::var& root, TrajectoryEngine& engine)
+juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, TrajectoryEngine& engine)
 {
-    if (! root.isObject())
+    if (! originalRoot.isObject())
         return juce::Result::fail ("Preset is not a valid JSON object.");
 
-    auto schemaVersionVar = root.getProperty ("schemaVersion", juce::var());
+    auto schemaVersionVar = originalRoot.getProperty ("schemaVersion", juce::var());
     if (! (schemaVersionVar.isInt() || schemaVersionVar.isDouble() || schemaVersionVar.isInt64()))
         return juce::Result::fail ("Preset has no numeric 'schemaVersion' field.");
 
     const int schemaVersion = (int) schemaVersionVar;
-    if (schemaVersion != currentSchemaVersion)
+    if (schemaVersion < oldestSupportedSchemaVersion || schemaVersion > currentSchemaVersion)
         return juce::Result::fail ("Preset schemaVersion " + juce::String (schemaVersion)
-                                    + " is not supported (supported: " + juce::String (currentSchemaVersion)
-                                    + "). Migration for this version is not implemented yet.");
+                                    + " is not supported (supported: " + juce::String (oldestSupportedSchemaVersion)
+                                    + ".." + juce::String (currentSchemaVersion) + ").");
+
+    // Migrate step by step up to the current version. Only one step exists
+    // right now (1 -> 2); a future 2 -> 3 migration would chain the same way.
+    juce::var root = originalRoot;
+    if (schemaVersion == 1)
+        root = migrateSchemaV1toV2 (root);
 
     auto* objectsArray = root.getProperty ("objects", juce::var()).getArray();
     if (objectsArray == nullptr)
         return juce::Result::fail ("Preset has no 'objects' array.");
 
-    // First reset all objects to a clean, inactive starting state -- a
-    // preset is a complete scene, not a diff against what was loaded
-    // before.
+    // First reset all objects (and their grain clouds) to a clean, inactive
+    // starting state -- a preset is a complete scene, not a diff against
+    // what was loaded before.
     for (int i = 0; i < engine.getNumObjects(); ++i)
     {
         const int id = engine.getObject (i).id;
         engine.getObject (i) = SoundObject { id };
+        engine.getGrainCloud (i).reset();
     }
 
     // Scene-wide parameters -- if the block is missing, the SceneSettings
@@ -303,6 +465,12 @@ juce::Result PresetManager::loadFromVar (const juce::var& root, TrajectoryEngine
                 return juce::Result::fail ("Preset object " + juce::String (id) + ": unknown directivityPattern '" + patternStr + "'.");
         }
         varToVec (element.getProperty ("sourceOrientation", juce::var()), obj.sourceOrientation); // default {1,0,0} stays if missing
+
+        // GrainCloud (optional, schemaVersion 2+ -- absent for migrated v1 presets, defaults/disabled stays)
+        auto grainCloudResult = grainCloudSettingsFromVar (element.getProperty ("grainCloud", juce::var()),
+                                                              engine.getGrainCloud (id).getSettings());
+        if (grainCloudResult.failed())
+            return grainCloudResult;
 
         // Not part of the schema (runtime state, not a starting parameter):
         // reset cleanly, so a freshly loaded orbit/pulse object doesn't

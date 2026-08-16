@@ -45,7 +45,30 @@ void SpatialAudioPOCEditor::timerCallback()
     const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastTimerMs) / 1000.0); // clamp against outliers
     lastTimerMs = now;
 
-    audioProcessor.getTrajectoryEngine().update (dt);
+    auto& engine = audioProcessor.getTrajectoryEngine();
+    engine.update (dt);
+
+    // GrainCloud: control-rate update, same loop/rate as TrajectoryEngine
+    // above. A single global spawn budget is shared across all clouds so
+    // the total number of simultaneously active grains never exceeds
+    // SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal, no matter how
+    // many objects are granulating at once -- each active grain costs a
+    // full Ambisonics encode pass in PluginProcessor::processBlock.
+    int globalGrainBudget = SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal;
+    for (int i = 0; i < engine.getNumGrainClouds(); ++i)
+        globalGrainBudget -= engine.getGrainCloud (i).getNumActiveGrains();
+
+    for (int i = 0; i < engine.getNumGrainClouds(); ++i)
+    {
+        auto& obj = engine.getObject (i);
+        if (obj.inputChannel < 0)
+            continue; // no active parent -- freeze this cloud instead of updating it with a meaningless position
+
+        auto& cloud = engine.getGrainCloud (i);
+        cloud.setRingBufferContext (audioProcessor.getGrainRingBufferWriteHead (i), audioProcessor.getSampleRate());
+        cloud.update (dt, obj.position, obj.velocity, globalGrainBudget, grainRandom);
+    }
+
     repaint();
 }
 
@@ -137,6 +160,22 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 
         g.setColour (juce::Colours::white);
         g.drawText (juce::String (i), (int) p.x - 20, (int) p.y + 10, 40, 16, juce::Justification::centred);
+
+        // GrainCloud: small dots around the parent, fading out as they age
+        // (see GrainCloud::Snapshot::ageFraction). Not per-grain
+        // selectable/labeled -- see ParameterPanel, one parameter set
+        // governs the whole cloud.
+        std::vector<GrainCloud::Snapshot> grainSnapshot;
+        engine.getGrainCloud (i).getSnapshot (grainSnapshot);
+        for (auto& gsnap : grainSnapshot)
+        {
+            if (! gsnap.active) continue;
+
+            auto gp = objectToScreen (gsnap.position);
+            const float alpha = juce::jlimit (0.0f, 1.0f, 1.0f - gsnap.ageFraction);
+            g.setColour (juce::Colours::orange.withAlpha (alpha));
+            g.fillEllipse (gp.x - 3.0f, gp.y - 3.0f, 6.0f, 6.0f);
+        }
     }
 
     g.restoreState();
@@ -266,9 +305,15 @@ void SpatialAudioPOCEditor::selectObject (int index)
     auto& engine = audioProcessor.getTrajectoryEngine();
 
     if (index < 0)
+    {
         parameterPanel.setEditedObject (nullptr, -1, engine.getNumObjects());
+        parameterPanel.setEditedGrainCloud (nullptr);
+    }
     else
+    {
         parameterPanel.setEditedObject (&engine.getObject (index), index, engine.getNumObjects());
+        parameterPanel.setEditedGrainCloud (&engine.getGrainCloud (index).getSettings());
+    }
 
     updateObjectUiState();
 }

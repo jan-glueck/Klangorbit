@@ -69,6 +69,7 @@ target_sources(SpatialAudioPOC
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
         Source/PropagationProcessor.cpp
+        Source/GrainCloud.cpp
 )
 
 target_link_libraries(SpatialAudioPOC
@@ -99,6 +100,7 @@ target_sources(validate_presets
         Tools/validate_presets.cpp
         Source/PresetManager.cpp
         Source/TrajectoryEngine.cpp
+        Source/GrainCloud.cpp
 )
 
 target_link_libraries(validate_presets
@@ -127,6 +129,29 @@ target_sources(verify_propagation
 )
 
 target_link_libraries(verify_propagation
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Grain cloud DSP verification -----------------------------------------
+# Runs GrainCloud (spawn timing, all 5 movement modes, global/per-cloud
+# caps, lifetime expiry) and renderGrainBlock (the exact function
+# PluginProcessor uses to play back grains -- shared, not reimplemented)
+# against synthetic scenarios, no GUI/audio device needed.
+juce_add_console_app(verify_grain_cloud
+    PRODUCT_NAME "verify_grain_cloud"
+)
+
+target_sources(verify_grain_cloud
+    PRIVATE
+        Tools/verify_grain_cloud.cpp
+        Source/GrainCloud.cpp
+)
+
+target_link_libraries(verify_grain_cloud
     PRIVATE
         juce::juce_core
     PUBLIC

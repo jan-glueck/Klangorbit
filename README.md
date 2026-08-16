@@ -9,22 +9,39 @@ to be processed further in SPARTA (AmbiBIN/AmbiDEC) or the IEM Plugin Suite.
 ```
 Live input (up to 8 mono channels)
         |
-        v
-[SoundObject 0..7]  <-- position/motion from TrajectoryEngine (control rate, ~90 Hz)
-        |
-        v
-[PropagationProcessor]  -- per-object propagation delay + Doppler (unified
-        |                  variable delay line), air absorption (simplified
-        |                  one-pole lowpass), directivity gain
-        v
-[AmbisonicsEncoder]  -- generic SH computation (Legendre recursion),
-        |                arbitrary order, currently 3rd order = 16 channels
-        v
-Ambisonics output (16 channels at order 3)
-        |
-        v
-DAW / SPARTA / IEM Suite -> decoding (binaural or loudspeakers)
+        +-------------------------------------------------+
+        v                                                   v
+[SoundObject 0..7]  <-- position/motion            [ring buffer per object]
+   from TrajectoryEngine                             (continuously filled,
+   (control rate, ~90 Hz)                             see GrainCloud below)
+        |                                                   |
+        v                                                   v
+[PropagationProcessor]  -- per-object              [GrainCloud, if enabled]
+   propagation delay + Doppler (unified               grain pool, 5 movement
+   variable delay line), air                          modes, control rate;
+   absorption (simplified one-pole                    each active grain reads
+   lowpass), directivity gain                          a short, windowed burst
+        |                                              from the ring buffer
+        |                                                   |
+        v                                                   v
+        +-------------------------> [AmbisonicsEncoder] <---+
+                                       generic SH computation (Legendre
+                                       recursion), arbitrary order, currently
+                                       3rd order = 16 channels. Each
+                                       SoundObject and each active grain is
+                                       encoded as its own mono source with
+                                       its own ramped gains.
+                                            |
+                                            v
+                              Ambisonics output (16 channels at order 3)
+                                            |
+                                            v
+                     DAW / SPARTA / IEM Suite -> decoding (binaural or loudspeakers)
 ```
+
+Note: grains skip `PropagationProcessor` (no per-grain Doppler/delay/air
+absorption/directivity) -- only `SoundObject`s go through it. See
+"GrainCloud: granular synthesis" below.
 
 ## Build
 
@@ -146,6 +163,59 @@ the mono source signal before Ambisonics encoding, per active object.
   gain by angle -- catches DSP math regressions fast without a full
   plugin build or manual listening test each time.
 
+## GrainCloud: granular synthesis
+
+Optional, per object, off by default. Multiplies a `SoundObject`'s live
+input into many independently-moving grains -- conceptually similar to the
+IEM GranularEncoder, but each grain's movement is physics-based rather than
+purely random.
+
+- **Ring buffer + windowed playback.** Every active object continuously
+  records its live input into a per-object ring buffer
+  (`SceneSettings`-independent, always filled, regardless of whether
+  granulation is on). A spawned grain reads a short, Hann-windowed burst
+  from it, with its own pitch (`pitchJitter`) and random start-position
+  offset (`positionJitterInBuffer`).
+- **Single-shot grain model.** `grainDuration` is both the audio envelope
+  length and the movement lifetime -- a grain is spawned, moves for that
+  duration while fading, and is done. `grainRate` controls how often new
+  grains spawn.
+- **Movement modes** (`Source/Grain.h`, `GrainMovementMode`): `RandomWalk`,
+  `Bounce` (elastic reflection within `boundaryRadius` around the spawn
+  position, `restitution`), `RadialExplosion` (`initialSpeed` +
+  `acceleration`, outward), `OrbitAroundParent` (relative to the parent
+  object's *current* position, which can itself be moving),
+  `AttractRepelSiblings` (n-body force *within the same cloud only*,
+  reusing `TrajectoryEngine::computeAttractionForce`'s softened
+  inverse-square model; negative `attractionStrength` repels).
+  `jitterTarget`/`jitterRange` randomize one field per spawn.
+- **Pool-based, not allocated.** `GrainCloud` (`Source/GrainCloud.h/.cpp`)
+  manages a fixed-size pool per object -- grains are activated/deactivated,
+  never allocated on the audio thread. One `GrainCloud` per `SoundObject`,
+  owned by `TrajectoryEngine` (so `PresetManager` doesn't need a dependency
+  on the full plugin class), updated at control rate (~90 Hz) alongside the
+  trajectory engine, with its own lock-protected snapshot for the audio
+  thread -- architecturally a smaller sibling of `TrajectoryEngine` itself.
+- **Rendering skips PropagationProcessor.** Each active grain is encoded
+  directly via `AmbisonicsEncoder` (spatial encoding + distance gain, own
+  ramped `previousChannelGains` per grain for zipper-free gain changes) --
+  deliberately *not* run through `PropagationProcessor`, since a full
+  per-grain Doppler/delay/air-absorption/directivity pass would be too
+  expensive with dozens of concurrent grains.
+- **Global spawn budget.** `maxConcurrentGrains` caps each cloud
+  individually; a further system-wide cap
+  (`SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal`, currently 32) is
+  shared across all clouds each control-rate tick, since every active grain
+  costs a full Ambisonics encoding pass regardless of cloud.
+- **GUI:** active grains render as small dots around their parent object in
+  the 2D editor, fading out with age; a "Grain Cloud" category in the
+  parameter panel exposes all cloud-level parameters (one parameter set per
+  cloud, not per individual grain).
+- **Verification:** `Tools/verify_grain_cloud.cpp` exercises the exact
+  grain-rendering function the plugin uses (`GrainRenderer.h`, shared, not
+  reimplemented) plus all five movement modes and the spawn-budget logic,
+  no GUI/audio device needed.
+
 ## Project structure
 
 ```
@@ -154,8 +224,9 @@ SpatialAudioPOC/
   CHANGELOG.md          <- code versioning (SemVer)
   Source/                <- C++ code
   Tools/
-    validate_presets.cpp    <- CLI tool, checks Presets/factory/*.json (see Docs/WORKFLOW.md)
-    verify_propagation.cpp  <- CLI tool, checks PropagationProcessor DSP math (delay/Doppler/absorption/directivity)
+    validate_presets.cpp     <- CLI tool, checks Presets/factory/*.json (see Docs/WORKFLOW.md)
+    verify_propagation.cpp   <- CLI tool, checks PropagationProcessor DSP math (delay/Doppler/absorption/directivity)
+    verify_grain_cloud.cpp   <- CLI tool, checks GrainCloud (5 movement modes, spawn caps) + grain rendering
   Presets/
     schema/README.md    <- preset format, own schemaVersion
     factory/             <- curated, checked-in scenes
@@ -229,13 +300,26 @@ Docs/WORKFLOW.md.
   audio-thread snapshot is locked), that would be a race. Loading a preset
   via the GUI is not affected by this (always runs on the message thread).
 - **Loading/saving presets is implemented.** `PresetManager`
-  (`Source/PresetManager.h/.cpp`) reads/writes scenes in the schemaVersion-1
+  (`Source/PresetManager.h/.cpp`) reads/writes scenes in the schemaVersion-2
   format (see `Presets/schema/README.md`), via two buttons in the editor
-  toolbar. Loading replaces the entire scene; an unsupported
-  `schemaVersion` or broken JSON is rejected with an error message instead
-  of being silently interpreted. `Tools/validate_presets` checks all
-  presets in a folder via the same code path (prepared for CI, see
-  `Docs/WORKFLOW.md`). The default folder in the file dialog
-  (`Presets/user/`) is just a convenience default for local dev builds
-  from this checkout (absolute path baked in at build time via CMake) --
-  not portable to a plugin installed elsewhere.
+  toolbar. Loading replaces the entire scene; schemaVersion-1 presets are
+  migrated automatically, and anything outside the supported range is
+  rejected with an error message instead of being silently interpreted.
+  `Tools/validate_presets` checks all presets in a folder via the same code
+  path (prepared for CI, see `Docs/WORKFLOW.md`). The default folder in the
+  file dialog (`Presets/user/`) is just a convenience default for local dev
+  builds from this checkout (absolute path baked in at build time via
+  CMake) -- not portable to a plugin installed elsewhere.
+- **GrainCloud grains skip acoustic propagation entirely.** No per-grain
+  Doppler shift, propagation delay, air absorption, or directivity -- only
+  `AmbisonicsEncoder`'s spatial encoding and distance gain, for
+  performance reasons (see "GrainCloud: granular synthesis" above). Only
+  the parent `SoundObject`'s own signal (before granulation) goes through
+  `PropagationProcessor`.
+- **GrainCloud window shape is Hann only.** No alternative envelope shapes
+  (Tukey, Gaussian, etc.) yet.
+- **GrainCloud's global spawn budget is first-come-first-served**, not
+  prioritized by object gain, distance to the listener, or any other
+  criterion -- with several clouds active simultaneously near the global
+  cap, which cloud gets the remaining budget on a given tick is
+  effectively arbitrary (iteration order).

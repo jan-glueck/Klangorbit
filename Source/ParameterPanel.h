@@ -5,6 +5,7 @@
 #include <vector>
 #include "SoundObject.h"
 #include "SceneSettings.h"
+#include "Grain.h"
 
 /**
     A row widget: label + a slider, with a generic onValueChanged callback.
@@ -61,6 +62,21 @@ public:
     std::function<void (int)> onSelected;
 };
 
+/** A single checkbox-style row, with a generic onToggled(newState) callback. */
+class ToggleRowComponent : public juce::Component
+{
+public:
+    explicit ToggleRowComponent (const juce::String& name);
+
+    void resized() override;
+    void setValueQuiet (bool v);
+
+    static constexpr int preferredHeight = 24;
+
+    juce::ToggleButton toggle;
+    std::function<void (bool)> onToggled;
+};
+
 /**
     Side panel: a fixed row of category buttons at the top (Scene,
     Acoustics, Object, Attraction, Orbit, Doppler), and a scrollable area
@@ -84,7 +100,7 @@ public:
 class ParameterPanel : public juce::Component
 {
 public:
-    enum class Category { Scene, Acoustics, Object, Attraction, Orbit, Doppler };
+    enum class Category { Scene, Acoustics, Object, Attraction, Orbit, Doppler, GrainCloud };
 
     ParameterPanel();
 
@@ -93,6 +109,12 @@ public:
 
     // nullptr = no selection. numObjects for the reference-object combo (orbit).
     void setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects);
+
+    // nullptr = no selection. Called alongside setEditedObject() by the
+    // editor -- the GrainCloud belongs to the same selected object, but is
+    // a separate settings struct owned by PluginProcessor, not a
+    // SoundObject field.
+    void setEditedGrainCloud (GrainCloudSettings* settings);
 
     // Synchronize all controls with the current model state.
     void refreshFromModel();
@@ -108,6 +130,12 @@ private:
                                            double min, double max, double step, Category category);
     Vec3RowComponent& addObjectVec3Row (const juce::String& name, Vec3 SoundObject::* member,
                                          double min, double max, double step, Category category);
+    FloatRowComponent& addGrainFloatRow (const juce::String& name, float GrainCloudSettings::* member,
+                                          double min, double max, double step, Category category);
+    // maxConcurrentGrains is the only int field -- reuses FloatRowComponent
+    // (a whole-number slider) rather than a dedicated int row type for one field.
+    FloatRowComponent& addGrainIntRow (const juce::String& name, int GrainCloudSettings::* member,
+                                        double min, double max, Category category);
     void addToLayout (juce::Component& c, int height, Category category);
     void addCategoryButton (const juce::String& label, Category category);
 
@@ -123,6 +151,7 @@ private:
 
     SceneSettings* sceneSettings = nullptr;
     SoundObject* editedObject = nullptr;
+    GrainCloudSettings* editedGrainCloud = nullptr;
 
     Category currentCategory = Category::Scene;
     struct CategoryButton { std::unique_ptr<juce::TextButton> button; Category category; };
@@ -144,10 +173,21 @@ private:
     struct ObjectVec3Binding { std::unique_ptr<Vec3RowComponent> row; Vec3 SoundObject::* member; };
     std::vector<ObjectVec3Binding> objectVec3Rows;
 
+    struct GrainFloatBinding { std::unique_ptr<FloatRowComponent> row; float GrainCloudSettings::* member; };
+    std::vector<GrainFloatBinding> grainFloatRows;
+
+    struct GrainIntBinding { std::unique_ptr<FloatRowComponent> row; int GrainCloudSettings::* member; };
+    std::vector<GrainIntBinding> grainIntRows;
+
     juce::Label objectHeaderLabel;
     std::unique_ptr<ComboRowComponent> modeRow;
     std::unique_ptr<ComboRowComponent> boundaryRow;
     std::unique_ptr<Vec3RowComponent> globalFieldRow; // SceneSettings::globalField, not a SoundObject field -> its own binding
     std::unique_ptr<ComboRowComponent> orbitRefRow;
     std::unique_ptr<ComboRowComponent> directivityRow;
+
+    std::unique_ptr<ToggleRowComponent> grainEnabledRow;
+    std::unique_ptr<ComboRowComponent> grainWindowShapeRow;
+    std::unique_ptr<ComboRowComponent> grainMovementModeRow;
+    std::unique_ptr<ComboRowComponent> grainJitterTargetRow;
 };

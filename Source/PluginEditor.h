@@ -15,10 +15,13 @@
     - Toolbar at the top: load/save preset (PresetManager), add/remove object
     - Panel on the right: all parameters of the selected object + scene-wide
       parameters (room boundary, global field, time scale), see ParameterPanel
+    - Grain clouds (see GrainCloud/Grain): small orange dots fading out
+      around the parent object as they age
 
     The actual physics update runs on a juce::Timer that calls
     TrajectoryEngine::update() with the measured time since the last tick --
-    that's the control-rate loop, separate from the audio thread.
+    that's the control-rate loop, separate from the audio thread. Each
+    object's GrainCloud is updated from the same timer tick.
 */
 class SpatialAudioPOCEditor : public juce::AudioProcessorEditor,
                                private juce::Timer
@@ -71,6 +74,12 @@ private:
     juce::int64 lastTimerMs = 0;
     static constexpr float pixelsPerMeter = 80.0f;
     static constexpr float hitRadiusPixels = 16.0f;
+
+    // Message-thread-only RNG for GrainCloud spawn randomization, see
+    // timerCallback() -- GrainCloud::update() takes it by reference rather
+    // than owning one itself, since the caller (here) also needs to share
+    // one global spawn budget across all clouds each tick.
+    juce::Random grainRandom;
 
     static constexpr int toolbarHeight = 64; // two rows of 32px
     static constexpr int parameterPanelWidth = 340;

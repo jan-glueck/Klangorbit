@@ -1,8 +1,10 @@
 #pragma once
 #include <juce_core/juce_core.h>
+#include <memory>
 #include <vector>
 #include "SoundObject.h"
 #include "SceneSettings.h"
+#include "GrainCloud.h"
 
 /**
     Updates positions of all SoundObjects. Runs at control rate
@@ -21,11 +23,26 @@
     (encoder/snapshot/PresetManager already evaluate it),
     activateObject()/deactivateObject() just set it in a controlled way
     from the GUI.
+
+    Also owns one GrainCloud per object slot (see GrainCloud.h/Grain.h) --
+    housed here rather than in PluginProcessor because a GrainCloud is,
+    architecturally, part of an object's non-audio-thread scene state
+    (control-rate-updated, preset-serialized) exactly like the SoundObject
+    itself, even though PluginProcessor still owns the actual per-object
+    ring buffers and does the sample-accurate grain rendering (audio-thread
+    concerns that don't belong here). Keeping GrainCloud here also means
+    PresetManager -- which only ever depended on TrajectoryEngine, not on
+    the full plugin class -- can save/load grain cloud settings without
+    growing a new dependency.
 */
 class TrajectoryEngine
 {
 public:
-    explicit TrajectoryEngine (int maxObjects);
+    // grainPoolSizePerCloud: see GrainCloud -- how many simultaneous grains
+    // a single cloud can ever have active. Defaulted so existing callers
+    // (Tools/validate_presets etc.) that only care about SoundObjects don't
+    // need to know about grain pool sizing.
+    explicit TrajectoryEngine (int maxObjects, int grainPoolSizePerCloud = 32);
 
     // Call this e.g. from a juce::Timer.
     // dtSeconds: time since the last call.
@@ -47,6 +64,15 @@ public:
 
     SceneSettings& getSceneSettings() { return sceneSettings; }
     const SceneSettings& getSceneSettings() const { return sceneSettings; }
+
+    // One GrainCloud per object slot, always present. Call from the
+    // message thread (like getObject()); GrainCloud::update() itself is
+    // driven from the editor's timer (see PluginEditor::timerCallback()),
+    // not from here, since it needs per-object ring-buffer context
+    // (write head, sample rate) that only PluginProcessor's audio thread
+    // knows.
+    GrainCloud& getGrainCloud (int objectIndex) { return *grainClouds[(size_t) objectIndex]; }
+    int getNumGrainClouds() const { return (int) grainClouds.size(); }
 
     // Manual interaction (mouse/MIDI)
     void beginDrag (int objectIndex);
@@ -73,6 +99,13 @@ private:
 
     std::vector<SoundObject> objects;
     SceneSettings sceneSettings;
+
+    // unique_ptr, not a plain vector<GrainCloud>: GrainCloud holds a
+    // juce::CriticalSection (for its own audio-thread snapshot), which is
+    // neither copyable nor movable, so a vector<GrainCloud> could never
+    // grow/reallocate. Only the pointers move here, never the
+    // CriticalSection itself.
+    std::vector<std::unique_ptr<GrainCloud>> grainClouds;
 
     // Double buffering for lock-free access from the audio thread
     mutable juce::CriticalSection snapshotLock;

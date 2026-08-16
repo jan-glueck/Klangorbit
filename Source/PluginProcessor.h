@@ -1,9 +1,12 @@
 #pragma once
+#include <array>
+#include <atomic>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "SoundObject.h"
 #include "TrajectoryEngine.h"
 #include "AmbisonicsEncoder.h"
 #include "PropagationProcessor.h"
+#include "GrainCloud.h"
 
 /**
     Input:  N mono channels (N = SAPOC_MAX_LIVE_INPUTS, configurable), each
@@ -50,6 +53,21 @@ public:
     TrajectoryEngine& getTrajectoryEngine() { return trajectoryEngine; }
     int getNumLiveInputs() const { return numLiveInputs; }
 
+    // Current write position in that object's ring buffer, for
+    // GrainCloud::setRingBufferContext() -- only the message thread reads
+    // this (via the editor's timer), only the audio thread writes it.
+    int getGrainRingBufferWriteHead (int objectIndex) const
+    {
+        return grainRingBufferWriteHead[(size_t) objectIndex].load (std::memory_order_relaxed);
+    }
+
+    // Global cap on simultaneously active grains, summed across ALL
+    // clouds -- each active grain costs a full Ambisonics encode pass, so
+    // this bounds worst-case CPU independent of how many clouds/objects
+    // are granulating. Enforced by the editor's timer via
+    // GrainCloud::update()'s globalGrainBudget parameter.
+    static constexpr int maxConcurrentGrainsGlobal = 32;
+
 private:
     // BusesProperties is a protected nested type of juce::AudioProcessor --
     // only constructible via a method of the derived class, not via a free
@@ -57,8 +75,12 @@ private:
     static BusesProperties makeBusLayout();
 
     static constexpr int numLiveInputs = SAPOC_MAX_LIVE_INPUTS;
+    // Each cloud's pool is sized to the full global cap since, in the
+    // worst case, a single cloud could legitimately use all of it.
+    static constexpr int grainPoolSizePerCloud = maxConcurrentGrainsGlobal;
+    static constexpr float grainRingBufferSeconds = 2.0f;
 
-    TrajectoryEngine trajectoryEngine { numLiveInputs };
+    TrajectoryEngine trajectoryEngine { numLiveInputs, grainPoolSizePerCloud };
     AmbisonicsEncoder encoder;
 
     // Per-object persistent gain state for zipper-free ramping
@@ -76,6 +98,31 @@ private:
     // Scratch buffer for the propagated mono signal, sized once in
     // prepareToPlay -- never (re)allocated in processBlock.
     juce::AudioBuffer<float> propagationScratch;
+
+    // --- GrainCloud audio-thread state (the GrainCloud objects themselves
+    // -- settings, spawn timing, per-grain physics -- live in
+    // TrajectoryEngine, see its class comment for why) ----------------------
+    // Ring buffers, one per object slot, continuously fed that object's
+    // live input every block regardless of whether its cloud is currently
+    // enabled -- so turning granulation on always has recent history
+    // available to read from immediately, no silent warm-up period.
+    std::vector<juce::AudioBuffer<float>> grainRingBuffers; // mono, circular
+    std::array<std::atomic<int>, numLiveInputs> grainRingBufferWriteHead {};
+
+    // Audio-thread-owned per-(object, grain-pool-slot) playback state --
+    // sample-accurate envelope/pitch progress, independent of the
+    // coarser control-rate physics snapshot (see GrainCloud::Snapshot).
+    struct GrainAudioState
+    {
+        int lastSeenGeneration = -1; // detects "this slot was respawned" even without an intervening inactive block
+        int samplesPlayed = 0;
+        std::vector<float> previousChannelGains;
+    };
+    std::vector<std::vector<GrainAudioState>> grainAudioState; // [objectIndex][grainPoolSlot]
+    // Scratch for rendering one grain's windowed, pitch-shifted mono
+    // signal at a time before encoding -- reused serially within a block,
+    // sized once in prepareToPlay.
+    juce::AudioBuffer<float> grainScratch;
 
     double currentSampleRate = 48000.0;
 

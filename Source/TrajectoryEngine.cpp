@@ -1,12 +1,16 @@
 #include "TrajectoryEngine.h"
 
-TrajectoryEngine::TrajectoryEngine (int maxObjects)
+TrajectoryEngine::TrajectoryEngine (int maxObjects, int grainPoolSizePerCloud)
 {
     objects.resize ((size_t) maxObjects);
     for (int i = 0; i < maxObjects; ++i)
         objects[(size_t) i].id = i;
 
     snapshotBuffer.resize ((size_t) maxObjects);
+
+    grainClouds.reserve ((size_t) maxObjects);
+    for (int i = 0; i < maxObjects; ++i)
+        grainClouds.push_back (std::make_unique<GrainCloud> (grainPoolSizePerCloud));
 }
 
 SoundObject& TrajectoryEngine::getObject (int index)
@@ -44,6 +48,7 @@ bool TrajectoryEngine::deactivateObject (int index)
     const int id = obj.id;
     obj = SoundObject {};
     obj.id = id;
+    grainClouds[(size_t) index]->reset(); // don't let a later reactivation resume with stale settings/grains
     return true;
 }
 

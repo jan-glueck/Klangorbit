@@ -118,12 +118,34 @@ void ComboRowComponent::resized()
     combo.setBounds (b.removeFromTop (22));
 }
 
+// ============================================================== ToggleRowComponent
+
+ToggleRowComponent::ToggleRowComponent (const juce::String& name)
+{
+    toggle.setButtonText (name);
+    toggle.setColour (juce::ToggleButton::textColourId, juce::Colours::lightgrey);
+    addAndMakeVisible (toggle);
+
+    toggle.onClick = [this] { if (onToggled) onToggled (toggle.getToggleState()); };
+}
+
+void ToggleRowComponent::resized()
+{
+    toggle.setBounds (getLocalBounds());
+}
+
+void ToggleRowComponent::setValueQuiet (bool v)
+{
+    toggle.setToggleState (v, juce::dontSendNotification);
+}
+
 // ============================================================== ParameterPanel
 
 bool ParameterPanel::categoryRequiresObject (Category category)
 {
     return category == Category::Object || category == Category::Attraction
-        || category == Category::Orbit || category == Category::Doppler;
+        || category == Category::Orbit || category == Category::Doppler
+        || category == Category::GrainCloud;
 }
 
 ParameterPanel::ParameterPanel()
@@ -141,6 +163,7 @@ ParameterPanel::ParameterPanel()
     addCategoryButton ("Attraction", Category::Attraction);
     addCategoryButton ("Orbit", Category::Orbit);
     addCategoryButton ("Doppler", Category::Doppler);
+    addCategoryButton ("Grain Cloud", Category::GrainCloud);
 
     // --- Scene ------------------------------------------------------------
     addSceneFloatRow ("Room Size (0 = no boundary)", &SceneSettings::roomSize, 0.0, 50.0, 0.1, Category::Scene);
@@ -237,6 +260,67 @@ ParameterPanel::ParameterPanel()
 
     addObjectVec3Row ("Source Orientation", &SoundObject::sourceOrientation, -1.0, 1.0, 0.01, Category::Doppler);
 
+    // --- Grain Cloud ------------------------------------------------------
+    grainEnabledRow = std::make_unique<ToggleRowComponent> ("Enabled");
+    grainEnabledRow->onToggled = [this] (bool v) { if (editedGrainCloud != nullptr) editedGrainCloud->enabled = v; };
+    content.addAndMakeVisible (*grainEnabledRow);
+    addToLayout (*grainEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
+
+    addGrainFloatRow ("Grain Rate (grains/sec)", &GrainCloudSettings::grainRate, 0.1, 200.0, 0.1, Category::GrainCloud);
+    addGrainFloatRow ("Grain Duration (s)", &GrainCloudSettings::grainDuration, 0.01, 2.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Pitch Jitter", &GrainCloudSettings::pitchJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Position Jitter In Buffer (s)", &GrainCloudSettings::positionJitterInBuffer, 0.0, 1.5, 0.01, Category::GrainCloud);
+    addGrainIntRow ("Max Concurrent Grains (this cloud)", &GrainCloudSettings::maxConcurrentGrains, 1.0, 32.0, Category::GrainCloud);
+
+    grainWindowShapeRow = std::make_unique<ComboRowComponent> ("Window Shape");
+    grainWindowShapeRow->combo.addItem ("Hann", 1);
+    grainWindowShapeRow->onSelected = [this] (int index)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->windowShape = (GrainWindowShape) index;
+    };
+    content.addAndMakeVisible (*grainWindowShapeRow);
+    addToLayout (*grainWindowShapeRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
+
+    grainMovementModeRow = std::make_unique<ComboRowComponent> ("Movement Mode");
+    grainMovementModeRow->combo.addItem ("Random Walk", 1);
+    grainMovementModeRow->combo.addItem ("Bounce", 2);
+    grainMovementModeRow->combo.addItem ("Radial Explosion", 3);
+    grainMovementModeRow->combo.addItem ("Orbit Around Parent", 4);
+    grainMovementModeRow->combo.addItem ("Attract/Repel Siblings", 5);
+    grainMovementModeRow->onSelected = [this] (int index)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->movementMode = (GrainMovementMode) index;
+    };
+    content.addAndMakeVisible (*grainMovementModeRow);
+    addToLayout (*grainMovementModeRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
+
+    addGrainFloatRow ("Random Walk Speed (m/s)", &GrainCloudSettings::randomWalkSpeed, 0.0, 10.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Boundary Radius (m, Bounce)", &GrainCloudSettings::boundaryRadius, 0.05, 5.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Restitution (Bounce)", &GrainCloudSettings::restitution, 0.0, 1.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Initial Speed (m/s, Explosion)", &GrainCloudSettings::initialSpeed, 0.0, 20.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Acceleration (m/s^2, Explosion)", &GrainCloudSettings::acceleration, -20.0, 20.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Orbit Radius (m, OrbitAroundParent)", &GrainCloudSettings::orbitRadius, 0.05, 5.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Orbit Angular Speed (rad/s)", &GrainCloudSettings::orbitAngularSpeed, -10.0, 10.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Attraction Strength (Siblings)", &GrainCloudSettings::attractionStrength, -10.0, 10.0, 0.01, Category::GrainCloud);
+
+    grainJitterTargetRow = std::make_unique<ComboRowComponent> ("Jitter Target");
+    grainJitterTargetRow->combo.addItem ("None", 1);
+    grainJitterTargetRow->combo.addItem ("Initial Speed", 2);
+    grainJitterTargetRow->combo.addItem ("Lifetime", 3);
+    grainJitterTargetRow->combo.addItem ("Boundary Radius", 4);
+    grainJitterTargetRow->combo.addItem ("Orbit Radius", 5);
+    grainJitterTargetRow->onSelected = [this] (int index)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->jitterTarget = (GrainJitterTarget) index;
+    };
+    content.addAndMakeVisible (*grainJitterTargetRow);
+    addToLayout (*grainJitterTargetRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
+
+    addGrainFloatRow ("Jitter Range", &GrainCloudSettings::jitterRange, 0.0, 1.0, 0.01, Category::GrainCloud);
+
     updateCategoryButtonsEnabled();
     selectCategory (Category::Scene);
 }
@@ -298,6 +382,34 @@ Vec3RowComponent& ParameterPanel::addObjectVec3Row (const juce::String& name, Ve
 
     objectVec3Rows.push_back ({ std::move (row), member });
     return *objectVec3Rows.back().row;
+}
+
+FloatRowComponent& ParameterPanel::addGrainFloatRow (const juce::String& name, float GrainCloudSettings::* member,
+                                                       double min, double max, double step, Category category)
+{
+    auto row = std::make_unique<FloatRowComponent> (name, min, max, step);
+    row->onValueChanged = [this, member] (float v) { if (editedGrainCloud != nullptr) editedGrainCloud->*member = v; };
+    content.addAndMakeVisible (*row);
+    addToLayout (*row, FloatRowComponent::preferredHeight, category);
+
+    grainFloatRows.push_back ({ std::move (row), member });
+    return *grainFloatRows.back().row;
+}
+
+FloatRowComponent& ParameterPanel::addGrainIntRow (const juce::String& name, int GrainCloudSettings::* member,
+                                                     double min, double max, Category category)
+{
+    auto row = std::make_unique<FloatRowComponent> (name, min, max, 1.0);
+    row->onValueChanged = [this, member] (float v)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->*member = (int) std::round (v);
+    };
+    content.addAndMakeVisible (*row);
+    addToLayout (*row, FloatRowComponent::preferredHeight, category);
+
+    grainIntRows.push_back ({ std::move (row), member });
+    return *grainIntRows.back().row;
 }
 
 void ParameterPanel::addToLayout (juce::Component& c, int height, Category category)
@@ -365,6 +477,12 @@ void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader
     refreshFromModel();
 }
 
+void ParameterPanel::setEditedGrainCloud (GrainCloudSettings* settings)
+{
+    editedGrainCloud = settings;
+    refreshFromModel();
+}
+
 void ParameterPanel::refreshFromModel()
 {
     if (sceneSettings != nullptr)
@@ -389,6 +507,19 @@ void ParameterPanel::refreshFromModel()
     modeRow->combo.setSelectedItemIndex ((int) editedObject->mode, juce::dontSendNotification);
     orbitRefRow->combo.setSelectedItemIndex (editedObject->orbitReferenceObjectId + 1, juce::dontSendNotification);
     directivityRow->combo.setSelectedItemIndex ((int) editedObject->directivityPattern, juce::dontSendNotification);
+
+    if (editedGrainCloud == nullptr)
+        return;
+
+    grainEnabledRow->setValueQuiet (editedGrainCloud->enabled);
+    for (auto& b : grainFloatRows)
+        b.row->setValueQuiet (editedGrainCloud->*b.member);
+    for (auto& b : grainIntRows)
+        b.row->setValueQuiet ((float) (editedGrainCloud->*b.member));
+
+    grainWindowShapeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->windowShape, juce::dontSendNotification);
+    grainMovementModeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->movementMode, juce::dontSendNotification);
+    grainJitterTargetRow->combo.setSelectedItemIndex ((int) editedGrainCloud->jitterTarget, juce::dontSendNotification);
 }
 
 void ParameterPanel::layoutContent()

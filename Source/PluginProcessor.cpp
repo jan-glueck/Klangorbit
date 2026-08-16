@@ -1,6 +1,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "GrainRenderer.h"
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -37,6 +39,9 @@ SpatialAudioPOCProcessor::SpatialAudioPOCProcessor()
 
     propagationPerObject.resize ((size_t) numLiveInputs);
     wasActiveLastBlock.assign ((size_t) numLiveInputs, false);
+
+    for (auto& wh : grainRingBufferWriteHead)
+        wh.store (0, std::memory_order_relaxed);
 }
 
 SpatialAudioPOCProcessor::~SpatialAudioPOCProcessor() = default;
@@ -54,6 +59,29 @@ void SpatialAudioPOCProcessor::prepareToPlay (double sampleRate, int samplesPerB
     std::fill (wasActiveLastBlock.begin(), wasActiveLastBlock.end(), false);
 
     propagationScratch.setSize (1, samplesPerBlock);
+
+    grainRingBuffers.resize ((size_t) numLiveInputs);
+    const int ringBufferSamples = juce::jmax (1, (int) (grainRingBufferSeconds * sampleRate));
+    for (auto& ring : grainRingBuffers)
+    {
+        ring.setSize (1, ringBufferSamples);
+        ring.clear();
+    }
+    for (auto& wh : grainRingBufferWriteHead)
+        wh.store (0, std::memory_order_relaxed);
+
+    grainAudioState.assign ((size_t) numLiveInputs, std::vector<GrainAudioState> ((size_t) grainPoolSizePerCloud));
+    for (auto& perObject : grainAudioState)
+    {
+        for (auto& state : perObject)
+        {
+            state.lastSeenGeneration = -1;
+            state.samplesPlayed = 0;
+            state.previousChannelGains.assign ((size_t) encoder.getNumChannels(), 0.0f);
+        }
+    }
+
+    grainScratch.setSize (1, samplesPerBlock);
 }
 
 void SpatialAudioPOCProcessor::releaseResources() {}
@@ -97,6 +125,29 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         const bool active = obj.inputChannel >= 0 && obj.inputChannel < numInCh
                              && objIdx < (int) snapshot.size() && snapshot[(size_t) objIdx].active;
 
+        // Keep this object's grain-cloud ring buffer filled with its live
+        // input every block, regardless of whether granulation is
+        // currently enabled -- so turning it on always has recent history
+        // to read from, no silent warm-up period.
+        if (active)
+        {
+            auto& ring = grainRingBuffers[(size_t) objIdx];
+            const int ringSize = ring.getNumSamples();
+            if (ringSize > 0)
+            {
+                int head = grainRingBufferWriteHead[(size_t) objIdx].load (std::memory_order_relaxed);
+                const float* src = inputCopy.getReadPointer (obj.inputChannel);
+                float* dst = ring.getWritePointer (0);
+
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    dst[head] = src[i];
+                    head = (head + 1) % ringSize;
+                }
+                grainRingBufferWriteHead[(size_t) objIdx].store (head, std::memory_order_relaxed);
+            }
+        }
+
         if (! active)
         {
             wasActiveLastBlock[(size_t) objIdx] = false;
@@ -123,6 +174,67 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                               obj.gain * directivityGain,
                               buffer,
                               previousGainsPerObject[(size_t) objIdx]);
+    }
+
+    // --- GrainCloud rendering ------------------------------------------
+    // Grain positions/trigger parameters come from a control-rate snapshot
+    // (like SoundObjects); the audio-thread-owned GrainAudioState tracks
+    // each active grain's sample-accurate envelope/pitch progress
+    // independently of that coarser update rate. Deliberately no
+    // PropagationProcessor pass for grains (no per-grain delay line/air
+    // absorption/directivity) -- with dozens of simultaneous short-lived
+    // grains, that would be disproportionately expensive; grains only get
+    // AmbisonicsEncoder's built-in spatial encoding + distance gain.
+    float* grainOut = grainScratch.getWritePointer (0);
+
+    for (int objIdx = 0; objIdx < trajectoryEngine.getNumObjects(); ++objIdx)
+    {
+        auto& obj = trajectoryEngine.getObject (objIdx);
+        if (obj.inputChannel < 0)
+            continue; // no parent, no cloud -- see GrainCloud/PluginEditor: an inactive object's cloud is frozen, not rendered
+
+        std::vector<GrainCloud::Snapshot> grainSnapshot;
+        trajectoryEngine.getGrainCloud (objIdx).getSnapshot (grainSnapshot);
+
+        auto& ring = grainRingBuffers[(size_t) objIdx];
+        const int ringSize = ring.getNumSamples();
+        if (ringSize <= 0)
+            continue;
+        const float* ringData = ring.getReadPointer (0);
+
+        auto& audioStatesForObject = grainAudioState[(size_t) objIdx];
+        const size_t numSlots = juce::jmin (grainSnapshot.size(), audioStatesForObject.size());
+
+        for (size_t slot = 0; slot < numSlots; ++slot)
+        {
+            auto& snap = grainSnapshot[slot];
+            auto& state = audioStatesForObject[slot];
+
+            if (! snap.active)
+            {
+                state.lastSeenGeneration = -1; // force a reset if this slot is reused later
+                continue;
+            }
+
+            if (snap.spawnGeneration != state.lastSeenGeneration)
+            {
+                state.lastSeenGeneration = snap.spawnGeneration;
+                state.samplesPlayed = 0;
+                std::fill (state.previousChannelGains.begin(), state.previousChannelGains.end(), 0.0f);
+            }
+
+            if (state.samplesPlayed >= snap.grainLengthSamples)
+                continue; // this grain's audio envelope has already finished (physics may still be fading out)
+
+            renderGrainBlock (ringData, ringSize, snap.bufferReadStartSample, snap.playbackRate,
+                               snap.grainLengthSamples, state.samplesPlayed, grainOut, numSamples);
+
+            float azimuth, elevation, distance;
+            cartesianToSpherical (snap.position, azimuth, elevation, distance);
+
+            encoder.encodeBlock (grainOut, numSamples, azimuth, elevation, distance,
+                                  obj.gain, buffer, state.previousChannelGains);
+        }
     }
 }
 

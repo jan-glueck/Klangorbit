@@ -64,6 +64,61 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   `dopplerFactor`/`dopplerSmoothing`/`directivityPattern`/
   `sourceOrientation` (all optional, no schemaVersion bump, same reasoning
   as above).
+- **GrainCloud**: granular synthesis per `SoundObject`, multiplying a
+  source into many independently-moving grains (conceptually similar to
+  the IEM GranularEncoder, but with physics-based rather than purely
+  random per-grain movement).
+  - Audio: a ring buffer per granulatable object continuously records its
+    live input; each spawned grain reads a short, windowed (Hann) burst
+    from it with its own pitch (`pitchJitter`) and start-position jitter
+    (`positionJitterInBuffer`). Single-shot grain model: `grainDuration`
+    is both the audio envelope length and the movement lifetime -- a
+    grain is spawned, moves, fades out, and is done, rather than an
+    audio burst repeating inside a longer-lived physics object.
+  - Movement: new lightweight, pool-managed `Grain` struct
+    (`Source/Grain.h`) -- not a `SoundObject`, since grains are numerous
+    and short-lived and must never allocate on the audio thread. Five
+    movement modes: `RandomWalk`, `Bounce` (elastic reflection within
+    `boundaryRadius` around the spawn position), `RadialExplosion`
+    (`initialSpeed` + outward `acceleration`), `OrbitAroundParent`
+    (relative to the parent object's current, possibly moving,
+    position), `AttractRepelSiblings` (n-body force *within the same
+    cloud only*, reusing the softened inverse-square force from
+    `TrajectoryEngine::computeAttractionForce` as its model). Configurable
+    `jitterTarget`/`jitterRange` randomizes one field per spawn.
+  - New `GrainCloud` module (`Source/GrainCloud.h/.cpp`), architecturally
+    analogous to `TrajectoryEngine`: fixed-size grain pool
+    (activate/deactivate, no realtime allocation), control-rate `update()`
+    on the message thread, its own lock-protected snapshot for the audio
+    thread. One `GrainCloud` instance per `SoundObject`, owned by
+    `TrajectoryEngine` (not `PluginProcessor`) so `PresetManager` doesn't
+    need a dependency on the full plugin class.
+  - `PluginProcessor::processBlock` renders each active grain like its
+    own mono object -- own `previousChannelGains` for zipper-free
+    Ambisonics ramping -- via the existing `AmbisonicsEncoder`. Grains
+    deliberately skip `PropagationProcessor` (no per-grain Doppler/delay/
+    air absorption/directivity): with dozens of concurrent grains, a full
+    propagation pass per grain would be disproportionately expensive.
+  - Global spawn budget: `maxConcurrentGrains` caps each cloud
+    individually, and a further system-wide cap
+    (`SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal = 32`) is
+    shared across all clouds, since every active grain costs a full
+    Ambisonics encoding pass.
+  - GUI: active grains render as small dots in the 2D editor, orbiting/
+    scattering around their parent object and fading out with age
+    (`PluginEditor::paint()`); a new "Grain Cloud" category in
+    `ParameterPanel` exposes all cloud-level parameters (not per-grain).
+  - `Tools/verify_grain_cloud`: CLI tool covering `renderGrainBlock`
+    (Hann envelope shape, ring-wrap continuity, pitch-rate -> playback
+    frequency) and `GrainCloud` (per-cloud and shared-global spawn caps,
+    lifetime expiry/pool-slot reuse, and per-movement-mode invariants for
+    all five modes). Caught a real bug during development (see Fixed).
+  - Preset schema bumped to **schemaVersion 2**: adds an optional
+    per-object `grainCloud` block (all fields optional/additive, default
+    = disabled cloud). schemaVersion 1 presets are accepted and migrated
+    automatically (`PresetManager::migrateSchemaV1toV2()`); presets
+    outside `[1, 2]` are rejected with a clear error. See
+    `Presets/schema/README.md`.
 
 ### Changed
 - Clicking an object (without dragging) selects it for the parameter
@@ -88,6 +143,25 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   absolute cap instead of a proportional one, so its own contribution to
   pitch deviation stays negligible (<0.1%) regardless of how far out of
   sync the delay is.
+- `GrainCloud`: `AttractRepelSiblings` grains all spawned exactly
+  coincident at the parent position, so the softened inverse-square force
+  spiked to a near-infinite value on the very first update tick
+  regardless of attraction sign -- both "attract" and "repel" settings
+  exploded outward identically instead of pulling together/pushing apart
+  as configured. Found by `Tools/verify_grain_cloud`. Fixed with a small
+  random spawn-position offset, a larger softening `minDistance`
+  (0.05 -> 0.15), and a hard per-grain velocity clamp as a safety net.
+
+### Known limitations
+- GrainCloud grains skip `PropagationProcessor` entirely -- no per-grain
+  Doppler shift, propagation delay, air absorption, or directivity, only
+  `AmbisonicsEncoder`'s spatial encoding and distance gain. A deliberate
+  performance trade-off (see Added, above), not a bug.
+- Grain window shape is Hann only; no other envelope shapes yet.
+- `maxConcurrentGrains` is enforced per cloud and globally, but the
+  global budget is currently a first-come-first-served allocation across
+  clouds each control-rate tick, not prioritized by e.g. object gain or
+  distance to the listener.
 
 ## [0.1.0] - POC skeleton
 ### Added

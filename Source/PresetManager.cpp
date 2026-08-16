@@ -65,6 +65,25 @@ namespace
         return false;
     }
 
+    juce::String directivityPatternToString (SoundObject::DirectivityPattern p)
+    {
+        switch (p)
+        {
+            case SoundObject::DirectivityPattern::Omni:     return "omni";
+            case SoundObject::DirectivityPattern::Cardioid: return "cardioid";
+            case SoundObject::DirectivityPattern::Figure8:  return "figure8";
+        }
+        return "omni";
+    }
+
+    bool directivityPatternFromString (const juce::String& s, SoundObject::DirectivityPattern& out)
+    {
+        if (s == "omni")     { out = SoundObject::DirectivityPattern::Omni;     return true; }
+        if (s == "cardioid") { out = SoundObject::DirectivityPattern::Cardioid; return true; }
+        if (s == "figure8")  { out = SoundObject::DirectivityPattern::Figure8;  return true; }
+        return false;
+    }
+
     juce::var sceneSettingsToVar (const SceneSettings& s)
     {
         auto* obj = new juce::DynamicObject();
@@ -72,6 +91,14 @@ namespace
         obj->setProperty ("boundaryBehavior", boundaryBehaviorToString (s.boundaryBehavior));
         obj->setProperty ("globalField", vecToVar (s.globalField));
         obj->setProperty ("timeScale", (double) s.timeScale);
+
+        // Acoustic propagation (medium properties, see SceneSettings.h)
+        obj->setProperty ("speedOfSound", (double) s.speedOfSound);
+        obj->setProperty ("temperature", (double) s.temperature);
+        obj->setProperty ("relativeHumidity", (double) s.relativeHumidity);
+        obj->setProperty ("atmosphericPressure", (double) s.atmosphericPressure);
+        obj->setProperty ("windVector", vecToVar (s.windVector));
+
         return juce::var (obj);
     }
 
@@ -102,6 +129,18 @@ namespace
         }
 
         out.timeScale = (float) sceneVar.getProperty ("timeScale", (double) out.timeScale);
+
+        // Acoustic propagation (optional, defaults from SceneSettings{})
+        out.speedOfSound        = (float) sceneVar.getProperty ("speedOfSound", (double) out.speedOfSound);
+        out.temperature          = (float) sceneVar.getProperty ("temperature", (double) out.temperature);
+        out.relativeHumidity     = (float) sceneVar.getProperty ("relativeHumidity", (double) out.relativeHumidity);
+        out.atmosphericPressure = (float) sceneVar.getProperty ("atmosphericPressure", (double) out.atmosphericPressure);
+
+        if (sceneVar.hasProperty ("windVector"))
+        {
+            if (! varToVec (sceneVar.getProperty ("windVector", juce::var()), out.windVector))
+                return juce::Result::fail ("'scene.windVector' is not a 3-element array.");
+        }
 
         return juce::Result::ok();
     }
@@ -152,6 +191,12 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         objVar->setProperty ("orbitEccentricity", (double) obj.orbitEccentricity);
         objVar->setProperty ("orbitDecay", (double) obj.orbitDecay);
         objVar->setProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
+
+        // Acoustic propagation (optional, see SoundObject.h)
+        objVar->setProperty ("dopplerFactor", (double) obj.dopplerFactor);
+        objVar->setProperty ("dopplerSmoothing", (double) obj.dopplerSmoothing);
+        objVar->setProperty ("directivityPattern", directivityPatternToString (obj.directivityPattern));
+        objVar->setProperty ("sourceOrientation", vecToVar (obj.sourceOrientation));
 
         objectsArray.add (juce::var (objVar));
     }
@@ -246,6 +291,18 @@ juce::Result PresetManager::loadFromVar (const juce::var& root, TrajectoryEngine
         obj.orbitEccentricity     = (float) element.getProperty ("orbitEccentricity", (double) obj.orbitEccentricity);
         obj.orbitDecay            = (float) element.getProperty ("orbitDecay", (double) obj.orbitDecay);
         obj.orbitReferenceObjectId = (int) element.getProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
+
+        // Acoustic propagation (optional, default from SoundObject{})
+        obj.dopplerFactor    = (float) element.getProperty ("dopplerFactor", (double) obj.dopplerFactor);
+        obj.dopplerSmoothing = (float) element.getProperty ("dopplerSmoothing", (double) obj.dopplerSmoothing);
+
+        if (element.hasProperty ("directivityPattern"))
+        {
+            const auto patternStr = element.getProperty ("directivityPattern", juce::var()).toString();
+            if (! directivityPatternFromString (patternStr, obj.directivityPattern))
+                return juce::Result::fail ("Preset object " + juce::String (id) + ": unknown directivityPattern '" + patternStr + "'.");
+        }
+        varToVec (element.getProperty ("sourceOrientation", juce::var()), obj.sourceOrientation); // default {1,0,0} stays if missing
 
         // Not part of the schema (runtime state, not a starting parameter):
         // reset cleanly, so a freshly loaded orbit/pulse object doesn't

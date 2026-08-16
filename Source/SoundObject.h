@@ -106,4 +106,24 @@ struct SoundObject
     // id of another SoundObject to orbit around (e.g. moon-around-planet
     // hierarchies).
     int orbitReferenceObjectId = -1;
+
+    // --- Acoustic propagation (Doppler, directivity) ---------------------
+    // See PropagationProcessor for how these are used. 0 = no Doppler
+    // pitch shift, 1 = physically correct (given SceneSettings::speedOfSound),
+    // >1 = exaggerated. The actual propagation delay (latency) always
+    // stays anchored to the true distance regardless of this value -- only
+    // the audible pitch-shift component scales with it, so this can't be
+    // used to "turn off" the delay itself, only its Doppler side effect.
+    float dopplerFactor = 1.0f;
+    // Time constant (seconds) smoothing the delay line's rate of change,
+    // to avoid pitch/click artifacts on abrupt direction changes (e.g. a
+    // bounce off the room boundary).
+    float dopplerSmoothing = 0.05f;
+
+    enum class DirectivityPattern { Omni, Cardioid, Figure8 };
+    DirectivityPattern directivityPattern = DirectivityPattern::Omni;
+    // Direction the object "faces" (world space, listener at origin).
+    // Only relevant for Cardioid/Figure8 -- lets an object move and
+    // "turn away" independently of each other.
+    Vec3 sourceOrientation { 1.0f, 0.0f, 0.0f };
 };

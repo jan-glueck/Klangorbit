@@ -64,6 +64,7 @@ target_sources(SpatialAudioPOC
         Source/TrajectoryEngine.cpp
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
+        Source/PropagationProcessor.cpp
 )
 
 target_link_libraries(SpatialAudioPOC
@@ -97,6 +98,31 @@ target_sources(validate_presets
 )
 
 target_link_libraries(validate_presets
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Propagation DSP verification ----------------------------------------
+# Runs PropagationProcessor against a synthetic moving source (no GUI/audio
+# device needed) and checks basic invariants: measured latency roughly
+# matches distance/speedOfSound, pitch goes down for a receding source and
+# up for an approaching one, output never contains NaN/Inf or clips
+# wildly. Not a substitute for listening, but catches DSP math regressions
+# fast without a full plugin build/manual test each time.
+juce_add_console_app(verify_propagation
+    PRODUCT_NAME "verify_propagation"
+)
+
+target_sources(verify_propagation
+    PRIVATE
+        Tools/verify_propagation.cpp
+        Source/PropagationProcessor.cpp
+)
+
+target_link_libraries(verify_propagation
     PRIVATE
         juce::juce_core
     PUBLIC

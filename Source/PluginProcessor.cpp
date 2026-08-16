@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <algorithm>
 
 namespace
 {
@@ -33,6 +34,9 @@ SpatialAudioPOCProcessor::SpatialAudioPOCProcessor()
     previousGainsPerObject.resize ((size_t) numLiveInputs);
     for (auto& g : previousGainsPerObject)
         g.assign ((size_t) encoder.getNumChannels(), 0.0f);
+
+    propagationPerObject.resize ((size_t) numLiveInputs);
+    wasActiveLastBlock.assign ((size_t) numLiveInputs, false);
 }
 
 SpatialAudioPOCProcessor::~SpatialAudioPOCProcessor() = default;
@@ -44,6 +48,12 @@ void SpatialAudioPOCProcessor::prepareToPlay (double sampleRate, int samplesPerB
 
     for (auto& g : previousGainsPerObject)
         g.assign ((size_t) encoder.getNumChannels(), 0.0f);
+
+    for (auto& p : propagationPerObject)
+        p.prepare (sampleRate, samplesPerBlock);
+    std::fill (wasActiveLastBlock.begin(), wasActiveLastBlock.end(), false);
+
+    propagationScratch.setSize (1, samplesPerBlock);
 }
 
 void SpatialAudioPOCProcessor::releaseResources() {}
@@ -73,22 +83,44 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     std::vector<TrajectoryEngine::Snapshot> snapshot;
     trajectoryEngine.getSnapshot (snapshot);
 
+    // Read-only access to scene-wide acoustic parameters (speedOfSound,
+    // temperature, humidity, pressure, wind) from the audio thread. Same
+    // established pattern as obj.gain/obj.inputChannel below: plain,
+    // unsynchronized reads of values the message thread writes -- see the
+    // TrajectoryEngine class comment and README known limitations.
+    const auto& sceneSettings = trajectoryEngine.getSceneSettings();
+    float* propagated = propagationScratch.getWritePointer (0);
+
     for (int objIdx = 0; objIdx < trajectoryEngine.getNumObjects(); ++objIdx)
     {
         auto& obj = trajectoryEngine.getObject (objIdx);
-        if (obj.inputChannel < 0 || obj.inputChannel >= numInCh)
-            continue;
+        const bool active = obj.inputChannel >= 0 && obj.inputChannel < numInCh
+                             && objIdx < (int) snapshot.size() && snapshot[(size_t) objIdx].active;
 
-        if (objIdx >= (int) snapshot.size() || ! snapshot[(size_t) objIdx].active)
+        if (! active)
+        {
+            wasActiveLastBlock[(size_t) objIdx] = false;
             continue;
+        }
+
+        if (! wasActiveLastBlock[(size_t) objIdx])
+            propagationPerObject[(size_t) objIdx].reset();
+        wasActiveLastBlock[(size_t) objIdx] = true;
+
+        float directivityGain = 1.0f;
+        propagationPerObject[(size_t) objIdx].process (inputCopy.getReadPointer (obj.inputChannel),
+                                                         propagated, numSamples,
+                                                         snapshot[(size_t) objIdx].position,
+                                                         obj, sceneSettings,
+                                                         directivityGain);
 
         float azimuth, elevation, distance;
         cartesianToSpherical (snapshot[(size_t) objIdx].position, azimuth, elevation, distance);
 
-        encoder.encodeBlock (inputCopy.getReadPointer (obj.inputChannel),
+        encoder.encodeBlock (propagated,
                               numSamples,
                               azimuth, elevation, distance,
-                              obj.gain,
+                              obj.gain * directivityGain,
                               buffer,
                               previousGainsPerObject[(size_t) objIdx]);
     }

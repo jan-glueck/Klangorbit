@@ -3,6 +3,7 @@
 #include "SoundObject.h"
 #include "TrajectoryEngine.h"
 #include "AmbisonicsEncoder.h"
+#include "PropagationProcessor.h"
 
 /**
     Input:  N mono channels (N = SAPOC_MAX_LIVE_INPUTS, configurable), each
@@ -62,6 +63,19 @@ private:
 
     // Per-object persistent gain state for zipper-free ramping
     std::vector<std::vector<float>> previousGainsPerObject;
+
+    // Per-object propagation delay/Doppler/air-absorption state (see
+    // PropagationProcessor). Applied to the mono source signal before
+    // AmbisonicsEncoder::encodeBlock().
+    std::vector<PropagationProcessor> propagationPerObject;
+    // Tracks each slot's active state from the previous block, so a
+    // newly (re)activated object gets its PropagationProcessor reset
+    // instead of inheriting stale delay/filter state from whatever
+    // occupied that slot before.
+    std::vector<bool> wasActiveLastBlock;
+    // Scratch buffer for the propagated mono signal, sized once in
+    // prepareToPlay -- never (re)allocated in processBlock.
+    juce::AudioBuffer<float> propagationScratch;
 
     double currentSampleRate = 48000.0;
 

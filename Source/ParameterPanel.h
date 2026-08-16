@@ -92,6 +92,8 @@ public:
 private:
     FloatRowComponent& addSceneFloatRow (const juce::String& name, float SceneSettings::* member,
                                           double min, double max, double step);
+    Vec3RowComponent& addSceneVec3Row (const juce::String& name, Vec3 SceneSettings::* member,
+                                        double min, double max, double step);
     FloatRowComponent& addObjectFloatRow (const juce::String& name, float SoundObject::* member,
                                            double min, double max, double step);
     Vec3RowComponent& addObjectVec3Row (const juce::String& name, Vec3 SoundObject::* member,
@@ -113,6 +115,9 @@ private:
     struct SceneFloatBinding { std::unique_ptr<FloatRowComponent> row; float SceneSettings::* member; };
     std::vector<SceneFloatBinding> sceneFloatRows;
 
+    struct SceneVec3Binding { std::unique_ptr<Vec3RowComponent> row; Vec3 SceneSettings::* member; };
+    std::vector<SceneVec3Binding> sceneVec3Rows;
+
     struct ObjectFloatBinding { std::unique_ptr<FloatRowComponent> row; float SoundObject::* member; };
     std::vector<ObjectFloatBinding> objectFloatRows;
 
@@ -126,6 +131,7 @@ private:
     std::unique_ptr<ComboRowComponent> boundaryRow;
     std::unique_ptr<Vec3RowComponent> globalFieldRow; // SceneSettings::globalField, not a SoundObject field -> its own binding
     std::unique_ptr<ComboRowComponent> orbitRefRow;
+    std::unique_ptr<ComboRowComponent> directivityRow;
 
     // Everything that only makes sense while an object is selected -- gets
     // enabled/disabled in setEditedObject().

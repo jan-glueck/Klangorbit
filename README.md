@@ -13,6 +13,10 @@ Live input (up to 8 mono channels)
 [SoundObject 0..7]  <-- position/motion from TrajectoryEngine (control rate, ~90 Hz)
         |
         v
+[PropagationProcessor]  -- per-object propagation delay + Doppler (unified
+        |                  variable delay line), air absorption (simplified
+        |                  one-pole lowpass), directivity gain
+        v
 [AmbisonicsEncoder]  -- generic SH computation (Legendre recursion),
         |                arbitrary order, currently 3rd order = 16 channels
         v
@@ -92,6 +96,56 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
   things out. Full field reference including defaults in
   `Presets/schema/README.md`.
 
+## Acoustic propagation: Doppler, delay, air absorption, directivity
+
+Runs in `PropagationProcessor` (`Source/PropagationProcessor.h/.cpp`), on
+the mono source signal before Ambisonics encoding, per active object.
+
+- **Propagation delay and Doppler pitch shift are ONE mechanism, not two.**
+  A per-object variable-length delay line continuously tracks
+  `distance / effectiveSpeedOfSound`. Reading it through a smoothly
+  time-varying (interpolated) delay produces the correct Doppler pitch
+  ratio as a mathematical side effect of the delay's rate of change -- no
+  separate pitch-shifter/resampler. `SoundObject::dopplerFactor` scales
+  only that rate-of-change ("AC") component (0 = no audible pitch shift, 1
+  = physically correct, >1 = exaggerated); the delay's absolute value
+  ("DC" component, i.e. the actual latency) is always kept anchored to the
+  true distance-based value via a rate-limited correction, independent of
+  `dopplerFactor`, so long-term latency can't drift away from reality.
+  `dopplerSmoothing` (seconds) smooths the pitch effect against abrupt
+  direction changes (e.g. a bounce off the room boundary).
+- **`SceneSettings::speedOfSound`** (m/s, default 343) is deliberately kept
+  independent of `temperature` rather than computed from it -- letting it
+  drift from the physical value (e.g. down to 50 m/s) is an intentional
+  creative tool: normal movement speeds then produce strongly audible,
+  surreal Doppler shift and propagation delay instead of a naturalistic
+  one.
+- **Air absorption** is a simplified one-pole lowpass per object, cutoff
+  derived from distance, `temperature`, `relativeHumidity`, and
+  `atmosphericPressure` via cheap closed-form curves -- captures the
+  general, documented trend (absorption peaks around medium humidity for
+  mid/high frequencies, lower at both extremes) but is explicitly **not**
+  an implementation of the full ISO 9613-1 relaxation-frequency model.
+  Good enough for sound design, not for acoustic measurement.
+- **Wind** (`SceneSettings::windVector`, m/s) shifts the effective speed of
+  sound in the propagation direction (source -> listener) -- a tailwind
+  speeds up arrival, a headwind slows it down. Feeds into the same delay
+  line as `speedOfSound`, so it affects both latency and Doppler together,
+  physically consistently.
+- **Directivity** (`SoundObject::directivityPattern`: omni/cardioid/
+  figure-8, plus `sourceOrientation`) computes an angle-dependent gain
+  between the object's facing direction and the listener, folded into the
+  same gain parameter the encoder already ramps smoothly -- so an object
+  can move and "turn away" independently of each other.
+- **Verification:** `Tools/verify_propagation.cpp` runs the DSP core
+  against synthetic signals (no plugin/audio device needed) and checks
+  measured latency against `distance/speedOfSound`, pitch direction and
+  magnitude for approaching/receding sources against the classic Doppler
+  formula, that `dopplerFactor=0` actually suppresses the pitch shift, that
+  air absorption reduces high-frequency energy at distance, and directivity
+  gain by angle -- catches DSP math regressions fast without a full
+  plugin build or manual listening test each time.
+
 ## Project structure
 
 ```
@@ -100,7 +154,8 @@ SpatialAudioPOC/
   CHANGELOG.md          <- code versioning (SemVer)
   Source/                <- C++ code
   Tools/
-    validate_presets.cpp  <- CLI tool, checks Presets/factory/*.json (see Docs/WORKFLOW.md)
+    validate_presets.cpp    <- CLI tool, checks Presets/factory/*.json (see Docs/WORKFLOW.md)
+    verify_propagation.cpp  <- CLI tool, checks PropagationProcessor DSP math (delay/Doppler/absorption/directivity)
   Presets/
     schema/README.md    <- preset format, own schemaVersion
     factory/             <- curated, checked-in scenes
@@ -134,13 +189,16 @@ Docs/WORKFLOW.md.
   switching: easier to implement in the standalone case than in the plugin
   context, since no host bus contract exists there -- possibly extend the
   standalone case first.
-- **Distance attenuation is purely gain-based (1/r law).** No
-  frequency-dependent air absorption (high-frequency loss over distance).
-  For accurate physical modeling, next step would be a simple one-pole
-  low-pass per object, cutoff dependent on distance.
-- **No Doppler effect.** Velocity is already available in the snapshot
-  (`TrajectoryEngine::Snapshot::velocity`), but the encoder doesn't turn it
-  into a pitch/delay modulation yet.
+- **Air absorption is a simplified approximation, not ISO 9613-1
+  accurate.** See "Acoustic propagation" above -- captures the general
+  distance/humidity/temperature trends via cheap closed-form curves, not
+  the full relaxation-frequency equations. Fine for sound design, not for
+  acoustic measurement.
+- **Doppler effect and propagation delay are implemented** (see "Acoustic
+  propagation" above), as a unified variable delay line rather than a
+  separate pitch-shifter + fixed-delay pair -- deliberately, since that
+  keeps them physically consistent by construction and avoids the two
+  effects fighting or double-applying.
 - **n-body attraction is untested with many simultaneously active
   attractors** -- the inverse-square law can produce hard jumps at very
   small distances despite the `minDistance` clamp. `forceExponent` (< 2 =

@@ -143,6 +143,13 @@ ParameterPanel::ParameterPanel()
 
     addSceneFloatRow ("Time Scale (timeScale)", &SceneSettings::timeScale, 0.05, 5.0, 0.01);
 
+    addHeader ("Acoustic Propagation");
+    addSceneFloatRow ("Speed of Sound (m/s)", &SceneSettings::speedOfSound, 1.0, 400.0, 1.0);
+    addSceneFloatRow ("Temperature (C)", &SceneSettings::temperature, -20.0, 45.0, 0.5);
+    addSceneFloatRow ("Relative Humidity (%)", &SceneSettings::relativeHumidity, 0.0, 100.0, 1.0);
+    addSceneFloatRow ("Atmospheric Pressure (kPa)", &SceneSettings::atmosphericPressure, 80.0, 110.0, 0.1);
+    addSceneVec3Row ("Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1);
+
     // --- Object ------------------------------------------------------------
     styleRowLabel (objectHeaderLabel, "No object selected", 15.0f, juce::Colours::white);
     content.addAndMakeVisible (objectHeaderLabel);
@@ -198,6 +205,25 @@ ParameterPanel::ParameterPanel()
     addToLayout (*orbitRefRow, ComboRowComponent::preferredHeight);
     objectOnlyComponents.push_back (orbitRefRow.get());
 
+    addHeader ("Doppler / Directivity");
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Doppler Factor (0=off, 1=physical)", &SoundObject::dopplerFactor, 0.0, 5.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Doppler Smoothing (s)", &SoundObject::dopplerSmoothing, 0.0, 2.0, 0.01));
+
+    directivityRow = std::make_unique<ComboRowComponent> ("Directivity Pattern");
+    directivityRow->combo.addItem ("Omni", 1);
+    directivityRow->combo.addItem ("Cardioid", 2);
+    directivityRow->combo.addItem ("Figure-8", 3);
+    directivityRow->onSelected = [this] (int index)
+    {
+        if (editedObject != nullptr)
+            editedObject->directivityPattern = (SoundObject::DirectivityPattern) index;
+    };
+    content.addAndMakeVisible (*directivityRow);
+    addToLayout (*directivityRow, ComboRowComponent::preferredHeight);
+    objectOnlyComponents.push_back (directivityRow.get());
+
+    objectOnlyComponents.push_back (&addObjectVec3Row ("Source Orientation", &SoundObject::sourceOrientation, -1.0, 1.0, 0.01));
+
     for (auto* c : objectOnlyComponents)
         c->setEnabled (false);
 }
@@ -212,6 +238,18 @@ FloatRowComponent& ParameterPanel::addSceneFloatRow (const juce::String& name, f
 
     sceneFloatRows.push_back ({ std::move (row), member });
     return *sceneFloatRows.back().row;
+}
+
+Vec3RowComponent& ParameterPanel::addSceneVec3Row (const juce::String& name, Vec3 SceneSettings::* member,
+                                                     double min, double max, double step)
+{
+    auto row = std::make_unique<Vec3RowComponent> (name, min, max, step);
+    row->onValueChanged = [this, member] (Vec3 v) { if (sceneSettings != nullptr) sceneSettings->*member = v; };
+    content.addAndMakeVisible (*row);
+    addToLayout (*row, Vec3RowComponent::preferredHeight);
+
+    sceneVec3Rows.push_back ({ std::move (row), member });
+    return *sceneVec3Rows.back().row;
 }
 
 FloatRowComponent& ParameterPanel::addObjectFloatRow (const juce::String& name, float SoundObject::* member,
@@ -295,6 +333,8 @@ void ParameterPanel::refreshFromModel()
     {
         for (auto& b : sceneFloatRows)
             b.row->setValueQuiet (sceneSettings->*b.member);
+        for (auto& b : sceneVec3Rows)
+            b.row->setValueQuiet (sceneSettings->*b.member);
 
         boundaryRow->combo.setSelectedItemIndex ((int) sceneSettings->boundaryBehavior, juce::dontSendNotification);
         globalFieldRow->setValueQuiet (sceneSettings->globalField);
@@ -310,6 +350,7 @@ void ParameterPanel::refreshFromModel()
 
     modeRow->combo.setSelectedItemIndex ((int) editedObject->mode, juce::dontSendNotification);
     orbitRefRow->combo.setSelectedItemIndex (editedObject->orbitReferenceObjectId + 1, juce::dontSendNotification);
+    directivityRow->combo.setSelectedItemIndex ((int) editedObject->directivityPattern, juce::dontSendNotification);
 }
 
 void ParameterPanel::resized()

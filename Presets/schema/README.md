@@ -35,7 +35,14 @@ they simply use the defaults for everything new.
     "roomSize": 5.0,                  // meters, radius of the spherical boundary; <= 0 = no boundary
     "boundaryBehavior": "reflect",    // reflect | wrap | absorb
     "globalField": [0.0, 0.0, 0.0],   // constant force/mass (like wind/gravity), only affects impulse/attracted
-    "timeScale": 1.0                  // fast-forward (>1) / slow-motion (<1) for the whole simulation
+    "timeScale": 1.0,                 // fast-forward (>1) / slow-motion (<1) for the whole simulation
+
+    // Acoustic propagation (medium properties, see PropagationProcessor)
+    "speedOfSound": 343.0,            // m/s. Deliberately independent of temperature -- see below
+    "temperature": 20.0,              // Celsius, only feeds the air-absorption model, not speedOfSound
+    "relativeHumidity": 50.0,         // percent, 0..100
+    "atmosphericPressure": 101.325,   // kPa, minor effect in the simplified absorption model
+    "windVector": [0.0, 0.0, 0.0]     // m/s, shifts the effective speed of sound directionally
   },
 
   "objects": [
@@ -70,7 +77,13 @@ they simply use the defaults for everything new.
       "orbitPlaneNormal": [0.0, 0.0, 1.0], // default = previous x/y plane
       "orbitEccentricity": 0.0,       // 0 = circle, <1 = ellipse (simplified approximation, not a real Kepler orbit)
       "orbitDecay": 0.0,              // m/s, radius change over time
-      "orbitReferenceObjectId": -1    // -1 = orbitCenter (fixed point), otherwise the id of another object
+      "orbitReferenceObjectId": -1,   // -1 = orbitCenter (fixed point), otherwise the id of another object
+
+      // Acoustic propagation (Doppler, directivity -- see PropagationProcessor)
+      "dopplerFactor": 1.0,           // 0 = no Doppler pitch shift, 1 = physically correct, >1 = exaggerated
+      "dopplerSmoothing": 0.05,       // seconds, smooths the pitch effect against abrupt direction changes
+      "directivityPattern": "omni",   // omni | cardioid | figure8
+      "sourceOrientation": [1.0, 0.0, 0.0] // world-space direction the object "faces"; only used by cardioid/figure8
     }
   ]
 }

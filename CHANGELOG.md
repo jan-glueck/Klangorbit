@@ -35,6 +35,35 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   needed, since it's purely additive; `orbit_pair_demo.json` still loads
   unchanged (verified via `validate_presets` and a manual save/load
   roundtrip).
+- `PropagationProcessor` (`Source/PropagationProcessor.h/.cpp`): per-object
+  acoustic propagation effects, applied to the mono source signal before
+  Ambisonics encoding.
+  - Propagation delay and Doppler pitch shift, implemented as one unified
+    variable delay line (pitch shift emerges from the delay's rate of
+    change) rather than two separate mechanisms. New parameters:
+    `SceneSettings::speedOfSound` (m/s, deliberately independent of
+    `temperature` -- artistic decoupling from physical realism is
+    intentional), `SoundObject::dopplerFactor` (0 = off, 1 = physical, >1 =
+    exaggerated), `SoundObject::dopplerSmoothing`.
+  - Air absorption: simplified one-pole lowpass per object, cutoff derived
+    from distance/`temperature`/`relativeHumidity`/`atmosphericPressure`.
+    Explicitly a simplified approximation, not ISO 9613-1 accurate.
+  - Wind: `SceneSettings::windVector` shifts the effective speed of sound
+    directionally, feeding into the same delay line as `speedOfSound`.
+  - Directivity: `SoundObject::directivityPattern`
+    (omni/cardioid/figure8) + `sourceOrientation`, angle-dependent gain
+    folded into the encoder's existing ramped gain parameter.
+- `Tools/verify_propagation`: CLI tool, runs `PropagationProcessor` against
+  synthetic signals (no plugin/audio device needed) and checks measured
+  latency, Doppler pitch direction/magnitude against the classic formula,
+  that `dopplerFactor=0` suppresses the pitch shift, air-absorption
+  distance trend, and directivity gain by angle. Caught a real bug during
+  development (see Fixed).
+- Preset schema extended with `scene.speedOfSound`/`temperature`/
+  `relativeHumidity`/`atmosphericPressure`/`windVector` and per-object
+  `dopplerFactor`/`dopplerSmoothing`/`directivityPattern`/
+  `sourceOrientation` (all optional, no schemaVersion bump, same reasoning
+  as above).
 
 ### Changed
 - Clicking an object (without dragging) selects it for the parameter
@@ -49,6 +78,16 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   pulled in an unnecessary OpenGL dependency), `BusesProperties`
   construction via a member function instead of a free function (access
   protection), shadow-field warning in the editor fixed.
+- `PropagationProcessor`: at `dopplerFactor=0`, the delay line's
+  drift-correction term (meant to keep absolute latency anchored to the
+  true distance over time, independent of `dopplerFactor`) was itself
+  proportional to the gap between current and target delay -- during
+  continuous fast movement this reintroduced a ~3% pitch shift that
+  `dopplerFactor=0` was supposed to suppress entirely. Found by
+  `Tools/verify_propagation`. Fixed by rate-limiting the correction to an
+  absolute cap instead of a proportional one, so its own contribution to
+  pitch deviation stays negligible (<0.1%) regardless of how far out of
+  sync the delay is.
 
 ## [0.1.0] - POC skeleton
 ### Added

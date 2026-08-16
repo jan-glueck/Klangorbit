@@ -119,12 +119,12 @@ ParameterPanel::ParameterPanel()
     viewport.setViewedComponent (&content, false);
     viewport.setScrollBarsShown (true, false);
 
-    // --- Szene (immer sichtbar) ----------------------------------------
-    addHeader ("Szene");
+    // --- Scene (always visible) -----------------------------------------
+    addHeader ("Scene");
 
-    addSceneFloatRow ("Raumgroesse (0 = keine Grenze)", &SceneSettings::roomSize, 0.0, 50.0, 0.1);
+    addSceneFloatRow ("Room Size (0 = no boundary)", &SceneSettings::roomSize, 0.0, 50.0, 0.1);
 
-    boundaryRow = std::make_unique<ComboRowComponent> ("Grenzverhalten");
+    boundaryRow = std::make_unique<ComboRowComponent> ("Boundary Behavior");
     boundaryRow->combo.addItem ("Reflect", 1);
     boundaryRow->combo.addItem ("Wrap", 2);
     boundaryRow->combo.addItem ("Absorb", 3);
@@ -136,19 +136,19 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*boundaryRow);
     addToLayout (*boundaryRow, ComboRowComponent::preferredHeight);
 
-    globalFieldRow = std::make_unique<Vec3RowComponent> ("Globales Feld (Wind/Gravitation)", -20.0, 20.0, 0.01);
+    globalFieldRow = std::make_unique<Vec3RowComponent> ("Global Field (Wind/Gravity)", -20.0, 20.0, 0.01);
     globalFieldRow->onValueChanged = [this] (Vec3 v) { if (sceneSettings != nullptr) sceneSettings->globalField = v; };
     content.addAndMakeVisible (*globalFieldRow);
     addToLayout (*globalFieldRow, Vec3RowComponent::preferredHeight);
 
-    addSceneFloatRow ("Zeitraffer (timeScale)", &SceneSettings::timeScale, 0.05, 5.0, 0.01);
+    addSceneFloatRow ("Time Scale (timeScale)", &SceneSettings::timeScale, 0.05, 5.0, 0.01);
 
-    // --- Objekt ----------------------------------------------------------
-    styleRowLabel (objectHeaderLabel, "Kein Objekt ausgewaehlt", 15.0f, juce::Colours::white);
+    // --- Object ------------------------------------------------------------
+    styleRowLabel (objectHeaderLabel, "No object selected", 15.0f, juce::Colours::white);
     content.addAndMakeVisible (objectHeaderLabel);
     addToLayout (objectHeaderLabel, 24);
 
-    modeRow = std::make_unique<ComboRowComponent> ("Modus");
+    modeRow = std::make_unique<ComboRowComponent> ("Mode");
     modeRow->combo.addItem ("Static", 1);
     modeRow->combo.addItem ("Manual", 2);
     modeRow->combo.addItem ("Orbit", 3);
@@ -163,36 +163,36 @@ ParameterPanel::ParameterPanel()
     addToLayout (*modeRow, ComboRowComponent::preferredHeight);
     objectOnlyComponents.push_back (modeRow.get());
 
-    addHeader ("Bewegung / Traegheit");
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Masse", &SoundObject::mass, 0.01, 20.0, 0.01));
+    addHeader ("Motion / Inertia");
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Mass", &SoundObject::mass, 0.01, 20.0, 0.01));
     objectOnlyComponents.push_back (&addObjectFloatRow ("Gain", &SoundObject::gain, 0.0, 2.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Damping (einfacher Decay)", &SoundObject::damping, 0.0, 1.0, 0.001));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Max. Geschwindigkeit (0 = unbegrenzt)", &SoundObject::maxVelocity, 0.0, 30.0, 0.1));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Drag-Koeffizient", &SoundObject::dragCoefficient, 0.0, 10.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Restitution (Wandabprall)", &SoundObject::restitution, 0.0, 1.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Stop-Schwelle (velocitySnapThreshold)", &SoundObject::velocitySnapThreshold, 0.0, 1.0, 0.001));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Damping (simple decay)", &SoundObject::damping, 0.0, 1.0, 0.001));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Max Velocity (0 = unlimited)", &SoundObject::maxVelocity, 0.0, 30.0, 0.1));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Drag Coefficient", &SoundObject::dragCoefficient, 0.0, 10.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Restitution (wall bounce)", &SoundObject::restitution, 0.0, 1.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Stop Threshold (velocitySnapThreshold)", &SoundObject::velocitySnapThreshold, 0.0, 1.0, 0.001));
 
-    addHeader ("Attraktion / Repulsion (als Quelle)");
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Staerke (negativ = abstossend)", &SoundObject::attractionStrength, -10.0, 10.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Kraft-Exponent", &SoundObject::forceExponent, 1.0, 3.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Min.-Distanz (Softening)", &SoundObject::minDistance, 0.01, 2.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Max.-Reichweite (0 = unbegrenzt)", &SoundObject::maxRange, 0.0, 20.0, 0.1));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Puls-Rate (Hz, 0 = aus)", &SoundObject::attractionPulseRate, 0.0, 5.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Puls-Tiefe", &SoundObject::attractionPulseDepth, 0.0, 1.0, 0.01));
+    addHeader ("Attraction / Repulsion (as source)");
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Strength (negative = repulsive)", &SoundObject::attractionStrength, -10.0, 10.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Force Exponent", &SoundObject::forceExponent, 1.0, 3.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Min. Distance (softening)", &SoundObject::minDistance, 0.01, 2.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Max. Range (0 = unlimited)", &SoundObject::maxRange, 0.0, 20.0, 0.1));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Pulse Rate (Hz, 0 = off)", &SoundObject::attractionPulseRate, 0.0, 5.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Pulse Depth", &SoundObject::attractionPulseDepth, 0.0, 1.0, 0.01));
 
     addHeader ("Orbit");
-    objectOnlyComponents.push_back (&addObjectVec3Row ("Orbit-Zentrum (fixer Punkt)", &SoundObject::orbitCenter, -20.0, 20.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit-Radius", &SoundObject::orbitRadius, 0.05, 10.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit-Winkelgeschw. (rad/s)", &SoundObject::orbitAngularSpeed, -10.0, 10.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectVec3Row ("Orbit-Ebenen-Normale", &SoundObject::orbitPlaneNormal, -1.0, 1.0, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit-Exzentrizitaet", &SoundObject::orbitEccentricity, 0.0, 0.95, 0.01));
-    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit-Decay (m/s)", &SoundObject::orbitDecay, -2.0, 2.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectVec3Row ("Orbit Center (fixed point)", &SoundObject::orbitCenter, -20.0, 20.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit Radius", &SoundObject::orbitRadius, 0.05, 10.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit Angular Speed (rad/s)", &SoundObject::orbitAngularSpeed, -10.0, 10.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectVec3Row ("Orbit Plane Normal", &SoundObject::orbitPlaneNormal, -1.0, 1.0, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit Eccentricity", &SoundObject::orbitEccentricity, 0.0, 0.95, 0.01));
+    objectOnlyComponents.push_back (&addObjectFloatRow ("Orbit Decay (m/s)", &SoundObject::orbitDecay, -2.0, 2.0, 0.01));
 
-    orbitRefRow = std::make_unique<ComboRowComponent> ("Orbit-Referenzobjekt");
+    orbitRefRow = std::make_unique<ComboRowComponent> ("Orbit Reference Object");
     orbitRefRow->onSelected = [this] (int index)
     {
         if (editedObject != nullptr)
-            editedObject->orbitReferenceObjectId = index - 1; // Index 0 = "Fix", siehe rebuildOrbitReferenceItems()
+            editedObject->orbitReferenceObjectId = index - 1; // index 0 = "Fixed", see rebuildOrbitReferenceItems()
     };
     content.addAndMakeVisible (*orbitRefRow);
     addToLayout (*orbitRefRow, ComboRowComponent::preferredHeight);
@@ -264,9 +264,9 @@ void ParameterPanel::rebuildOrbitReferenceItems (int numObjects, int selfId)
 {
     auto& combo = orbitRefRow->combo;
     combo.clear (juce::dontSendNotification);
-    combo.addItem ("Fix (Orbit-Zentrum)", 1);
+    combo.addItem ("Fixed (orbit center)", 1);
     for (int i = 0; i < numObjects; ++i)
-        combo.addItem ("Objekt " + juce::String (i) + (i == selfId ? " (sich selbst -- wird ignoriert)" : ""), i + 2);
+        combo.addItem ("Object " + juce::String (i) + (i == selfId ? " (itself -- ignored)" : ""), i + 2);
 }
 
 void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects)
@@ -275,13 +275,13 @@ void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader
 
     if (obj == nullptr)
     {
-        objectHeaderLabel.setText ("Kein Objekt ausgewaehlt", juce::dontSendNotification);
+        objectHeaderLabel.setText ("No object selected", juce::dontSendNotification);
         for (auto* c : objectOnlyComponents)
             c->setEnabled (false);
         return;
     }
 
-    objectHeaderLabel.setText ("Objekt " + juce::String (objectIndexForHeader), juce::dontSendNotification);
+    objectHeaderLabel.setText ("Object " + juce::String (objectIndexForHeader), juce::dontSendNotification);
     for (auto* c : objectOnlyComponents)
         c->setEnabled (true);
 

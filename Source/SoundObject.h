@@ -3,107 +3,107 @@
 #include "Vec3.h"
 
 /**
-    Zustand eines einzelnen Klangobjekts im Raum.
+    State of a single sound object in space.
 
-    Position in kartesischen Koordinaten (Meter, rechtshaendig):
-        x = vorne/hinten (vorne positiv)
-        y = links/rechts (links positiv)
-        z = oben/unten   (oben positiv)
+    Position in Cartesian coordinates (meters, right-handed):
+        x = front/back (front positive)
+        y = left/right (left positive)
+        z = up/down    (up positive)
 
-    Wird von der TrajectoryEngine (Control-Rate, ~60-120 Hz) aktualisiert
-    und vom AmbisonicsEncoder (Audio-Rate) gelesen. Kein Audio-Datum selbst,
-    nur Metadaten -- das eigentliche Signal kommt separat ueber den
-    zugeordneten Input-Kanalindex (inputChannel).
+    Updated by TrajectoryEngine (control rate, ~60-120 Hz) and read by
+    AmbisonicsEncoder (audio rate). Not audio data itself, just metadata --
+    the actual signal comes separately via the assigned input channel index
+    (inputChannel).
 */
 struct SoundObject
 {
     int id = -1;
 
-    // Welcher Live-Input-Kanal (0-basiert) speist dieses Objekt.
-    // -1 = kein Input zugeordnet (Objekt stumm / nur Platzhalter).
+    // Which live input channel (0-based) feeds this object.
+    // -1 = no input assigned (object silent / just a placeholder).
     int inputChannel = -1;
 
-    Vec3 position   { 1.0f, 0.0f, 0.0f }; // Startposition: 1m vorne
+    Vec3 position   { 1.0f, 0.0f, 0.0f }; // starting position: 1m in front
     Vec3 velocity   { 0.0f, 0.0f, 0.0f };
-    float mass = 1.0f; // fuer n-Body-Attraktion/Repulsion
+    float mass = 1.0f; // for n-body attraction/repulsion
 
-    // Bewegungsmodus, von der TrajectoryEngine ausgewertet
+    // Motion mode, evaluated by TrajectoryEngine
     enum class Mode
     {
-        Static,       // bleibt an position stehen (z.B. per Maus gezogen)
-        Manual,       // wird gerade per Maus/MIDI live bewegt, keine Physik
-        Orbit,        // kreist um orbitCenter mit orbitRadius/orbitSpeed
-        Impulse,      // wurde "angestossen", bewegt sich frei mit velocity + Kraeftefeld
-        Attracted     // unterliegt n-Body-Kraeften zu anderen Objekten/Punkten
+        Static,       // stays at position (e.g. dragged by mouse)
+        Manual,       // currently being moved live via mouse/MIDI, no physics
+        Orbit,        // circles around orbitCenter with orbitRadius/orbitSpeed
+        Impulse,      // was "thrown", moves freely under velocity + force field
+        Attracted     // subject to n-body forces from other objects/points
     };
     Mode mode = Mode::Static;
 
-    // Parameter fuer Orbit-Modus
+    // Orbit mode parameters
     Vec3 orbitCenter { 0.0f, 0.0f, 0.0f };
     float orbitRadius = 1.0f;
     float orbitAngularSpeed = 1.0f; // rad/s
-    float orbitPhase = 0.0f;        // aktueller Winkel, wird fortgeschrieben
+    float orbitPhase = 0.0f;        // current angle, advanced over time
 
-    // Fuer Attraction/Repulsion: Staerke, Vorzeichen negativ = abstossend.
-    // Gilt, wenn DIESES Objekt als Quelle auf andere wirkt (siehe auch
-    // forceExponent/minDistance/maxRange/attractionPulse* unten -- alle
-    // ebenfalls Eigenschaften der Quelle, nicht des angezogenen Objekts).
+    // For attraction/repulsion: strength, negative sign = repulsive.
+    // Applies when THIS object acts as a source on others (see also
+    // forceExponent/minDistance/maxRange/attractionPulse* below -- all of
+    // them are also properties of the source, not of the attracted object).
     float attractionStrength = 0.0f;
 
-    // Reibung/Daempfung fuer Impulse-Modus, 0 = keine Daempfung, 1 = sofort stehen.
-    // Einfacher multiplikativer Decay pro Simulationsschritt (schnell, aber
-    // schrittraten-abhaengig). Fuer eine physikalisch konsistentere,
-    // geschwindigkeitsproportionale Bremse siehe dragCoefficient.
+    // Friction/damping for Impulse mode, 0 = no damping, 1 = stops instantly.
+    // Simple multiplicative decay per simulation step (cheap, but step-rate
+    // dependent). For a more physically consistent, velocity-proportional
+    // brake, see dragCoefficient.
     float damping = 0.02f;
 
-    float gain = 1.0f; // manuelles Objekt-Gain, zusaetzlich zur Distanzdaempfung
+    float gain = 1.0f; // manual per-object gain, in addition to distance attenuation
 
-    // --- Traegheit / Bewegungsgrenzen ---------------------------------
-    // <= 0 = unbegrenzt.
+    // --- Inertia / motion limits ---------------------------------------
+    // <= 0 = unlimited.
     float maxVelocity = 6.0f;
-    // Echte, geschwindigkeitsproportionale Bremskraft (F = -dragCoefficient * velocity),
-    // zusaetzlich zu damping. 0 = aus.
+    // Real, velocity-proportional braking force (F = -dragCoefficient * velocity),
+    // in addition to damping. 0 = off.
     float dragCoefficient = 0.0f;
-    // Elastizitaet beim Abprall an der Raumgrenze (SceneSettings::roomSize,
-    // Reflect-Modus). 0 = die nach aussen zeigende Geschwindigkeitskomponente
-    // wird entfernt (Objekt gleitet hoechstens noch tangential an der Wand),
-    // 1 = perfekt elastischer Abprall.
+    // Elasticity when bouncing off the room boundary (SceneSettings::roomSize,
+    // Reflect mode). 0 = the outward-facing velocity component is removed
+    // (object at most slides tangentially along the wall), 1 = perfectly
+    // elastic bounce.
     float restitution = 0.6f;
-    // Geschwindigkeiten unterhalb dieses Betrags werden hart auf 0 gesetzt.
-    // Ohne das naehert sich ein gedaempftes Objekt der Ruhe nur asymptotisch
-    // an (kommt rechnerisch nie ganz zum Stillstand).
+    // Velocities below this magnitude are hard-snapped to 0.
+    // Without this, a damped object only approaches rest asymptotically
+    // (never mathematically comes to a full stop).
     float velocitySnapThreshold = 0.01f;
 
-    // --- n-Body-Verfeinerung (gilt, wenn dieses Objekt als Quelle wirkt) ---
-    // Exponent im Kraftgesetz, 2 = klassisches inverses Quadratgesetz
-    // (Standardverhalten, unveraendert gegenueber frueheren Versionen).
+    // --- n-body refinement (applies when this object acts as a source) -----
+    // Exponent in the force law, 2 = classic inverse-square law
+    // (default behavior, unchanged from earlier versions).
     float forceExponent = 2.0f;
-    // Softening-Radius, verhindert harte Kraft-Spruenge bei sehr kleiner
-    // Distanz (ersetzt die vorherige globale Konstante gleichen Namens).
+    // Softening radius, prevents hard force spikes at very small
+    // distances (replaces the previous global constant of the same name).
     float minDistance = 0.05f;
-    // Cutoff-Radius, jenseits dessen diese Quelle keine Kraft mehr ausuebt.
-    // <= 0 = unbegrenzte Reichweite.
+    // Cutoff radius beyond which this source no longer exerts any force.
+    // <= 0 = unlimited range.
     float maxRange = 0.0f;
-    // Periodische Modulation von attractionStrength: effektive Staerke =
-    // attractionStrength * (1 + attractionPulseDepth * sin(Phase)).
-    // attractionPulseRate = 0 (Default) => keine Modulation.
+    // Periodic modulation of attractionStrength: effective strength =
+    // attractionStrength * (1 + attractionPulseDepth * sin(phase)).
+    // attractionPulseRate = 0 (default) => no modulation.
     float attractionPulseRate = 0.0f;  // Hz
     float attractionPulseDepth = 0.0f; // 0..1
-    float attractionPulsePhase = 0.0f; // Laufzeitzustand, kein Startparameter
+    float attractionPulsePhase = 0.0f; // runtime state, not a starting parameter
 
-    // --- Orbit-Erweiterungen ------------------------------------------
-    // Normalenvektor der Umlaufbahn-Ebene, Default {0,0,1} = bisheriges
-    // Verhalten (Kreis/Ellipse in der x/y-Ebene).
+    // --- Orbit extensions ------------------------------------------------
+    // Normal vector of the orbit plane, default {0,0,1} = previous
+    // behavior (circle/ellipse in the x/y plane).
     Vec3 orbitPlaneNormal { 0.0f, 0.0f, 1.0f };
-    // 0 = Kreisbahn, <1 = Ellipse. Vereinfachte Naeherung (fixe Halbachsen
-    // orbitRadius/orbitRadius*(1-e), keine Fokuspunkt-basierte Kepler-Bahn
-    // mit variabler Winkelgeschwindigkeit) -- fuer den POC bewusst einfach
-    // gehalten.
+    // 0 = circular orbit, <1 = ellipse. Simplified approximation (fixed
+    // semi-axes orbitRadius/orbitRadius*(1-e), not a focus-based Kepler
+    // orbit with variable angular speed) -- deliberately kept simple for
+    // the POC.
     float orbitEccentricity = 0.0f;
-    // Radiusaenderung pro Sekunde waehrend Orbit-Modus, 0 = stabile Bahn.
+    // Radius change per second while in Orbit mode, 0 = stable orbit.
     float orbitDecay = 0.0f;
-    // -1 = orbitCenter ist ein fixer Punkt (bisheriges Verhalten). Sonst id
-    // eines anderen SoundObject, um das herum kreisen wird (z.B. Mond-um-
-    // Planet-Hierarchien).
+    // -1 = orbitCenter is a fixed point (previous behavior). Otherwise the
+    // id of another SoundObject to orbit around (e.g. moon-around-planet
+    // hierarchies).
     int orbitReferenceObjectId = -1;
 };

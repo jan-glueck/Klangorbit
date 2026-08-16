@@ -1,42 +1,43 @@
-# Workflow: Branches, Tags, Releases
+# Workflow: branches, tags, releases
 
 ## Branches
 
-- `main` -- muss immer bauen und starten. Nichts Kaputtes wird hier
-  committet, auch nicht zwischenzeitlich.
-- `experiment/<kurzname>` -- fuer riskante Aenderungen an Physik/Encoder,
-  bei denen unklar ist, ob sie sich lohnen (z.B. `experiment/plummer-potential`,
-  `experiment/doppler`). Wird gegen `main` gemergt, wenn es funktioniert
-  und den Code nicht schlechter macht -- sonst einfach liegen gelassen
-  oder geloescht. Kein Zwang, jeden Branch aufzuraeumen.
-- Feature-Branches fuer klar umrissene Arbeit (`feature/3d-view`,
-  `feature/midi-mapping`) wie ueblich, gegen `main` mergen wenn fertig.
+- `main` -- must always build and start. Nothing broken gets committed
+  here, not even temporarily.
+- `experiment/<short-name>` -- for risky changes to physics/encoder where
+  it's unclear whether they're worth it (e.g. `experiment/plummer-potential`,
+  `experiment/doppler`). Gets merged into `main` if it works and doesn't
+  make the code worse -- otherwise just left as is or deleted. No
+  obligation to clean up every branch.
+- Feature branches for clearly scoped work (`feature/3d-view`,
+  `feature/midi-mapping`) as usual, merge into `main` when done.
 
-Kein strikter PR-Zwang bei einem Einzelprojekt -- aber: Merge nach `main`
-nur wenn's baut und die README/CHANGELOG-Eintraege stimmen.
+No strict PR requirement for a solo project -- but: only merge into `main`
+if it builds and the README/CHANGELOG entries are correct.
 
-## Tags / Versionen
+## Tags / versions
 
-Git-Tag pro Release, z.B. `v0.2.0`, entsprechend CHANGELOG.md. Waehrend
-0.x.y (POC-Phase):
+Git tag per release, e.g. `v0.2.0`, matching CHANGELOG.md. During 0.x.y
+(POC phase):
 
-- Patch (0.1.0 -> 0.1.1): Bugfix, kein Verhaltensunterschied fuer Presets
-- Minor (0.1.x -> 0.2.0): neues Feature, kann Preset-`schemaVersion`
-  hochzaehlen (siehe Presets/schema/README.md) -- IMMER im CHANGELOG
-  vermerken, ob Presets betroffen sind
-- Major (1.0.0): erst wenn's kein POC mehr ist, sondern benutzbar sein soll
+- Patch (0.1.0 -> 0.1.1): bugfix, no behavior change for presets
+- Minor (0.1.x -> 0.2.0): new feature, may bump the preset
+  `schemaVersion` (see Presets/schema/README.md) -- ALWAYS note in the
+  CHANGELOG whether presets are affected
+- Major (1.0.0): only once it's no longer a POC but meant to be usable
 
 ## Commits
 
-Keine strikte Commit-Message-Konvention noetig fuer ein Einzelprojekt,
-aber sinnvoll: Praefix, wenn's um Presets/Schema oder Experimente geht,
-damit sie beim Durchsuchen der Historie auffindbar sind, z.B.
-`presets: add orbit_pair_demo`, `schema: bump to v2, add dampingCurve field`.
+No strict commit message convention needed for a solo project, but useful:
+a prefix when it's about presets/schema or experiments, so they're
+findable when browsing the history, e.g. `presets: add orbit_pair_demo`,
+`schema: bump to v2, add dampingCurve field`.
 
-## Woher weiss ich, ob ein Preset noch laedt?
+## How do I know whether a preset still loads?
 
-Kurzer Sanity-Check vor jedem Release: alle Dateien in `Presets/factory/`
-einmal laden. Sobald es einen Preset-Loader gibt, das als simples Script
-(`Tools/validate_presets.py` o.ae.) ergaenzen, das schemaVersion gegen die
-vom Code unterstuetzte Range prueft und mit Exit-Code fehlschlaegt, falls
-nicht -- dann laesst sich das auch in CI haengen, sobald es eine gibt.
+Quick sanity check before every release: load every file in
+`Presets/factory/` once. Done: `Tools/validate_presets` (C++ console app,
+see CMakeLists.txt) loads every preset in a given folder via the same
+`PresetManager` code path as the plugin GUI, checks schemaVersion + field
+validation, and fails with a non-zero exit code on any error -- ready to be
+hooked into CI once there is one.

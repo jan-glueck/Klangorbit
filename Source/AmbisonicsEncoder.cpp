@@ -4,7 +4,7 @@ AmbisonicsEncoder::AmbisonicsEncoder() {}
 
 void AmbisonicsEncoder::setOrder (int newOrder)
 {
-    order = juce::jlimit (0, 7, newOrder); // 7. Ordnung als grobe Obergrenze fuer den POC
+    order = juce::jlimit (0, 7, newOrder); // 7th order as a rough upper bound for the POC
 }
 
 void AmbisonicsEncoder::prepare (double newSampleRate, int /*maxBlockSize*/)
@@ -19,9 +19,9 @@ double AmbisonicsEncoder::factorial (int n)
     return f;
 }
 
-// Assoziiertes Legendre-Polynom P_l^m(x), m >= 0, ohne Condon-Shortley-Phase
-// (in der Ambisonics-Literatur ueblich, da Vorzeichen bereits in der
-// Kanaldefinition steckt). Standard-Rekursion.
+// Associated Legendre polynomial P_l^m(x), m >= 0, without the Condon-Shortley
+// phase (customary in the Ambisonics literature, since the sign is already
+// baked into the channel definition). Standard recursion.
 double AmbisonicsEncoder::associatedLegendre (int l, int m, double x)
 {
     jassert (m >= 0 && m <= l);
@@ -71,7 +71,7 @@ void AmbisonicsEncoder::computeShCoefficients (float azimuthRad, float elevation
 
             const double legendre = associatedLegendre (l, absM, sinElev);
 
-            // SN3D-Normalisierung
+            // SN3D normalization
             const double kronecker = (m == 0) ? 1.0 : 0.0;
             const double norm = std::sqrt ((2.0 - kronecker) * factorial (l - absM) / factorial (l + absM));
 
@@ -88,7 +88,7 @@ void AmbisonicsEncoder::computeShCoefficients (float azimuthRad, float elevation
 float AmbisonicsEncoder::distanceGain (float distanceMeters, float referenceDistance)
 {
     const float d = juce::jmax (distanceMeters, 0.05f);
-    // 1/r-Gesetz ab dem Referenzabstand, innerhalb davon kein Boost (auf 1 geclamped)
+    // 1/r law beyond the reference distance, no boost within it (clamped to 1)
     return juce::jmin (1.0f, referenceDistance / d);
 }
 

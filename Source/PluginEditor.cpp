@@ -25,13 +25,13 @@ SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
     objectCountLabel.setJustificationType (juce::Justification::centredLeft);
 
     parameterPanel.setSceneSettings (&audioProcessor.getTrajectoryEngine().getSceneSettings());
-    parameterPanel.refreshFromModel(); // Szene-Defaults (roomSize etc.) initial anzeigen
-    selectObject (-1);                 // initialisiert Panel-Enablement + Objektzahl-Label konsistent
+    parameterPanel.refreshFromModel(); // show scene defaults (roomSize etc.) right away
+    selectObject (-1);                 // initializes panel enablement + object count label consistently
 
     setSize (700 + parameterPanelWidth, 700 + toolbarHeight);
     setWantsKeyboardFocus (true);
     lastTimerMs = juce::Time::getMillisecondCounter();
-    startTimerHz (90); // Control-Rate fuer die TrajectoryEngine
+    startTimerHz (90); // control rate for the TrajectoryEngine
 }
 
 SpatialAudioPOCEditor::~SpatialAudioPOCEditor()
@@ -42,7 +42,7 @@ SpatialAudioPOCEditor::~SpatialAudioPOCEditor()
 void SpatialAudioPOCEditor::timerCallback()
 {
     const auto now = juce::Time::getMillisecondCounter();
-    const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastTimerMs) / 1000.0); // clamp gegen Ausreisser
+    const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastTimerMs) / 1000.0); // clamp against outliers
     lastTimerMs = now;
 
     audioProcessor.getTrajectoryEngine().update (dt);
@@ -52,17 +52,17 @@ void SpatialAudioPOCEditor::timerCallback()
 juce::Point<float> SpatialAudioPOCEditor::objectToScreen (Vec3 pos) const
 {
     const auto c = viewArea.toFloat().getCentre();
-    // Bildschirm-y zeigt nach unten, Raum-y (links) soll optisch nach oben-links,
-    // daher x -> Bildschirm-y (vorne = oben), y -> Bildschirm-x (links = links).
+    // Screen y points downward, world y (left) should optically point up-left,
+    // so x -> screen y (front = up), y -> screen x (left = left).
     return { c.x - pos.y * pixelsPerMeter, c.y - pos.x * pixelsPerMeter };
 }
 
 Vec3 SpatialAudioPOCEditor::screenToObject (juce::Point<float> screenPos) const
 {
     const auto c = viewArea.toFloat().getCentre();
-    const float raumX = (c.y - screenPos.y) / pixelsPerMeter;
-    const float raumY = (c.x - screenPos.x) / pixelsPerMeter;
-    return { raumX, raumY, 0.0f };
+    const float worldX = (c.y - screenPos.y) / pixelsPerMeter;
+    const float worldY = (c.x - screenPos.x) / pixelsPerMeter;
+    return { worldX, worldY, 0.0f };
 }
 
 int SpatialAudioPOCEditor::findObjectNear (juce::Point<float> screenPos) const
@@ -71,7 +71,7 @@ int SpatialAudioPOCEditor::findObjectNear (juce::Point<float> screenPos) const
     for (int i = 0; i < engine.getNumObjects(); ++i)
     {
         auto& obj = engine.getObject (i);
-        if (obj.inputChannel < 0) continue; // inaktive Objekte sind nicht klickbar/sichtbar
+        if (obj.inputChannel < 0) continue; // inactive objects are not clickable/visible
 
         auto p = objectToScreen (obj.position);
         if (p.getDistanceFrom (screenPos) <= hitRadiusPixels)
@@ -86,7 +86,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 
     const auto centre = viewArea.toFloat().getCentre();
 
-    // Referenzkreise (1m/2m/3m) als Orientierungshilfe
+    // Reference circles (1m/2m/3m) as orientation aids
     g.setColour (juce::Colours::darkgrey);
     for (int m = 1; m <= 3; ++m)
     {
@@ -94,7 +94,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
         g.drawEllipse (centre.x - r, centre.y - r, r * 2.0f, r * 2.0f, 1.0f);
     }
 
-    // Raumgrenze (SceneSettings::roomSize), falls aktiv
+    // Room boundary (SceneSettings::roomSize), if enabled
     const auto& sceneSettings = audioProcessor.getTrajectoryEngine().getSceneSettings();
     if (sceneSettings.roomSize > 0.0f)
     {
@@ -103,17 +103,17 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
         g.drawEllipse (centre.x - r, centre.y - r, r * 2.0f, r * 2.0f, 1.5f);
     }
 
-    // Hoerposition/Ursprung
+    // Listening position/origin
     g.setColour (juce::Colours::white);
     g.drawLine (centre.x - 10, centre.y, centre.x + 10, centre.y);
     g.drawLine (centre.x, centre.y - 10, centre.x, centre.y + 10);
-    g.drawText ("Vorne", (int) (centre.x - 30), (int) (centre.y - pixelsPerMeter * 3 - 20), 60, 20, juce::Justification::centred);
+    g.drawText ("Front", (int) (centre.x - 30), (int) (centre.y - pixelsPerMeter * 3 - 20), 60, 20, juce::Justification::centred);
 
     auto& engine = audioProcessor.getTrajectoryEngine();
     for (int i = 0; i < engine.getNumObjects(); ++i)
     {
         auto& obj = engine.getObject (i);
-        if (obj.inputChannel < 0) continue; // kein aktives Objekt
+        if (obj.inputChannel < 0) continue; // no active object
 
         auto p = objectToScreen (obj.position);
 
@@ -163,7 +163,7 @@ void SpatialAudioPOCEditor::loadPresetClicked()
         startDir = juce::File (SAPOC_PRESETS_USER_DIR);
 #endif
 
-    fileChooser = std::make_unique<juce::FileChooser> ("Preset laden", startDir, "*.json");
+    fileChooser = std::make_unique<juce::FileChooser> ("Load Preset", startDir, "*.json");
 
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
         [this] (const juce::FileChooser& fc)
@@ -177,15 +177,15 @@ void SpatialAudioPOCEditor::loadPresetClicked()
 
             if (result.failed())
             {
-                showPresetError ("Preset konnte nicht geladen werden", result.getErrorMessage());
+                showPresetError ("Could not load preset", result.getErrorMessage());
                 return;
             }
 
             currentPresetName = loadedName;
-            presetStatusLabel.setText ("Geladen: " + currentPresetName, juce::dontSendNotification);
+            presetStatusLabel.setText ("Loaded: " + currentPresetName, juce::dontSendNotification);
 
-            // Die Szene wurde komplett ersetzt -- alte Auswahl/Panel-Werte ergeben
-            // keinen Sinn mehr.
+            // The scene was replaced entirely -- the old selection/panel
+            // values no longer make sense.
             selectObject (-1);
             parameterPanel.refreshFromModel();
         });
@@ -200,7 +200,7 @@ void SpatialAudioPOCEditor::savePresetClicked()
         startDir.createDirectory();
 #endif
 
-    fileChooser = std::make_unique<juce::FileChooser> ("Preset speichern",
+    fileChooser = std::make_unique<juce::FileChooser> ("Save Preset",
                                                         startDir.getChildFile (currentPresetName + ".json"),
                                                         "*.json");
 
@@ -220,12 +220,12 @@ void SpatialAudioPOCEditor::savePresetClicked()
 
             if (result.failed())
             {
-                showPresetError ("Preset konnte nicht gespeichert werden", result.getErrorMessage());
+                showPresetError ("Could not save preset", result.getErrorMessage());
                 return;
             }
 
             currentPresetName = name;
-            presetStatusLabel.setText ("Gespeichert: " + currentPresetName, juce::dontSendNotification);
+            presetStatusLabel.setText ("Saved: " + currentPresetName, juce::dontSendNotification);
         });
 }
 
@@ -234,10 +234,10 @@ void SpatialAudioPOCEditor::addObjectClicked()
     auto& engine = audioProcessor.getTrajectoryEngine();
     const int idx = engine.findNextInactiveObject();
     if (idx < 0)
-        return; // alle Objekte schon aktiv
+        return; // all objects already active
 
     engine.activateObject (idx);
-    selectObject (idx); // gleich auswaehlen, praktisch zum sofortigen Einstellen
+    selectObject (idx); // select it right away, convenient for immediate tweaking
 }
 
 void SpatialAudioPOCEditor::removeObjectClicked()
@@ -268,7 +268,7 @@ void SpatialAudioPOCEditor::updateObjectUiState()
     const int active = engine.getNumActiveObjects();
     const int total = engine.getNumObjects();
 
-    objectCountLabel.setText ("Objekte: " + juce::String (active) + " / " + juce::String (total), juce::dontSendNotification);
+    objectCountLabel.setText ("Objects: " + juce::String (active) + " / " + juce::String (total), juce::dontSendNotification);
     addObjectButton.setEnabled (active < total);
     removeObjectButton.setEnabled (selectedObjectIndex >= 0);
 }
@@ -276,7 +276,7 @@ void SpatialAudioPOCEditor::updateObjectUiState()
 void SpatialAudioPOCEditor::mouseDown (const juce::MouseEvent& e)
 {
     draggedObjectIndex = findObjectNear (e.position);
-    selectObject (draggedObjectIndex); // -1 bei Klick auf leere Flaeche -> Auswahl aufheben
+    selectObject (draggedObjectIndex); // -1 on click on empty space -> clear selection
 
     if (draggedObjectIndex >= 0)
     {
@@ -292,9 +292,9 @@ void SpatialAudioPOCEditor::mouseDrag (const juce::MouseEvent& e)
 
     if (! physicsDragActive)
     {
-        // Erst ab einer minimalen Bewegung tatsaechlich in den manuellen
-        // Bewegungsmodus wechseln -- ein reiner Klick (zum Selektieren)
-        // soll ein laufendes Orbit/Impulse NICHT unterbrechen.
+        // Only switch into the manual motion mode once there's actually
+        // some movement -- a plain click (for selecting) should NOT
+        // interrupt a running orbit/impulse.
         if (e.position.getDistanceFrom (lastDragScreenPos) < 3.0f)
             return;
 
@@ -324,15 +324,15 @@ void SpatialAudioPOCEditor::mouseUp (const juce::MouseEvent&)
     {
         auto& engine = audioProcessor.getTrajectoryEngine();
 
-        // Wenn beim Loslassen noch spuerbar Schwung da ist: als Wurf interpretieren.
+        // If there's still noticeable momentum on release: interpret it as a throw.
         if (estimatedDragVelocity.length() > 0.3f)
             engine.throwObject (draggedObjectIndex, estimatedDragVelocity);
         else
             engine.endDrag (draggedObjectIndex);
     }
-    // Reiner Klick ohne Bewegung (physicsDragActive == false): Modus des
-    // Objekts unveraendert lassen, siehe mouseDrag() -- nur die Auswahl
-    // (schon in mouseDown gesetzt) zaehlt.
+    // Plain click without movement (physicsDragActive == false): leave the
+    // object's mode unchanged, see mouseDrag() -- only the selection
+    // (already set in mouseDown) counts.
 
     draggedObjectIndex = -1;
     physicsDragActive = false;

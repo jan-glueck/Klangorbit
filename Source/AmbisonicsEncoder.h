@@ -3,18 +3,18 @@
 #include <vector>
 
 /**
-    Encodiert N monofone Quellsignale anhand ihrer 3D-Position in ein
-    Ambisonics B-Format (ACN-Kanalreihenfolge, SN3D-Normalisierung, wie
-    im AmbiX-Standard ueblich -- kompatibel zu IEM Plugin Suite, SPARTA).
+    Encodes N mono source signals into an Ambisonics B-format based on their
+    3D position (ACN channel order, SN3D normalization, as customary in the
+    AmbiX standard -- compatible with IEM Plugin Suite, SPARTA).
 
-    Kanalzahl = (order+1)^2. Ordnung ist zur Laufzeit aenderbar
-    (setOrder()), Neuberechnung der Koeffizienten passiert dann pro
-    Objekt bei jedem Audioblock (billig genug fuer Block-Rate, NICHT
-    pro Sample -- siehe encodeBlock()).
+    Number of channels = (order+1)^2. Order can be changed at runtime
+    (setOrder()); coefficients are then recomputed per object on every
+    audio block (cheap enough at block rate, NOT per sample -- see
+    encodeBlock()).
 
-    Die spaerischen Harmonischen werden generisch ueber assoziierte
-    Legendre-Polynome berechnet (keine pro-Ordnung hartkodierten
-    Formeln), damit hoehere Ordnungen ohne Codeaenderung moeglich sind.
+    The spherical harmonics are computed generically via associated
+    Legendre polynomials (no per-order hardcoded formulas), so higher
+    orders work without code changes.
 */
 class AmbisonicsEncoder
 {
@@ -28,25 +28,24 @@ public:
     void prepare (double sampleRate, int maxBlockSize);
 
     /**
-        Encodiert einen Block eines einzelnen Quellsignals in den
-        Ziel-Ambisonics-Buffer (wird AUFADDIERT, nicht ueberschrieben --
-        so koennen mehrere Objekte nacheinander in denselben Bus summiert
-        werden).
+        Encodes one block of a single source signal into the destination
+        Ambisonics buffer (gets ADDED, not overwritten -- so several
+        objects can be summed one after another into the same bus).
 
-        azimuthRad:   Winkel in der Horizontalebene, 0 = vorne, positiv
-                      gegen den Uhrzeigersinn (mathematisch positiv).
-        elevationRad: 0 = horizontal, +pi/2 = oben.
-        distanceMeters: fuer Entfernungsdaempfung/Air-Absorption.
-        gain: zusaetzliches manuelles Gain (SoundObject::gain).
+        azimuthRad:   angle in the horizontal plane, 0 = front, positive
+                      counter-clockwise (mathematically positive).
+        elevationRad: 0 = horizontal, +pi/2 = up.
+        distanceMeters: for distance attenuation/air absorption.
+        gain: additional manual gain (SoundObject::gain).
 
-        sourceBlock: Mono-Eingang, Laenge numSamples.
-        destAmbiBuffer: muss mindestens getNumChannels() Kanaele haben.
-        previousChannelGains: persistenter Zustand PRO OBJEKT (nicht pro
-            Encoder-Instanz!) -- vom Aufrufer gehalten, z.B. als Member in
-            SoundObject oder als paralleles Array in PluginProcessor. Wird
-            hier von den alten zu den neuen Gains linear ueberblendet, um
-            bei schneller Bewegung Zipper-Noise zu vermeiden. Muss vor dem
-            ersten Aufruf auf getNumChannels() Nullen initialisiert sein.
+        sourceBlock: mono input, length numSamples.
+        destAmbiBuffer: must have at least getNumChannels() channels.
+        previousChannelGains: persistent state PER OBJECT (not per encoder
+            instance!) -- held by the caller, e.g. as a member in
+            SoundObject or as a parallel array in PluginProcessor. Linearly
+            ramped here from the old to the new gains, to avoid zipper
+            noise on fast movement. Must be initialized to getNumChannels()
+            zeros before the first call.
     */
     void encodeBlock (const float* sourceBlock,
                        int numSamples,
@@ -57,25 +56,25 @@ public:
                        juce::AudioBuffer<float>& destAmbiBuffer,
                        std::vector<float>& previousChannelGains);
 
-    // Reine Koeffizienten-Berechnung (fuer Tests/Debug), ohne Distanz/Gain.
-    // out muss getNumChannels() Elemente Platz haben.
+    // Pure coefficient computation (for tests/debugging), without distance/gain.
+    // out must have room for getNumChannels() elements.
     void computeShCoefficients (float azimuthRad, float elevationRad, std::vector<float>& out) const;
 
 private:
     int order = 3;
     double sampleRate = 48000.0;
 
-    // Referenzabstand fuer 0dB (typisch 1m), darueber 1/r-Daempfung.
+    // Reference distance for 0dB (typically 1m), 1/r attenuation beyond that.
     float referenceDistance = 1.0f;
 
-    // Sehr einfache Luft-Daempfung (Hochtonverlust ueber Distanz) als
-    // One-Pole-Tiefpass, Cutoff sinkt mit der Distanz. Pro Objekt separat,
-    // daher hier als einfacher skalarer Zustand pro Aufrufer -- fuer den
-    // POC bewusst simpel gehalten (kein Filter pro Objekt persistent,
-    // sondern naeherungsweise ueber ein Gain-Rolloff statt echtem Filter).
+    // Very simple air absorption (high-frequency loss over distance) as a
+    // one-pole low-pass, cutoff drops with distance. Per-object separate,
+    // hence handled here as simple scalar state per caller -- deliberately
+    // kept simple for the POC (no persistent per-object filter, just an
+    // approximation via gain rolloff instead of a real filter).
     static float distanceGain (float distanceMeters, float referenceDistance);
 
-    // Assoziiertes Legendre-Polynom P_l^m(x), gebraucht fuer die reellen SH.
+    // Associated Legendre polynomial P_l^m(x), needed for the real-valued SH.
     static double associatedLegendre (int l, int m, double x);
     static double factorial (int n);
 };

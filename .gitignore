@@ -1,4 +1,4 @@
-# Build-Ausgaben
+# Build output
 build/
 *_artefacts/
 CMakeCache.txt
@@ -6,8 +6,8 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 
-# JUCE selbst wird als Submodule referenziert, nicht eingecheckt
-# (siehe README: git submodule add ...)
+# JUCE itself is referenced as a submodule, not checked in
+# (see README: git submodule add ...)
 
 # macOS
 .DS_Store
@@ -18,11 +18,11 @@ Makefile
 *.xcodeproj/
 *.xcworkspace/
 
-# Grosse Audio-Testdateien nicht versionieren -- siehe Docs/DATA_HANDLING.md
+# Don't version large audio test files -- see Docs/DATA_HANDLING.md
 Assets/raw/
 *.wav
 *.aiff
 !Presets/**/*.json
 
-# Persoenliche, unaufgeraeumte Experimente (siehe Docs/experiments/README.md)
+# Personal, unpolished experiments (see Docs/experiments/README.md)
 Docs/experiments/scratch/

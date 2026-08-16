@@ -7,9 +7,9 @@
 #include "SceneSettings.h"
 
 /**
-    Ein Zeilen-Widget: Label + ein Slider, mit generischem onValueChanged-
-    Callback. Kennt weder SoundObject noch SceneSettings -- das Binding an
-    ein konkretes Feld passiert ausschliesslich in ParameterPanel.
+    A row widget: label + a slider, with a generic onValueChanged callback.
+    Knows nothing about SoundObject or SceneSettings -- binding to a
+    concrete field happens exclusively in ParameterPanel.
 */
 class FloatRowComponent : public juce::Component
 {
@@ -26,7 +26,7 @@ public:
     std::function<void (float)> onValueChanged;
 };
 
-/** Wie FloatRowComponent, aber fuer Vec3 (drei uebereinander gestapelte Achsen-Slider). */
+/** Like FloatRowComponent, but for Vec3 (three axis sliders stacked vertically). */
 class Vec3RowComponent : public juce::Component
 {
 public:
@@ -46,7 +46,7 @@ private:
                     double min, double max, double step);
 };
 
-/** Label + ComboBox, mit generischem onSelected(itemIndex)-Callback. */
+/** Label + ComboBox, with a generic onSelected(itemIndex) callback. */
 class ComboRowComponent : public juce::Component
 {
 public:
@@ -62,31 +62,29 @@ public:
 };
 
 /**
-    Scrollbares Seitenpanel: Szene-Parameter (immer sichtbar/editierbar) und
-    die Parameter des aktuell in der 2D-Ansicht ausgewaehlten Objekts.
+    Scrollable side panel: scene parameters (always visible/editable) and
+    the parameters of the object currently selected in the 2D view.
 
-    Schreibt direkt auf die uebergebenen SoundObject- und SceneSettings-
-    Pointer -- dieselben Zugriffsregeln wie ueberall sonst in der GUI
-    (Message-Thread).
+    Writes directly to the SoundObject and SceneSettings pointers passed
+    in -- same access rules as everywhere else in the GUI (message thread).
 
-    refreshFromModel() synchronisiert die Controls mit dem aktuellen
-    Modellzustand. Wird bewusst NICHT per Timer aufgerufen, sondern nur bei
-    Selektionswechsel und nach Preset-Laden -- sonst wuerde ein Slider
-    waehrend des Ziehens durch die laufende Physik/Snapshot-Updates
-    "zurueckspringen".
+    refreshFromModel() synchronizes the controls with the current model
+    state. Deliberately NOT called on a timer, only on selection changes
+    and after loading a preset -- otherwise a slider would "snap back"
+    while being dragged, due to the running physics/snapshot updates.
 */
 class ParameterPanel : public juce::Component
 {
 public:
     ParameterPanel();
 
-    // Einmalig vom Editor gesetzt (nie wieder null).
+    // Set once by the editor (never null again afterwards).
     void setSceneSettings (SceneSettings* settings);
 
-    // nullptr = keine Auswahl. numObjects fuer die Referenzobjekt-Combo (Orbit).
+    // nullptr = no selection. numObjects for the reference-object combo (orbit).
     void setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects);
 
-    // Alle Controls mit dem aktuellen Modellzustand synchronisieren.
+    // Synchronize all controls with the current model state.
     void refreshFromModel();
 
     void resized() override;
@@ -126,10 +124,10 @@ private:
     juce::Label objectHeaderLabel;
     std::unique_ptr<ComboRowComponent> modeRow;
     std::unique_ptr<ComboRowComponent> boundaryRow;
-    std::unique_ptr<Vec3RowComponent> globalFieldRow; // SceneSettings::globalField, kein SoundObject-Feld -> eigenes Binding
+    std::unique_ptr<Vec3RowComponent> globalFieldRow; // SceneSettings::globalField, not a SoundObject field -> its own binding
     std::unique_ptr<ComboRowComponent> orbitRefRow;
 
-    // Alles, was nur Sinn ergibt, wenn ein Objekt ausgewaehlt ist -- wird
-    // in setEditedObject() enabled/disabled.
+    // Everything that only makes sense while an object is selected -- gets
+    // enabled/disabled in setEditedObject().
     std::vector<juce::Component*> objectOnlyComponents;
 };

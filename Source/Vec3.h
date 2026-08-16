@@ -2,10 +2,10 @@
 #include <cmath>
 
 /**
-    Einfacher 3D-Vektor (x,y,z). Ersetzt juce::Vector3D bewusst durch einen
-    eigenen Typ: juce::Vector3D steckt im juce_opengl-Modul, das fuer einen
-    reinen Positions-/Geschwindigkeits-Metadatentyp ohne jeden Grafikbezug
-    eine unnoetige OpenGL-Abhaengigkeit waere.
+    Simple 3D vector (x, y, z). Deliberately replaces juce::Vector3D with a
+    custom type: juce::Vector3D lives in the juce_opengl module, which would
+    be an unnecessary OpenGL dependency for a plain position/velocity
+    metadata type with no graphics involvement at all.
 */
 struct Vec3
 {

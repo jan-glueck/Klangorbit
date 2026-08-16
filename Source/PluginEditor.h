@@ -4,23 +4,21 @@
 #include "ParameterPanel.h"
 
 /**
-    2D-Draufsicht (x/y-Ebene von oben, z nicht dargestellt -- Erweiterung
-    auf echte 3D-Ansicht spaeter, gleiche Datenbasis ueber TrajectoryEngine).
+    2D top-down view (x/y plane from above, z not displayed -- extension to
+    a real 3D view is planned later, same data backing via TrajectoryEngine).
 
-    - Linksklick auf ein Objekt: auswaehlen (Parameter erscheinen im Panel rechts)
-    - Linksklick+Ziehen auf ein Objekt: manuelle Bewegung (Mode::Manual)
-    - Loslassen mit Schwung: Impuls (Mode::Impulse) -- einfache Wurf-Geste
-    - Doppelklick auf ein Objekt: Orbit um Ursprung starten/stoppen (Demo)
-    - Klick auf leere Flaeche: Auswahl aufheben
-    - Toolbar oben: Preset laden/speichern (PresetManager), Objekt
-      hinzufuegen/entfernen
-    - Panel rechts: alle Parameter des ausgewaehlten Objekts + Szene-weite
-      Parameter (Raumgrenze, globales Feld, Zeitraffer), siehe ParameterPanel
+    - Left-click on an object: select it (parameters appear in the panel on the right)
+    - Left-click+drag on an object: manual movement (Mode::Manual)
+    - Release with momentum: impulse (Mode::Impulse) -- simple throw gesture
+    - Double-click on an object: start/stop an orbit around the origin (demo)
+    - Click on empty space: clear the selection
+    - Toolbar at the top: load/save preset (PresetManager), add/remove object
+    - Panel on the right: all parameters of the selected object + scene-wide
+      parameters (room boundary, global field, time scale), see ParameterPanel
 
-    Die eigentliche Physik-Aktualisierung laeuft ueber einen juce::Timer,
-    der TrajectoryEngine::update() mit der gemessenen Zeit seit dem letzten
-    Tick aufruft -- das ist die Control-Rate-Schleife, getrennt vom
-    Audio-Thread.
+    The actual physics update runs on a juce::Timer that calls
+    TrajectoryEngine::update() with the measured time since the last tick --
+    that's the control-rate loop, separate from the audio thread.
 */
 class SpatialAudioPOCEditor : public juce::AudioProcessorEditor,
                                private juce::Timer
@@ -46,24 +44,25 @@ private:
 
     void addObjectClicked();
     void removeObjectClicked();
-    void selectObject (int index); // -1 = Auswahl aufheben
-    void updateObjectUiState();    // Objektzahl-Label + Button-Enablement
+    void selectObject (int index); // -1 = clear the selection
+    void updateObjectUiState();    // object count label + button enablement
 
-    // Bildschirm- <-> Raumkoordinaten (metrische x/y-Ebene, 1m = pixelsPerMeter),
-    // relativ zu viewArea (Fenster ohne Toolbar-Streifen oben, ohne Panel rechts).
+    // Screen <-> world coordinates (metric x/y plane, 1m = pixelsPerMeter),
+    // relative to viewArea (window minus the toolbar strip at the top and
+    // the panel on the right).
     juce::Point<float> objectToScreen (Vec3 pos) const;
     Vec3 screenToObject (juce::Point<float> screenPos) const;
     int findObjectNear (juce::Point<float> screenPos) const;
 
-    // Nicht "processor" -- der Name ist bereits (als Basisklassenreferenz auf
-    // die Basisklasse juce::AudioProcessor) in AudioProcessorEditor vergeben.
+    // Not "processor" -- that name is already taken (as the base-class
+    // reference to juce::AudioProcessor) in AudioProcessorEditor.
     SpatialAudioPOCProcessor& audioProcessor;
 
     int draggedObjectIndex = -1;
     int selectedObjectIndex = -1;
-    // Wird erst true, sobald eine Bewegung ueber mouseDown hinaus stattfindet
-    // (siehe mouseDrag) -- unterscheidet einen reinen Selektions-Klick von
-    // echtem Ziehen, damit Klicken ein laufendes Orbit/Impulse nicht stoppt.
+    // Only becomes true once movement beyond mouseDown actually happens
+    // (see mouseDrag) -- distinguishes a plain selection click from a real
+    // drag, so that clicking doesn't stop a running orbit/impulse.
     bool physicsDragActive = false;
     juce::Point<float> lastDragScreenPos;
     juce::int64 lastDragTimeMs = 0;
@@ -73,18 +72,18 @@ private:
     static constexpr float pixelsPerMeter = 80.0f;
     static constexpr float hitRadiusPixels = 16.0f;
 
-    static constexpr int toolbarHeight = 64; // zwei Reihen a 32px
+    static constexpr int toolbarHeight = 64; // two rows of 32px
     static constexpr int parameterPanelWidth = 340;
     juce::Rectangle<int> viewArea;
 
-    juce::TextButton loadPresetButton { "Preset laden..." };
-    juce::TextButton savePresetButton { "Preset speichern..." };
+    juce::TextButton loadPresetButton { "Load Preset..." };
+    juce::TextButton savePresetButton { "Save Preset..." };
     juce::Label presetStatusLabel;
-    juce::String currentPresetName { "(kein Preset geladen)" };
+    juce::String currentPresetName { "(no preset loaded)" };
     std::unique_ptr<juce::FileChooser> fileChooser;
 
-    juce::TextButton addObjectButton { "+ Objekt" };
-    juce::TextButton removeObjectButton { "- Objekt entfernen" };
+    juce::TextButton addObjectButton { "+ Object" };
+    juce::TextButton removeObjectButton { "- Remove Object" };
     juce::Label objectCountLabel;
 
     ParameterPanel parameterPanel;

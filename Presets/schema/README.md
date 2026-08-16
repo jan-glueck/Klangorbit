@@ -1,95 +1,94 @@
-# Preset-/Szenen-Format
+# Preset/scene format
 
-Presets speichern eine komplette Objekt-Konfiguration (Positionen,
-Bewegungsmodi, Physikparameter, Input-Zuordnung) als JSON. Eigenes
-`schemaVersion`-Feld, UNABHAENGIG von der App-Version (CHANGELOG.md) --
-weil sich das Datenformat seltener aendert als der Code, und alte Presets
-auch nach Code-Umbauten weiter laden sollen.
+Presets store a complete object configuration (positions, motion modes,
+physics parameters, input assignment) as JSON. Own `schemaVersion` field,
+INDEPENDENT of the app version (CHANGELOG.md) -- because the data format
+changes less often than the code, and old presets should keep loading even
+after code refactors.
 
-## Warum getrennt vom Code-Versioning
+## Why separate from code versioning
 
-Wenn `schemaVersion` unveraendert bleibt, garantiert das: jedes Preset mit
-dieser Nummer laedt mit jeder App-Version, die dieses Schema unterstuetzt.
-Aendert sich das JSON-Format (neues Pflichtfeld, umbenannter Key etc.),
-wird `schemaVersion` hochgezaehlt UND eine Migrationsfunktion ergaenzt
-(`migrateSchemaV1toV2()` etc.) -- alte Presets sollen nie stillschweigend
-falsch interpretiert werden, sondern entweder korrekt migriert oder mit
-klarer Fehlermeldung abgelehnt werden.
+If `schemaVersion` stays unchanged, that guarantees: every preset with that
+number loads with every app version that supports this schema. If the JSON
+format changes (new required field, renamed key, etc.), `schemaVersion` is
+bumped AND a migration function is added (`migrateSchemaV1toV2()` etc.) --
+old presets should never be silently misinterpreted, but either migrated
+correctly or rejected with a clear error message.
 
-## Feldreferenz (schemaVersion 1)
+## Field reference (schemaVersion 1)
 
-Alle Felder ausser den mit "Pflichtfeld" markierten sind optional -- fehlen
-sie, gilt der Code-Default (siehe `Source/SoundObject.h`/`Source/SceneSettings.h`).
-Das ist bewusst so: neue optionale Felder mit sinnvollem Default sind KEIN
-Grund fuer eine schemaVersion-Erhoehung (siehe "Warum getrennt vom
-Code-Versioning" oben) -- alte Presets wie `orbit_pair_demo.json` laden
-unveraendert weiter, sie nutzen einfach die Defaults fuer alles Neue.
+All fields except the ones marked "required" are optional -- if missing,
+the code default applies (see `Source/SoundObject.h`/`Source/SceneSettings.h`).
+This is deliberate: new optional fields with a sensible default are NOT a
+reason for a schemaVersion bump (see "Why separate from code versioning"
+above) -- old presets like `orbit_pair_demo.json` keep loading unchanged,
+they simply use the defaults for everything new.
 
 ```jsonc
 {
   "schemaVersion": 1,
   "name": "orbit_pair_demo",
 
-  // Optional, szenenweite Parameter. Fehlt der Block komplett, gelten die
-  // SceneSettings-Defaults.
+  // Optional, scene-wide parameters. If the block is missing entirely, the
+  // SceneSettings defaults apply.
   "scene": {
-    "roomSize": 5.0,                  // Meter, Radius der kugelfoermigen Grenze; <= 0 = keine Grenze
+    "roomSize": 5.0,                  // meters, radius of the spherical boundary; <= 0 = no boundary
     "boundaryBehavior": "reflect",    // reflect | wrap | absorb
-    "globalField": [0.0, 0.0, 0.0],   // konstante Kraft/Masse (wie Wind/Gravitation), wirkt nur auf impulse/attracted
-    "timeScale": 1.0                  // Zeitraffer (>1) / Zeitlupe (<1) fuer die gesamte Physik
+    "globalField": [0.0, 0.0, 0.0],   // constant force/mass (like wind/gravity), only affects impulse/attracted
+    "timeScale": 1.0                  // fast-forward (>1) / slow-motion (<1) for the whole simulation
   },
 
   "objects": [
     {
-      "id": 0,                        // Pflichtfeld, 0-basiert
+      "id": 0,                        // required, 0-based
       "inputChannel": 0,
-      "position": [1.0, 0.0, 0.0],    // Pflichtfeld, x=vorne, y=links, z=oben, Meter
-      "mode": "orbit",                // Pflichtfeld, static | manual | orbit | impulse | attracted
+      "position": [1.0, 0.0, 0.0],    // required, x=front, y=left, z=up, meters
+      "mode": "orbit",                // required, static | manual | orbit | impulse | attracted
 
       "orbitCenter": [0.0, 0.0, 0.0],
       "orbitRadius": 1.5,
       "orbitAngularSpeed": 0.8,       // rad/s
-      "attractionStrength": 0.0,      // negativ = abstossend
+      "attractionStrength": 0.0,      // negative = repulsive
       "mass": 1.0,
       "damping": 0.02,
       "gain": 1.0,
 
-      // Traegheit/Bewegungsgrenzen
-      "maxVelocity": 6.0,             // <= 0 = unbegrenzt
-      "dragCoefficient": 0.0,         // kraftbasierte, geschwindigkeitsproportionale Bremse, zusaetzlich zu damping
-      "restitution": 0.6,             // Elastizitaet beim Abprall an scene.roomSize (Reflect-Modus), 0..1
-      "velocitySnapThreshold": 0.01,  // Geschwindigkeit darunter wird hart auf 0 gesetzt
+      // Inertia/motion limits
+      "maxVelocity": 6.0,             // <= 0 = unlimited
+      "dragCoefficient": 0.0,         // force-based, velocity-proportional brake, in addition to damping
+      "restitution": 0.6,             // elasticity when bouncing off scene.roomSize (reflect mode), 0..1
+      "velocitySnapThreshold": 0.01,  // velocity below this is hard-snapped to 0
 
-      // n-Body-Verfeinerung (gilt, wenn DIESES Objekt als Quelle auf andere wirkt)
-      "forceExponent": 2.0,           // 2 = klassisches inverses Quadratgesetz
-      "minDistance": 0.05,            // Softening gegen harte Kraft-Spruenge bei kleiner Distanz
-      "maxRange": 0.0,                // <= 0 = unbegrenzte Reichweite, sonst Cutoff-Radius
-      "attractionPulseRate": 0.0,     // Hz, 0 = keine Modulation von attractionStrength
+      // n-body refinement (applies when THIS object acts as a source on others)
+      "forceExponent": 2.0,           // 2 = classic inverse-square law
+      "minDistance": 0.05,            // softening against hard force spikes at small distance
+      "maxRange": 0.0,                // <= 0 = unlimited range, otherwise cutoff radius
+      "attractionPulseRate": 0.0,     // Hz, 0 = no modulation of attractionStrength
       "attractionPulseDepth": 0.0,    // 0..1
 
-      // Orbit-Erweiterungen
-      "orbitPlaneNormal": [0.0, 0.0, 1.0], // Default = bisherige x/y-Ebene
-      "orbitEccentricity": 0.0,       // 0 = Kreis, <1 = Ellipse (vereinfachte Naeherung, kein echter Kepler-Orbit)
-      "orbitDecay": 0.0,              // m/s, Radiusaenderung ueber Zeit
-      "orbitReferenceObjectId": -1    // -1 = orbitCenter (fixer Punkt), sonst id eines anderen Objekts
+      // Orbit extensions
+      "orbitPlaneNormal": [0.0, 0.0, 1.0], // default = previous x/y plane
+      "orbitEccentricity": 0.0,       // 0 = circle, <1 = ellipse (simplified approximation, not a real Kepler orbit)
+      "orbitDecay": 0.0,              // m/s, radius change over time
+      "orbitReferenceObjectId": -1    // -1 = orbitCenter (fixed point), otherwise the id of another object
     }
   ]
 }
 ```
 
-## Ablage
+## Storage
 
-- `Presets/factory/` -- eingecheckte, kuratierte Beispiel-Szenen. Diese sind
-  Teil des Repos, jede Aenderung geht durch normale Commits.
-- `Presets/user/` -- eigene, unaufgeraeumte Experimente. Wird NICHT
-  automatisch committet (siehe .gitignore-Kommentar); wenn ein
-  User-Preset gut genug ist, bewusst nach `factory/` verschieben.
+- `Presets/factory/` -- checked-in, curated example scenes. These are part
+  of the repo, every change goes through normal commits.
+- `Presets/user/` -- own, unpolished experiments. NOT committed
+  automatically (see .gitignore comment); if a user preset turns out good
+  enough, deliberately move it to `factory/`.
 
-## Bezug zu Docs/experiments/
+## Relation to Docs/experiments/
 
-Presets speichern NUR den Endzustand (Startkonfiguration). Wenn ein
-Preset im Zusammenspiel mit Live-Input oder manueller Interaktion einen
-interessanten Klang erzeugt hat, der sich nicht rein aus der JSON-Datei
-rekonstruiert (z.B. weil du waehrend der Wiedergabe live eingegriffen
-hast), gehoert die Beschreibung dieses Fundes in ein Experiment-Log, nicht
-ins Preset -- siehe Docs/experiments/README.md.
+Presets store ONLY the end state (starting configuration). If a preset
+produced an interesting sound in combination with live input or manual
+interaction that can't be reconstructed purely from the JSON file (e.g.
+because you intervened live during playback), the description of that
+finding belongs in an experiment log, not in the preset -- see
+Docs/experiments/README.md.

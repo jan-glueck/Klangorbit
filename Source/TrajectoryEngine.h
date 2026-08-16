@@ -5,64 +5,64 @@
 #include "SceneSettings.h"
 
 /**
-    Aktualisiert Positionen aller SoundObjects. Laeuft auf Control-Rate
-    (z.B. 60-120 Hz), NICHT im Audio-Thread -- der AmbisonicsEncoder liest
-    per Snapshot/atomarem Zugriff die jeweils letzte Position.
+    Updates positions of all SoundObjects. Runs at control rate
+    (e.g. 60-120 Hz), NOT on the audio thread -- AmbisonicsEncoder reads the
+    latest position via a snapshot/atomic-style access.
 
-    Threading: update() wird vom Message-Thread oder einem eigenen Timer
-    aufgerufen. getSnapshot() liefert eine Kopie fuer den Audio-Thread
-    (lock-free über doppelt gepufferten Zustand).
+    Threading: update() is called from the message thread or a dedicated
+    timer. getSnapshot() returns a copy for the audio thread (lock-free via
+    double-buffered state).
 
-    Objekt-Kapazitaet vs. aktive Objekte: die Groesse von objects ist fix
-    (= Anzahl Live-Input-Kanaele, siehe SAPOC_MAX_LIVE_INPUTS -- der Audio-
-    Bus kann zur Laufzeit nicht umkonfiguriert werden, siehe README). Wie
-    viele davon tatsaechlich "existieren" ist rein eine Frage von
-    inputChannel >= 0 (aktiv) vs. < 0 (inaktiv/Platzhalter) -- diese
-    Konvention gab es schon vorher (Encoder/Snapshot/PresetManager werten
-    sie bereits aus), activateObject()/deactivateObject() setzen sie nur
-    kontrolliert von der GUI aus.
+    Object capacity vs. active objects: the size of objects is fixed
+    (= number of live input channels, see SAPOC_MAX_LIVE_INPUTS -- the audio
+    bus cannot be reconfigured at runtime, see README). How many of them
+    actually "exist" is purely a matter of inputChannel >= 0 (active) vs.
+    < 0 (inactive/placeholder) -- this convention already existed before
+    (encoder/snapshot/PresetManager already evaluate it),
+    activateObject()/deactivateObject() just set it in a controlled way
+    from the GUI.
 */
 class TrajectoryEngine
 {
 public:
     explicit TrajectoryEngine (int maxObjects);
 
-    // Ruft man z.B. aus einem juce::Timer heraus auf.
-    // dtSeconds: Zeit seit letztem Aufruf.
+    // Call this e.g. from a juce::Timer.
+    // dtSeconds: time since the last call.
     void update (double dtSeconds);
 
-    // Objekt-Verwaltung -- nur vom Message-Thread aus aufrufen.
+    // Object management -- only call from the message thread.
     SoundObject& getObject (int index);
     int getNumObjects() const { return (int) objects.size(); }
 
-    // Aktiviert/deaktiviert ein Objekt (siehe Klassenkommentar). Liefert
-    // false, wenn index ungueltig ist oder der Zielzustand schon erreicht
-    // ist. deactivateObject() setzt das Objekt auf einen sauberen
-    // Ausgangszustand zurueck (wie beim Preset-Laden).
+    // Activates/deactivates an object (see class comment). Returns false if
+    // index is invalid or the target state is already reached.
+    // deactivateObject() resets the object to a clean starting state (as
+    // when loading a preset).
     bool activateObject (int index);
     bool deactivateObject (int index);
     int getNumActiveObjects() const;
-    // Liefert den Index des ersten inaktiven Objekts, oder -1 wenn alle aktiv sind.
+    // Returns the index of the first inactive object, or -1 if all are active.
     int findNextInactiveObject() const;
 
     SceneSettings& getSceneSettings() { return sceneSettings; }
     const SceneSettings& getSceneSettings() const { return sceneSettings; }
 
-    // Manuelle Interaktion (Maus/MIDI)
+    // Manual interaction (mouse/MIDI)
     void beginDrag (int objectIndex);
     void dragTo (int objectIndex, Vec3 newPosition);
     void endDrag (int objectIndex);
 
-    // "Wirft" ein Objekt: setzt Mode=Impulse und Anfangsgeschwindigkeit
+    // "Throws" an object: sets Mode=Impulse and an initial velocity
     void throwObject (int objectIndex, Vec3 initialVelocity);
 
-    // Startet Orbit-Bewegung um einen Punkt
+    // Starts orbit motion around a point
     void startOrbit (int objectIndex, Vec3 center, float radius, float angularSpeed);
 
-    // Aktiviert n-Body Attraktion/Repulsion zu allen anderen "Attracted"/Orbit-Objekten
+    // Activates n-body attraction/repulsion towards all other "Attracted"/Orbit objects
     void setAttraction (int objectIndex, float strength);
 
-    // Lock-freier Snapshot fuer den Audio-Thread: Position + Geschwindigkeit je Objekt.
+    // Lock-free snapshot for the audio thread: position + velocity per object.
     struct Snapshot { Vec3 position, velocity; bool active; };
     void getSnapshot (std::vector<Snapshot>& out) const;
 
@@ -74,7 +74,7 @@ private:
     std::vector<SoundObject> objects;
     SceneSettings sceneSettings;
 
-    // Doppelpufferung fuer lock-freien Zugriff vom Audio-Thread
+    // Double buffering for lock-free access from the audio thread
     mutable juce::CriticalSection snapshotLock;
     std::vector<Snapshot> snapshotBuffer;
 

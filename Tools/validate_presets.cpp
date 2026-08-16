@@ -2,12 +2,12 @@
 #include "../Source/PresetManager.h"
 
 /**
-    Laedt jede *.json-Datei in Presets/factory/ ueber den echten
-    PresetManager-Codepfad (denselben, den auch die Plugin-GUI benutzt) und
-    prueft schemaVersion + Feldvalidierung. Exit-Code != 0 bei jedem Fehler
-    -- so wie in Docs/WORKFLOW.md als Vorbereitung fuer CI vorgesehen.
+    Loads every *.json file in Presets/factory/ via the real PresetManager
+    code path (the same one the plugin GUI uses) and checks schemaVersion +
+    field validation. Exit code != 0 on any failure -- as intended in
+    Docs/WORKFLOW.md as preparation for CI.
 
-    Aufruf: validate_presets <Presets/factory-Verzeichnis>
+    Usage: validate_presets <Presets/factory-directory>
 */
 int main (int argc, char* argv[])
 {
@@ -20,14 +20,14 @@ int main (int argc, char* argv[])
     juce::File dir (argv[1]);
     if (! dir.isDirectory())
     {
-        juce::Logger::writeToLog ("Kein Verzeichnis: " + dir.getFullPathName());
+        juce::Logger::writeToLog ("Not a directory: " + dir.getFullPathName());
         return 1;
     }
 
     auto files = dir.findChildFiles (juce::File::findFiles, false, "*.json");
     if (files.isEmpty())
     {
-        juce::Logger::writeToLog ("Keine Presets gefunden in " + dir.getFullPathName());
+        juce::Logger::writeToLog ("No presets found in " + dir.getFullPathName());
         return 0;
     }
 

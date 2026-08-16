@@ -3,7 +3,7 @@
 
 namespace
 {
-    // Kartesisch (x=vorne, y=links, z=oben) -> Kugelkoordinaten fuer den Encoder.
+    // Cartesian (x=front, y=left, z=up) -> spherical coordinates for the encoder.
     void cartesianToSpherical (Vec3 pos, float& azimuth, float& elevation, float& distance)
     {
         distance = juce::jmax (pos.length(), 0.001f);
@@ -24,10 +24,10 @@ SpatialAudioPOCProcessor::SpatialAudioPOCProcessor()
 {
     encoder.setOrder (SAPOC_DEFAULT_AMBI_ORDER);
 
-    // Nur Objekt 0 startet aktiv (Input-Kanal 0). Weitere Objekte werden
-    // ueber die GUI hinzugefuegt (TrajectoryEngine::activateObject()) --
-    // Input-Kanal-Zuordnung bleibt dabei die einfache 1:1-Zuordnung
-    // Objektindex == Kanalindex.
+    // Only object 0 starts active (input channel 0). Further objects are
+    // added via the GUI (TrajectoryEngine::activateObject()) -- the input
+    // channel assignment stays the simple 1:1 mapping of object index ==
+    // channel index.
     trajectoryEngine.activateObject (0);
 
     previousGainsPerObject.resize ((size_t) numLiveInputs);
@@ -50,7 +50,7 @@ void SpatialAudioPOCProcessor::releaseResources() {}
 
 bool SpatialAudioPOCProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    // Fuer den POC: feste Layouts wie in makeBusLayout() definiert.
+    // For the POC: fixed layouts as defined in makeBusLayout().
     return layouts.getMainInputChannelSet()  == juce::AudioChannelSet::discreteChannels (numLiveInputs)
         && layouts.getMainOutputChannelSet() == juce::AudioChannelSet::discreteChannels (encoder.getNumChannels());
 }
@@ -62,8 +62,8 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const int numSamples = buffer.getNumSamples();
     const int numInCh    = juce::jmin (numLiveInputs, buffer.getNumChannels());
 
-    // Eingangskanaele vor dem Ueberschreiben sichern -- Output-Buffer ist
-    // derselbe Speicher wie Input (in-place), daher zuerst kopieren.
+    // Preserve the input channels before overwriting -- the output buffer
+    // is the same memory as the input (in-place), so copy first.
     juce::AudioBuffer<float> inputCopy (numInCh, numSamples);
     for (int ch = 0; ch < numInCh; ++ch)
         inputCopy.copyFrom (ch, 0, buffer, ch, 0, numSamples);
@@ -99,7 +99,7 @@ juce::AudioProcessorEditor* SpatialAudioPOCProcessor::createEditor()
     return new SpatialAudioPOCEditor (*this);
 }
 
-void SpatialAudioPOCProcessor::getStateInformation (juce::MemoryBlock&) { /* TODO: Objekt-/Trajektorien-Presets speichern */ }
+void SpatialAudioPOCProcessor::getStateInformation (juce::MemoryBlock&) { /* TODO: save object/trajectory presets */ }
 void SpatialAudioPOCProcessor::setStateInformation (const void*, int)   { /* TODO */ }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

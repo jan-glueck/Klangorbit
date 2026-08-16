@@ -5,16 +5,17 @@
 #include "AmbisonicsEncoder.h"
 
 /**
-    Input:  N Mono-Kanaele (N = SAPOC_MAX_LIVE_INPUTS, konfigurierbar), je
-            einem SoundObject zugeordnet.
-    Output: Ambisonics B-Format, Kanalzahl = (order+1)^2, Ordnung aktuell
-            per Konstante SAPOC_DEFAULT_AMBI_ORDER (Laufzeit-Wechsel ist
-            vorbereitet, siehe AmbisonicsEncoder::setOrder(), aber Bus-Groesse
-            ist im Plugin-Kontext fix pro Instanz -- fuer Ordnungswechsel im
-            Standalone-Fall einfacher, da dort kein Host-Bus-Vertrag existiert).
+    Input:  N mono channels (N = SAPOC_MAX_LIVE_INPUTS, configurable), each
+            assigned to one SoundObject.
+    Output: Ambisonics B-format, channel count = (order+1)^2, order
+            currently set via the SAPOC_DEFAULT_AMBI_ORDER constant
+            (runtime switching is prepared, see AmbisonicsEncoder::setOrder(),
+            but bus size is fixed per instance in the plugin context -- for
+            runtime order changes, the standalone case is easier since no
+            host bus contract exists there).
 
-    Kein Decoding hier -- Output wird als rohes B-Format ausgegeben und in
-    einer DAW/mit externen Tools (SPARTA, IEM Suite) weiterverarbeitet.
+    No decoding here -- output is emitted as raw B-format and processed
+    further in a DAW/with external tools (SPARTA, IEM Suite).
 */
 class SpatialAudioPOCProcessor : public juce::AudioProcessor
 {
@@ -44,14 +45,14 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
-    // Zugriff fuer den Editor (GUI liest/schreibt direkt auf die Engine)
+    // Access for the editor (GUI reads/writes directly on the engine)
     TrajectoryEngine& getTrajectoryEngine() { return trajectoryEngine; }
     int getNumLiveInputs() const { return numLiveInputs; }
 
 private:
-    // BusesProperties ist ein geschuetztes Nested-Type von juce::AudioProcessor --
-    // nur ueber eine Methode der abgeleiteten Klasse konstruierbar, nicht ueber
-    // eine freie Funktion.
+    // BusesProperties is a protected nested type of juce::AudioProcessor --
+    // only constructible via a method of the derived class, not via a free
+    // function.
     static BusesProperties makeBusLayout();
 
     static constexpr int numLiveInputs = SAPOC_MAX_LIVE_INPUTS;
@@ -59,7 +60,7 @@ private:
     TrajectoryEngine trajectoryEngine { numLiveInputs };
     AmbisonicsEncoder encoder;
 
-    // Pro Objekt persistenter Gain-Zustand fuer Zipper-freies Ramping
+    // Per-object persistent gain state for zipper-free ramping
     std::vector<std::vector<float>> previousGainsPerObject;
 
     double currentSampleRate = 48000.0;

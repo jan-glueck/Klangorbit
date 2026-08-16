@@ -2,30 +2,31 @@
 #include "Vec3.h"
 
 /**
-    Parameter, die fuer die ganze Szene gelten (nicht pro Objekt).
+    Parameters that apply to the whole scene (not per object).
 
-    Kugelfoermige Raumgrenze um den Ursprung: roomSize <= 0 deaktiviert die
-    Grenze komplett (Objekte koennen dann wie bisher unbegrenzt driften).
-    Gilt fuer alle Modi ausser Manual -- waehrend die Maus ein Objekt aktiv
-    fuehrt, wird nicht geclampt, das wuerde sich wie ein Rucken anfuehlen.
+    Spherical room boundary around the origin: roomSize <= 0 disables the
+    boundary entirely (objects can then drift unbounded, as before). Applies
+    to all modes except Manual -- while the mouse is actively dragging an
+    object, it is not clamped, that would feel like resistance against the
+    mouse.
 */
 struct SceneSettings
 {
     enum class BoundaryBehavior
     {
-        Reflect, // an der Grenze abprallen (Staerke ueber SoundObject::restitution)
-        Wrap,    // auf der gegenueberliegenden Seite wieder eintreten
-        Absorb   // an der Grenze stehen bleiben, verstummen (Mode -> Static, gain -> 0)
+        Reflect, // bounce off the boundary (strength via SoundObject::restitution)
+        Wrap,    // re-enter on the opposite side
+        Absorb   // stop at the boundary, go silent (mode -> Static, gain -> 0)
     };
 
-    float roomSize = 5.0f; // Meter, Radius der Kugel; <= 0 = keine Grenze
+    float roomSize = 5.0f; // meters, radius of the sphere; <= 0 = no boundary
     BoundaryBehavior boundaryBehavior = BoundaryBehavior::Reflect;
 
-    // Konstante Kraft/Masse (wie Wind/Gravitation), wirkt nur auf Objekte in
-    // Impulse/Attracted (den kraftintegrierten Modi) -- Orbit ist kinematisch
-    // definiert und wuerde durch eine zusaetzliche Kraft nur inkonsistent
-    // aussehen, Manual/Static werden extern/gar nicht bewegt.
+    // Constant force/mass (like wind/gravity), only affects objects in
+    // Impulse/Attracted (the force-integrated modes) -- Orbit is defined
+    // kinematically and an extra force would just look inconsistent there,
+    // Manual/Static are moved externally/not at all.
     Vec3 globalField { 0.0f, 0.0f, 0.0f };
 
-    float timeScale = 1.0f; // Zeitraffer (>1) / Zeitlupe (<1) fuer die gesamte Physik
+    float timeScale = 1.0f; // time dilation (>1 = fast-forward, <1 = slow-motion) for the whole simulation
 };

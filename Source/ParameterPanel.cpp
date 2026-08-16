@@ -20,6 +20,11 @@ FloatRowComponent::FloatRowComponent (const juce::String& name, double min, doub
     slider.setRange (min, max, step);
     slider.setSliderStyle (juce::Slider::LinearHorizontal);
     slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
+    // Let mouse-wheel events pass through to the enclosing Viewport instead
+    // of nudging the value -- with dozens of sliders in a scrollable panel,
+    // "scroll the page" should win over "scroll whichever slider happens
+    // to be under the cursor".
+    slider.setScrollWheelEnabled (false);
     addAndMakeVisible (slider);
 
     slider.onValueChange = [this] { if (onValueChanged) onValueChanged ((float) slider.getValue()); };
@@ -67,6 +72,7 @@ void Vec3RowComponent::setupAxis (juce::Label& l, juce::Slider& s, const juce::S
     s.setRange (min, max, step);
     s.setSliderStyle (juce::Slider::LinearHorizontal);
     s.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 18);
+    s.setScrollWheelEnabled (false); // let the page scroll instead of nudging the value, see FloatRowComponent
     addAndMakeVisible (s);
 }
 

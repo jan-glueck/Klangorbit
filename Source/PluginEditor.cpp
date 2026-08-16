@@ -84,6 +84,15 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colours::black);
 
+    // The 2D scene must never draw outside viewArea -- objects can wander
+    // up to the room boundary (SceneSettings::roomSize) in any direction,
+    // which in screen space can reach past the toolbar/parameter-panel
+    // edge without this: they'd render underneath those child components
+    // instead of staying confined to the scene area, looking like the two
+    // areas overlap.
+    g.saveState();
+    g.reduceClipRegion (viewArea);
+
     const auto centre = viewArea.toFloat().getCentre();
 
     // Reference circles (1m/2m/3m) as orientation aids
@@ -129,6 +138,8 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
         g.setColour (juce::Colours::white);
         g.drawText (juce::String (i), (int) p.x - 20, (int) p.y + 10, 40, 16, juce::Justification::centred);
     }
+
+    g.restoreState();
 }
 
 void SpatialAudioPOCEditor::resized()

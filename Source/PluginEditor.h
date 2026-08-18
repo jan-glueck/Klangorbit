@@ -68,6 +68,7 @@ public:
     void mouseUp   (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    bool keyPressed (const juce::KeyPress&) override;
 
 private:
     void timerCallback() override;
@@ -85,6 +86,10 @@ private:
     void startSling (int objectIndex);
     void updateSlingModifiers(); // polled from timerCallback(), edge-detects Ctrl/Alt
     void releaseSling();
+    // Advances slingReferenceObjectId to the next candidate (see its own
+    // comment) -- bound to the Tab key while the gesture is active, see
+    // keyPressed().
+    void cycleSlingReference();
 
     // Per-object fading movement trail (see class comment), polled from
     // timerCallback() at a decimated rate (not every tick -- a few tenths
@@ -142,6 +147,14 @@ private:
     int slingEccentricityStepIndex = 0;   // into SlingGesture::orbitEccentricitySteps, cycled by Alt
     bool slingPrevCtrlDown = false;
     bool slingPrevAltDown = false;
+    // -1 = orbit shot centers on the world origin ("Center"); >=0 = center
+    // on that other active object's LIVE position instead -- a
+    // gravity-assist "slingshot" flyby around a (possibly moving) body,
+    // cycled with the Tab key while the gesture is active (see
+    // cycleSlingReference()/keyPressed()). Only meaningful once
+    // slingWantsOrbit is also true, but tracked independently of it so
+    // choosing a target doesn't require Ctrl to already be held.
+    int slingReferenceObjectId = -1;
 
     // --- Fading movement trails -------------------------------------------
     // One deque of recent world positions per object slot (index-aligned

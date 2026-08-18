@@ -126,6 +126,42 @@ int main()
                "startOrbit() orbits the given center, not a stale orbitReferenceObjectId's position");
     }
 
+    // --- startOrbit(): referenceObjectId targets another object's LIVE position ---
+    // ("slingshot" mode, see PluginEditor's sling gesture -- orbiting a
+    // moving body instead of a fixed point in space.)
+    {
+        TrajectoryEngine engine (2);
+        engine.activateObject (0); // the "planet" -- given a velocity so its position actually moves
+        engine.activateObject (1); // the orbiting/slingshot object
+
+        engine.getObject (0).mode = SoundObject::Mode::Impulse;
+        engine.getObject (0).position = { 5.0f, 0.0f, 0.0f };
+        engine.getObject (0).velocity = { 1.0f, 0.0f, 0.0f }; // moves steadily along +x
+
+        engine.startOrbit (1, engine.getObject (0).position, 2.0f, 1.0f, 0.0f, 0.0f, /*referenceObjectId*/ 0);
+        check (engine.getObject (1).orbitReferenceObjectId == 0,
+               "startOrbit(): a valid referenceObjectId is stored on the orbiting object");
+
+        for (int i = 0; i < 100; ++i)
+            engine.update (0.01); // 1 second -- the "planet" has moved from (5,0,0) to ~(6,0,0) by now
+
+        const float distFromMovingPlanet = (engine.getObject (1).position - engine.getObject (0).position).length();
+        check (distFromMovingPlanet < 2.0f + 0.5f,
+               "startOrbit() with a referenceObjectId keeps orbiting the reference object's LIVE (moved) position, not its position at call time");
+    }
+    {
+        // -1 (the default) must reproduce the previous unconditional
+        // behavior exactly -- same regression this file already checks
+        // above, re-verified here specifically for the new parameter's
+        // own default value rather than the older 4/5-argument call forms.
+        TrajectoryEngine engine (1);
+        engine.activateObject (0);
+        engine.getObject (0).orbitReferenceObjectId = 0; // leftover from earlier editing
+        engine.startOrbit (0, { 3.0f, 0.0f, 0.0f }, 1.0f, 1.0f);
+        check (engine.getObject (0).orbitReferenceObjectId == -1,
+               "startOrbit() with the default referenceObjectId (-1) still resets any leftover reference id");
+    }
+
     // --- SlingGesture: pure math helpers ---
     {
         const Vec3 anchor { 1.0f, 2.0f, 0.0f };
@@ -154,6 +190,34 @@ int main()
                "computeOrbitOrientation() of a pull vector along +x is 0 rad");
         check (approxEqual (orientationAlongY, juce::MathConstants<float>::halfPi),
                "computeOrbitOrientation() of a pull vector along +y is pi/2 rad");
+    }
+    {
+        // No other active objects at all -- only "Center" (-1) exists to
+        // cycle to/from. Must never get stuck or crash.
+        const std::vector<int> noOthers {};
+        const int next = SlingGesture::cycleSlingReference (-1, noOthers, /*selfId*/ 0);
+        check (next == -1, "cycleSlingReference(): with no other objects, cycling from Center stays at Center");
+    }
+    {
+        // Two other active objects (ids 1, 2) besides the slung object
+        // itself (id 0): cycling from Center should visit 1, then 2, then
+        // wrap back to Center. selfId must never appear in the cycle.
+        const std::vector<int> activeIds { 0, 1, 2 };
+        int current = -1;
+        current = SlingGesture::cycleSlingReference (current, activeIds, 0);
+        check (current == 1, "cycleSlingReference(): first press after Center selects the first other active object");
+        current = SlingGesture::cycleSlingReference (current, activeIds, 0);
+        check (current == 2, "cycleSlingReference(): second press selects the next other active object");
+        current = SlingGesture::cycleSlingReference (current, activeIds, 0);
+        check (current == -1, "cycleSlingReference(): cycling past the last object wraps back to Center");
+    }
+    {
+        // A stale `current` (e.g. an object deactivated mid-gesture, no
+        // longer in the active list) must recover cleanly -- restarting
+        // the cycle instead of getting stuck on an id that no longer exists.
+        const std::vector<int> activeIds { 0, 1 };
+        const int next = SlingGesture::cycleSlingReference (/*current (stale)*/ 5, activeIds, 0);
+        check (next == 1, "cycleSlingReference(): a stale current id recovers to the first real candidate instead of getting stuck");
     }
 
     // --- Mean-reverting orbit radius (Ornstein-Uhlenbeck process) ---

@@ -86,8 +86,14 @@ public:
     // optional (default = circular orbit, matching the pre-ellipse
     // behavior) -- see SoundObject::orbitEccentricity/orbitOrientation.
     // angularSpeed's sign sets the rotation direction (CW vs CCW).
+    // referenceObjectId (default -1 = ignored) targets another object's
+    // LIVE, possibly-moving position instead of the fixed `center` point
+    // -- a "gravity-assist slingshot" around another body rather than a
+    // fixed point in space (see PluginEditor's sling orbit-shot, the only
+    // caller that passes anything other than -1; the plain double-click
+    // orbit gesture always passes -1, i.e. unchanged prior behavior).
     void startOrbit (int objectIndex, Vec3 center, float semiMajorAxis, float angularSpeed,
-                      float eccentricity = 0.0f, float orientation = 0.0f);
+                      float eccentricity = 0.0f, float orientation = 0.0f, int referenceObjectId = -1);
 
     // Activates n-body attraction/repulsion towards all other "Attracted"/Orbit objects
     void setAttraction (int objectIndex, float strength);

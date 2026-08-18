@@ -113,20 +113,21 @@ void TrajectoryEngine::throwObject (int objectIndex, Vec3 initialVelocity)
 }
 
 void TrajectoryEngine::startOrbit (int objectIndex, Vec3 center, float semiMajorAxis, float angularSpeed,
-                                    float eccentricity, float orientation)
+                                    float eccentricity, float orientation, int referenceObjectId)
 {
     auto& o = getObject (objectIndex);
     o.mode = SoundObject::Mode::Orbit;
     o.orbitCenter = center;
-    // startOrbit() always sets an explicit, fixed center -- a leftover
-    // orbitReferenceObjectId from earlier ParameterPanel editing would
-    // otherwise silently override that center in integrate() (which
-    // prefers the reference object's live position over orbitCenter
-    // whenever a valid reference id is set). Reset it so the center this
-    // call just specified actually takes effect, for both callers of
-    // startOrbit() (the double-click gesture and the sling orbit-shot,
-    // both of which document "always centered on the origin").
-    o.orbitReferenceObjectId = -1;
+    // referenceObjectId == -1 (the default, and the double-click orbit
+    // gesture's only-ever value) reproduces the previous unconditional
+    // behavior exactly: any leftover orbitReferenceObjectId from earlier
+    // ParameterPanel editing is reset, so `center` above actually takes
+    // effect instead of being silently overridden by integrate() (which
+    // prefers a valid reference object's live position over orbitCenter).
+    // >=0 (currently only the sling gesture's "slingshot" mode) does the
+    // opposite on purpose: target that object's live, possibly-moving
+    // position every tick instead of the fixed `center` point.
+    o.orbitReferenceObjectId = (referenceObjectId >= 0 && referenceObjectId != o.id) ? referenceObjectId : -1;
     o.orbitRadius = semiMajorAxis;
     o.orbitAngularSpeed = angularSpeed;
     o.orbitEccentricity = eccentricity;

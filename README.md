@@ -78,19 +78,21 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
    object (only object 0 is active at startup), "- Remove Object"
    deactivates the selected one.
 7. Shift+drag an object -> "sling" launch gesture: pull it away from its
-   position like a catapult (an orange bow line follows the cursor, plus
+   position like a catapult (a cyan bow line follows the cursor, plus
    a dashed preview showing the actual upcoming throw/orbit -- see below)
    and release to fire it in the opposite direction. Try it a few times to
    compare with the plain throw gesture (4) -- the sling's launch speed is
    proportional to how far you pulled, not to how fast you moved the
    mouse. While pulling, hold Ctrl to switch the shot from a free throw to
    an orbit shot (the bow line turns violet); with Ctrl held, tap Alt to
-   step through circular/elliptical orbit shapes -- the dashed orbit
-   preview updates live as you do. Releasing far enough from the object
-   fires the shot (the preview disappears the instant it does); releasing
-   very close to the anchor (a barely-there pull) cancels it, same as a
-   plain click. See `SlingGesture.h`/`PluginEditor::startSling()` for the
-   full mechanics.
+   step through circular/elliptical orbit shapes, and tap Tab (repeatedly)
+   to cycle the orbit's center itself through every other active object
+   in the scene and back to the world origin ("slingshot" mode -- see
+   "Sling launch gesture" below) -- the dashed orbit preview updates live
+   as you do either. Releasing far enough from the object fires the shot
+   (the preview disappears the instant it does); releasing very close to
+   the anchor (a barely-there pull) cancels it, same as a plain click. See
+   `SlingGesture.h`/`PluginEditor::startSling()` for the full mechanics.
 8. Drag on EMPTY space (no object/grain under the cursor) -> orbits the
    camera around the scene instead of moving anything; scroll the mouse
    wheel to zoom. The view starts pointing straight down (the same
@@ -279,8 +281,24 @@ fast the mouse happened to move.
     object versus the other naturally produces the opposite spin
     (`SlingGesture::computeOrbitDirectionSign()`, a signed 2D cross
     product of the anchor's position relative to the orbit center and the
-    launch direction). The orbit is always centered on the world origin,
-    consistent with the existing double-click orbit gesture.
+    launch direction). Centers on the world origin ("Center") by default,
+    consistent with the double-click orbit gesture.
+  - **Slingshot targeting** -- while pulling, tap **Tab** (repeatedly) to
+    cycle the orbit shot's center through every other currently active
+    object in the scene and back to "Center", like choosing which body a
+    spacecraft's gravity-assist flyby swings around. The launched orbit
+    then tracks that object's LIVE, possibly-moving position every
+    control-rate tick (`TrajectoryEngine::startOrbit()`'s new
+    `referenceObjectId` parameter -> `SoundObject::orbitReferenceObjectId`,
+    which `integrate()` already re-reads every tick for exactly this
+    reason) rather than a one-time snapshot of where it was at release
+    time. The on-screen "Orbit: <shape>" label grows a second line
+    ("around Center" / "around Object N") showing the current selection,
+    and the dashed orbit preview itself already tracks the chosen
+    (possibly moving) target live while aiming, via the same
+    `SlingGesture::cycleSlingReference()` cycle. Only meaningful once the
+    gesture is already active -- Tab does nothing otherwise, and every
+    gesture starts back on "Center".
 - **`SoundObject::orbitOrientation`** (new field): rotates an elliptical
   orbit's major axis within its orbit plane, radians, irrelevant at
   `orbitEccentricity=0`. `TrajectoryEngine::startOrbit()` gained matching

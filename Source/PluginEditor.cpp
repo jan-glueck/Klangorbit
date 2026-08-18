@@ -600,13 +600,21 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
                     previewObj.orbitEccentricity = SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].eccentricity;
                     previewObj.orbitOrientation = SlingGesture::computeOrbitOrientation (pullVector);
 
+                    // Same center resolution as releaseSling() -- if a
+                    // "slingshot" target is selected, this reads its
+                    // CURRENT live position every repaint, so the preview
+                    // itself already tracks a moving target while aiming.
+                    const Vec3 previewCenter = (slingReferenceObjectId >= 0)
+                                                    ? engine.getObject (slingReferenceObjectId).position
+                                                    : Vec3 { 0.0f, 0.0f, 0.0f };
+
                     constexpr int numSegments = 64;
                     std::vector<Vec3> previewPoints;
                     previewPoints.reserve (numSegments + 1);
                     for (int i = 0; i <= numSegments; ++i)
                     {
                         const float phase = juce::MathConstants<float>::twoPi * (float) i / (float) numSegments;
-                        previewPoints.push_back (OrbitMath::computePosition (previewObj, { 0.0f, 0.0f, 0.0f }, phase));
+                        previewPoints.push_back (OrbitMath::computePosition (previewObj, previewCenter, phase));
                     }
 
                     bool anyVisible = false;
@@ -634,11 +642,27 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
             }
         }
 
-        const auto label = isOrbit
-            ? juce::String ("Orbit: ") + SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].label
-            : juce::String ("Free Throw");
-        g.setColour (UiColours::textPrimary());
-        g.drawText (label, (int) slingCursorScreenPos.x - 60, (int) slingCursorScreenPos.y + 12, 120, 16, juce::Justification::centred);
+        if (isOrbit)
+        {
+            const auto shapeLabel = juce::String ("Orbit: ")
+                + SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].label;
+            // "Center" = the world origin; otherwise the chosen object's id --
+            // see slingReferenceObjectId's comment (Tab cycles this while
+            // the gesture is active).
+            const auto targetLabel = juce::String ("around ")
+                + (slingReferenceObjectId >= 0 ? ("Object " + juce::String (slingReferenceObjectId))
+                                                : juce::String ("Center"));
+
+            g.setColour (UiColours::textPrimary());
+            g.drawText (shapeLabel, (int) slingCursorScreenPos.x - 70, (int) slingCursorScreenPos.y + 12, 140, 16, juce::Justification::centred);
+            g.setColour (UiColours::textSecondary());
+            g.drawText (targetLabel, (int) slingCursorScreenPos.x - 70, (int) slingCursorScreenPos.y + 28, 140, 14, juce::Justification::centred);
+        }
+        else
+        {
+            g.setColour (UiColours::textPrimary());
+            g.drawText ("Free Throw", (int) slingCursorScreenPos.x - 60, (int) slingCursorScreenPos.y + 12, 120, 16, juce::Justification::centred);
+        }
     }
 
     // Persistent on-screen reminder of the two modifier-key mouse gestures
@@ -659,7 +683,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
                     hintArea.removeFromTop (16), juce::Justification::centred);
         g.setColour (UiColours::textSecondary().withAlpha (0.85f));
         g.setFont (11.0f);
-        g.drawText ("(while pulling: hold Ctrl = orbit shot, tap Alt = cycle shape)    |    Drag empty space: rotate view    |    Scroll: zoom",
+        g.drawText ("(while pulling: hold Ctrl = orbit shot, tap Alt = cycle shape, tap Tab = slingshot target)    |    Drag empty space: rotate view    |    Scroll: zoom",
                     hintArea, juce::Justification::centred);
     }
 
@@ -849,8 +873,22 @@ void SpatialAudioPOCEditor::startSling (int objectIndex)
     const auto mods = juce::ModifierKeys::getCurrentModifiers();
     slingWantsOrbit = mods.isCtrlDown();
     slingEccentricityStepIndex = 0;
+    slingReferenceObjectId = -1; // always starts on "Center", see its own comment in PluginEditor.h
     slingPrevCtrlDown = mods.isCtrlDown();
     slingPrevAltDown = mods.isAltDown();
+}
+
+void SpatialAudioPOCEditor::cycleSlingReference()
+{
+    if (! slingActive) return;
+
+    auto& engine = audioProcessor.getTrajectoryEngine();
+    std::vector<int> activeIds;
+    for (int i = 0; i < engine.getNumObjects(); ++i)
+        if (engine.getObject (i).inputChannel >= 0)
+            activeIds.push_back (i);
+
+    slingReferenceObjectId = SlingGesture::cycleSlingReference (slingReferenceObjectId, activeIds, slingObjectIndex);
 }
 
 void SpatialAudioPOCEditor::updateSlingModifiers()
@@ -893,7 +931,16 @@ void SpatialAudioPOCEditor::releaseSling()
 
         if (slingWantsOrbit)
         {
-            const Vec3 center { 0.0f, 0.0f, 0.0f }; // always the origin, see design decision in the feature discussion
+            // -1 ("Center") uses the world origin, same as before this
+            // feature existed; >=0 ("slingshot" around another object,
+            // see slingReferenceObjectId's comment) uses that object's
+            // CURRENT position as the center at release time -- its live
+            // position going forward is then tracked by
+            // TrajectoryEngine::integrate() itself via referenceObjectId
+            // below, not by this snapshot.
+            const Vec3 center = (slingReferenceObjectId >= 0)
+                                     ? engine.getObject (slingReferenceObjectId).position
+                                     : Vec3 { 0.0f, 0.0f, 0.0f };
             const float semiMajor = juce::jmax (SlingGesture::minOrbitRadiusMeters,
                                                  pullVector.length() * SlingGesture::orbitRadiusScale);
             const float orientation = SlingGesture::computeOrbitOrientation (pullVector);
@@ -902,7 +949,7 @@ void SpatialAudioPOCEditor::releaseSling()
 
             engine.startOrbit (slingObjectIndex, center, semiMajor,
                                 directionSign * SlingGesture::orbitAngularSpeedMagnitude,
-                                eccentricity, orientation);
+                                eccentricity, orientation, slingReferenceObjectId);
         }
         else
         {
@@ -1053,6 +1100,22 @@ void SpatialAudioPOCEditor::mouseWheelMove (const juce::MouseEvent&, const juce:
     constexpr float zoomSensitivity = 2.5f;
     camera.zoom (-wheel.deltaY * camera.getDistance() * zoomSensitivity);
     repaint();
+}
+
+bool SpatialAudioPOCEditor::keyPressed (const juce::KeyPress& key)
+{
+    // Cycles the sling gesture's "slingshot" reference target (see
+    // slingReferenceObjectId's comment in PluginEditor.h) -- only
+    // meaningful while actively pulling, so this simply doesn't consume
+    // Tab otherwise (letting normal keyboard focus traversal, if any,
+    // still work the rest of the time).
+    if (slingActive && key == juce::KeyPress::tabKey)
+    {
+        cycleSlingReference();
+        repaint();
+        return true;
+    }
+    return false;
 }
 
 void SpatialAudioPOCEditor::mouseDoubleClick (const juce::MouseEvent& e)

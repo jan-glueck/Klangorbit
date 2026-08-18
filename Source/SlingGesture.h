@@ -1,7 +1,9 @@
 #pragma once
 #include "Vec3.h"
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 /**
     Pure math for the "sling" launch gesture (Shift+drag+release on an
@@ -85,5 +87,32 @@ namespace SlingGesture
     inline float computeOrbitOrientation (Vec3 pullVector)
     {
         return std::atan2 (pullVector.y, pullVector.x);
+    }
+
+    // Advances the sling gesture's "slingshot" reference target: which
+    // point the launched orbit is centered on. -1 means the world origin
+    // ("Center"); any other value is another active object's id, whose
+    // LIVE position becomes the orbit center instead of a fixed point --
+    // a gravitational-slingshot-style flyby around a (possibly moving)
+    // body rather than a fixed point in space (see
+    // TrajectoryEngine::startOrbit()'s referenceObjectId parameter).
+    //
+    // Cycles through [-1 ("Center"), every id in activeObjectIds except
+    // selfId], wrapping back to -1 after the last one. Rebuilding this
+    // list from activeObjectIds on every call (rather than caching it once
+    // per gesture) means activating/deactivating an object mid-gesture
+    // can't leave a stale id in the cycle. If `current` isn't found in the
+    // list (e.g. that object was deactivated since), cycling restarts from
+    // -1 rather than getting stuck.
+    inline int cycleSlingReference (int current, const std::vector<int>& activeObjectIds, int selfId)
+    {
+        std::vector<int> candidates { -1 };
+        for (int id : activeObjectIds)
+            if (id != selfId)
+                candidates.push_back (id);
+
+        const auto it = std::find (candidates.begin(), candidates.end(), current);
+        const size_t pos = (it != candidates.end()) ? (size_t) std::distance (candidates.begin(), it) : 0;
+        return candidates[(pos + 1) % candidates.size()];
     }
 }

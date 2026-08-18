@@ -401,12 +401,60 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   Default `true` (unchanged appearance for existing presets/behavior).
 - **On-screen reminder of the Orbit and Sling-launch gestures**, drawn at
   the bottom of the scene view every frame. Both are pure mouse+modifier-key
-  gestures (double-click; Shift+drag, with Ctrl/Alt held while pulling)
-  with no other UI affordance -- no button, no menu entry -- so previously
-  a first-time user had no way to discover them at all. Two lines: the
-  gesture names themselves (brighter), and the Ctrl/Alt modifiers plus the
-  two other scene-view mouse gestures (camera rotate, zoom) underneath
-  (dimmer, secondary). Purely a static text overlay, not interactive.
+  gestures (double-click; Shift+drag, with Ctrl/Alt/Tab held/tapped while
+  pulling) with no other UI affordance -- no button, no menu entry -- so
+  previously a first-time user had no way to discover them at all. Two
+  lines: the gesture names themselves (brighter), and the Ctrl/Alt/Tab
+  modifiers plus the two other scene-view mouse gestures (camera rotate,
+  zoom) underneath (dimmer, secondary). Purely a static text overlay, not
+  interactive. (Tab's own mention was added alongside the "slingshot
+  targeting" feature below -- see there.)
+- **Sling gesture: "slingshot" targeting for the orbit shot** -- while
+  pulling (Shift+drag, Ctrl held for orbit mode), tap **Tab** repeatedly
+  to cycle the orbit shot's center through every other currently active
+  object in the scene and back to the world origin ("Center"), like
+  choosing which body a spacecraft's gravity-assist flyby swings around.
+  Previously the orbit shot was unconditionally centered on the origin
+  (a deliberate simplification at the time, see that entry's own
+  comment). New `TrajectoryEngine::startOrbit()` parameter
+  `referenceObjectId` (default `-1`, fully backward compatible --
+  unchanged behavior for the existing 4/5-argument call the double-click
+  gesture still uses): when set, the object's `orbitReferenceObjectId`
+  is set instead of resetting it, so the launched orbit tracks that
+  object's LIVE, possibly-moving position every control-rate tick
+  (`TrajectoryEngine::integrate()` already re-read this field every tick
+  for the ordinary orbit-reference-object feature -- this reuses that
+  existing mechanism rather than adding a second one).
+  - New pure function `SlingGesture::cycleSlingReference()`: given the
+    current selection, the currently active object ids, and the slung
+    object's own id (excluded from the cycle -- it can't slingshot
+    around itself), returns the next selection in `[Center, id, id, ...]`,
+    wrapping around; recovers to the first real candidate rather than
+    getting stuck if the current selection is no longer in the active
+    list (e.g. an object deactivated mid-gesture). Kept as pure,
+    JUCE-free logic in `SlingGesture.h` (same "shared, not reimplemented"
+    principle as the rest of that header) rather than embedded directly
+    in `PluginEditor`, specifically so it stays headlessly testable.
+  - Resets to "Center" at the start of every sling gesture
+    (`startSling()`); tracked independently of `slingWantsOrbit` (Ctrl),
+    so a target can be picked before or after switching into orbit mode.
+  - The dashed orbit preview (already live while aiming) and the
+    on-screen "Orbit: <shape>" label (gained a second line, "around
+    Center" / "around Object N") both immediately reflect the current
+    Tab selection, including tracking a moving target live while
+    pulling, not just once the shot actually fires.
+  - `Tools/verify_orbit` gained 8 checks: `startOrbit()`'s new parameter
+    is stored correctly, an orbit with a `referenceObjectId` actually
+    tracks a moving reference object's live position over time (not a
+    snapshot at call time), the default (`-1`) still resets any leftover
+    reference id exactly as before, and `cycleSlingReference()`'s cycle
+    order/wraparound/self-exclusion/stale-selection-recovery (24/24
+    checks passing).
+  - Known caveat: Tab is a common OS/host UI-navigation key. Some DAW
+    hosts may intercept it before it reaches the plugin editor, in which
+    case this shortcut simply won't fire in that host -- no crash or
+    silent misbehavior, just a no-op. Not something a plugin can fully
+    control; noted in "Known limitations" below.
 
 ### Changed
 - **Solo/Mute controls moved to the object-list sidebar, removed from the
@@ -634,6 +682,13 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   the separate `SpatialAudioPOC_VST3` target (`COPY_PLUGIN_AFTER_BUILD`
   only fires for that target). A DAW loading an old VST3 build will not
   reflect recent source changes even though the standalone app does.
+- The sling gesture's new slingshot-targeting shortcut (Tab, see Added
+  above) may be intercepted by some DAW hosts before it ever reaches the
+  plugin editor -- Tab is a common OS/host UI-navigation key, and this
+  plugin has no way to claim it exclusively. Where that happens the
+  shortcut is simply a no-op in that host (cycling through Ctrl/Alt still
+  works normally); the standalone app is not affected by any host-level
+  interception.
 
 ## [0.1.0] - POC skeleton
 ### Added

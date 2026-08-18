@@ -51,6 +51,7 @@ public:
     {
         bool active = false;
         Vec3 position;
+        Vec3 velocity;             // current movement velocity, m/s -- see GrainDoppler.h (optional per-cloud Doppler pitch shift)
         float ageFraction = 0.0f; // age / lifetimeSeconds, 0..1, for GUI fade-out
         int spawnGeneration = 0;
         int bufferReadStartSample = 0;

@@ -5,6 +5,7 @@
 #include <juce_core/juce_core.h>
 #include "../Source/GrainCloud.h"
 #include "../Source/GrainRenderer.h"
+#include "../Source/GrainDoppler.h"
 
 namespace
 {
@@ -364,6 +365,70 @@ static void testAttractRepelSiblings()
     check (deltaRepel > 0.0f, "GrainCloud: AttractRepelSiblings with negative strength pushes grains apart");
 }
 
+// ============================================================== GrainDoppler
+
+static void testGrainDoppler()
+{
+    constexpr float speedOfSound = 343.0f;
+
+    // --- dopplerFactor=0 disables the effect entirely (ratio stays 1.0) ---
+    {
+        const float ratio = GrainDoppler::computeDopplerRatio ({ 5.0f, 0.0f, 0.0f }, { -10.0f, 0.0f, 0.0f },
+                                                                 0.0f, speedOfSound);
+        check (std::abs (ratio - 1.0f) < 1.0e-4f, "GrainDoppler: dopplerFactor=0 gives a ratio of exactly 1.0 regardless of velocity");
+    }
+
+    // --- Approaching the listener (moving toward the origin) raises pitch ---
+    {
+        // Grain at +5 on the x-axis, moving in -x (toward the origin/listener).
+        const float ratio = GrainDoppler::computeDopplerRatio ({ 5.0f, 0.0f, 0.0f }, { -10.0f, 0.0f, 0.0f },
+                                                                 1.0f, speedOfSound);
+        std::printf ("       approaching: ratio=%.4f (classic formula predicts ~%.4f)\n",
+                     ratio, speedOfSound / (speedOfSound - 10.0f));
+        check (ratio > 1.0f, "GrainDoppler: a grain moving toward the listener raises pitch (ratio > 1)");
+        check (std::abs (ratio - speedOfSound / (speedOfSound - 10.0f)) < 0.01f,
+               "GrainDoppler: approaching ratio matches the classic Doppler formula");
+    }
+
+    // --- Receding from the listener lowers pitch ---
+    {
+        const float ratio = GrainDoppler::computeDopplerRatio ({ 5.0f, 0.0f, 0.0f }, { 10.0f, 0.0f, 0.0f },
+                                                                 1.0f, speedOfSound);
+        check (ratio < 1.0f, "GrainDoppler: a grain moving away from the listener lowers pitch (ratio < 1)");
+    }
+
+    // --- Purely tangential motion (no radial component) leaves pitch unchanged ---
+    {
+        // Grain at +5 on the x-axis, moving purely in y (perpendicular to
+        // the line to the listener at the origin) -- zero radial velocity.
+        const float ratio = GrainDoppler::computeDopplerRatio ({ 5.0f, 0.0f, 0.0f }, { 0.0f, 20.0f, 0.0f },
+                                                                 1.0f, speedOfSound);
+        check (std::abs (ratio - 1.0f) < 1.0e-3f, "GrainDoppler: purely tangential motion produces no pitch shift");
+    }
+
+    // --- dopplerFactor scales the effect proportionally ---
+    {
+        const float ratioHalf = GrainDoppler::computeDopplerRatio ({ 5.0f, 0.0f, 0.0f }, { -10.0f, 0.0f, 0.0f },
+                                                                     0.5f, speedOfSound);
+        const float ratioFull = GrainDoppler::computeDopplerRatio ({ 5.0f, 0.0f, 0.0f }, { -10.0f, 0.0f, 0.0f },
+                                                                     1.0f, speedOfSound);
+        check (ratioHalf > 1.0f && ratioHalf < ratioFull, "GrainDoppler: dopplerFactor=0.5 gives roughly half the pitch shift of dopplerFactor=1.0");
+    }
+
+    // --- Extreme/pathological inputs never produce NaN/Inf or an absurd ratio ---
+    {
+        // Velocity far exceeding speedOfSound, and an artistically very low
+        // speedOfSound (both are legitimate creative settings elsewhere in
+        // this codebase, see SceneSettings::speedOfSound's own docs).
+        const float ratio1 = GrainDoppler::computeDopplerRatio ({ 1.0f, 0.0f, 0.0f }, { -5000.0f, 0.0f, 0.0f }, 1.0f, speedOfSound);
+        const float ratio2 = GrainDoppler::computeDopplerRatio ({ 1.0f, 0.0f, 0.0f }, { -100.0f, 0.0f, 0.0f }, 1.0f, 5.0f);
+        const float ratio3 = GrainDoppler::computeDopplerRatio ({ 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, 1.0f, speedOfSound); // grain exactly at the listener
+        check (std::isfinite (ratio1) && ratio1 >= 0.25f && ratio1 <= 4.0f, "GrainDoppler: extreme velocity stays finite and within the sane clamp range");
+        check (std::isfinite (ratio2) && ratio2 >= 0.25f && ratio2 <= 4.0f, "GrainDoppler: artistically low speedOfSound stays finite and within the sane clamp range");
+        check (std::isfinite (ratio3) && ratio3 >= 0.25f && ratio3 <= 4.0f, "GrainDoppler: grain exactly at the listener position stays finite (no division by zero)");
+    }
+}
+
 int main()
 {
     testRenderGrainBlock();
@@ -374,6 +439,7 @@ int main()
     testRadialExplosionMovesOutward();
     testOrbitTracksMovingParent();
     testAttractRepelSiblings();
+    testGrainDoppler();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

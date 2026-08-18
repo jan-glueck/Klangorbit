@@ -88,6 +88,17 @@ struct GrainCloudSettings
     float positionJitterInBuffer = 0.05f;     // seconds, random look-back offset into the ring buffer per grain
     int maxConcurrentGrains = 8;              // per-cloud local cap (on top of the global cap, see PluginProcessor)
     GrainWindowShape windowShape = GrainWindowShape::Hann;
+    // Per-grain Doppler pitch shift, based on each grain's own velocity
+    // relative to the listener at the origin -- separate from and default
+    // OFF unlike SoundObject::dopplerFactor (main objects), since grains
+    // deliberately skip PropagationProcessor entirely (no delay line, no
+    // per-sample cost) and this adds a small but nonzero per-grain,
+    // per-BLOCK computation instead (see GrainDoppler.h) -- opt-in rather
+    // than silently changing existing grain-cloud sound. When enabled, the
+    // parent SoundObject's own dopplerFactor still scales the effect's
+    // strength (0 = no shift even if this is on, 1 = physical, >1 =
+    // exaggerated) -- one familiar knob, not a second one.
+    bool dopplerEnabled = false;
 
     // --- Movement side ----------------------------------------------------
     GrainMovementMode movementMode = GrainMovementMode::RandomWalk;

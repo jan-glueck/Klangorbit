@@ -295,6 +295,7 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
         auto& s = snapshotBuffer[i];
         s.active = g.active;
         s.position = g.position;
+        s.velocity = g.velocity;
         s.ageFraction = g.lifetimeSeconds > 0.0f ? juce::jlimit (0.0f, 1.0f, g.age / g.lifetimeSeconds) : 1.0f;
         s.spawnGeneration = g.spawnGeneration;
         s.bufferReadStartSample = g.bufferReadStartSample;

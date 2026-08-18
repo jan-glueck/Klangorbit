@@ -266,6 +266,16 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*grainEnabledRow);
     addToLayout (*grainEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
 
+    // Default off -- grains skip PropagationProcessor entirely for
+    // performance, so this is a much cheaper, coarser approximation (see
+    // GrainDoppler.h), opt-in rather than silently changing existing
+    // grain-cloud sound. Uses the object's own "Doppler Factor" (Doppler
+    // category) to scale strength, same as main-object Doppler.
+    grainDopplerEnabledRow = std::make_unique<ToggleRowComponent> ("Doppler (uses object's Doppler Factor)");
+    grainDopplerEnabledRow->onToggled = [this] (bool v) { if (editedGrainCloud != nullptr) editedGrainCloud->dopplerEnabled = v; };
+    content.addAndMakeVisible (*grainDopplerEnabledRow);
+    addToLayout (*grainDopplerEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
+
     // Ranges for grainRate/grainDuration/positionJitterInBuffer are tied to
     // GrainLimits (Grain.h), the same constants the ring buffer is sized
     // from -- see there for why these three can't be extended
@@ -516,6 +526,7 @@ void ParameterPanel::refreshFromModel()
         return;
 
     grainEnabledRow->setValueQuiet (editedGrainCloud->enabled);
+    grainDopplerEnabledRow->setValueQuiet (editedGrainCloud->dopplerEnabled);
     for (auto& b : grainFloatRows)
         b.row->setValueQuiet (editedGrainCloud->*b.member);
     for (auto& b : grainIntRows)

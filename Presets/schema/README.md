@@ -106,10 +106,15 @@ defaults for everything new.
       // Each active grain is a short-lived copy of this object's live input,
       // spawned from a ring buffer and given its own movement (see
       // "movementMode") and audio envelope; grains do NOT go through
-      // PropagationProcessor (no per-grain Doppler/delay/air absorption),
-      // only AmbisonicsEncoder's spatial encoding + distance gain.
+      // PropagationProcessor (no per-grain delay/air absorption/directivity),
+      // only AmbisonicsEncoder's spatial encoding + distance gain, plus an
+      // optional simplified per-grain Doppler pitch shift (dopplerEnabled,
+      // see Source/GrainDoppler.h -- much cheaper than PropagationProcessor's
+      // delay-line-based Doppler, no per-sample cost, a single per-block
+      // pitch ratio instead).
       "grainCloud": {
         "enabled": false,
+        "dopplerEnabled": false,       // per-grain Doppler pitch shift, off by default (see above); uses this object's own dopplerFactor to scale strength
         "grainRate": 10.0,             // grains/sec, spawn rate while enabled
         "grainDuration": 0.15,         // seconds, both the audio envelope length AND the movement lifetime (single-shot grain model)
         "pitchJitter": 0.0,            // 0..1, random per-grain playback-rate variation

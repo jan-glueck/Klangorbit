@@ -207,9 +207,16 @@ away from it is purely additive.
   for any camera angle or zoom
   (`Camera3D::projectSphereSilhouetteRadius()`, geometrically exact, not
   an approximation). A radial gradient (transparent center -> semi-opaque
-  rim, plus a small offset highlight) reads as a translucent shell that
-  clearly marks the boundary without hiding objects/grains inside it. A
-  flat ground grid (1m/2m/3m circles) and a small "Front" marker/label at
+  rim) plus a specular highlight reads as a translucent shell that
+  clearly marks the boundary without hiding objects/grains inside it. The
+  highlight is lit from a fixed WORLD-space direction, not a fixed screen
+  offset (`Camera3D::computeSphereHighlight()`) -- it moves across the
+  sphere's surface as you rotate the view, exactly like a real
+  directional light would, rather than staying glued to one corner
+  regardless of orientation; it fades out smoothly and disappears
+  entirely once its point on the sphere rotates onto the far side, facing
+  away from the camera. A flat ground grid (1m/2m/3m circles) and a small
+  "Front" marker/label at
   the origin remain as orientation aids. Purely cosmetic
   `SceneSettings::showRoomBoundary` toggle (Scene category, "Show
   Boundary") hides the sphere without disabling the boundary itself --

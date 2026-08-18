@@ -103,6 +103,18 @@ namespace
         }
     }
 
+    // Fixed WORLD-SPACE direction the boundary sphere's specular highlight
+    // is lit from (see drawShadedBoundarySphere below) -- an arbitrary but
+    // fixed "key light" choice (mostly from above, slightly front-left),
+    // NOT attached to the camera. Rotating the view therefore moves the
+    // bright spot across the sphere's surface exactly like a real
+    // directional light would, instead of a screen-space decal glued to
+    // one corner regardless of orientation.
+    const Vec3 boundaryHighlightLightDir = [] {
+        const Vec3 v { 0.35f, 0.35f, 0.85f };
+        return v / v.length();
+    }();
+
     // Shaded, translucent sphere for the room boundary (SceneSettings::roomSize),
     // replacing a flat wireframe outline. No 3D mesh/lighting model (this
     // project deliberately has no OpenGL, see Camera3D's class comment) --
@@ -113,8 +125,8 @@ namespace
     // angle/zoom (Camera3D::projectSphereSilhouetteRadius() -- not an
     // approximation). A radial gradient (transparent center -> semi-opaque
     // rim) reads as a translucent shell without hiding anything inside it,
-    // plus a small offset highlight for a touch of "shaded sphere" look
-    // beyond a flat gradient.
+    // plus a specular highlight for a touch of "shaded sphere" look beyond
+    // a flat gradient.
     void drawShadedBoundarySphere (juce::Graphics& g, const Camera3D& camera, juce::Point<float> viewportCentre,
                                     float viewportHeight, float sphereRadius, juce::Colour boundaryColour)
     {
@@ -132,15 +144,22 @@ namespace
         g.setColour (boundaryColour.withAlpha (0.7f));
         g.drawEllipse (viewportCentre.x - screenRadius, viewportCentre.y - screenRadius, screenRadius * 2.0f, screenRadius * 2.0f, 1.5f);
 
-        // Small soft highlight offset toward the upper-left -- a cheap
-        // specular-glint approximation, not a real light source, just a
-        // visual cue that this is meant to read as a sphere.
+        // Specular highlight -- the point on the sphere's surface nearest
+        // the fixed world-space light direction above, projected through
+        // the SAME camera used for everything else (Camera3D::
+        // computeSphereHighlight()), so it moves exactly as a real lit
+        // sphere would when the view rotates, rather than staying glued
+        // to a fixed screen offset.
+        Camera3D::SphereHighlight highlight;
+        if (! camera.computeSphereHighlight (boundaryHighlightLightDir, sphereRadius, viewportHeight, highlight))
+            return; // on the far side of the sphere from here, or behind the near clip plane -- nothing to draw
+
         const float highlightRadius = screenRadius * 0.35f;
-        const auto highlightCentre = viewportCentre.translated (-screenRadius * 0.35f, -screenRadius * 0.35f);
-        juce::ColourGradient highlight (juce::Colours::white.withAlpha (0.18f), highlightCentre.x, highlightCentre.y,
-                                         juce::Colours::white.withAlpha (0.0f), highlightCentre.x + highlightRadius, highlightCentre.y,
-                                         true);
-        g.setGradientFill (highlight);
+        const auto highlightCentre = viewportCentre + juce::Point<float> (highlight.x, highlight.y);
+        juce::ColourGradient highlightGradient (juce::Colours::white.withAlpha (0.18f * highlight.intensity), highlightCentre.x, highlightCentre.y,
+                                                  juce::Colours::white.withAlpha (0.0f), highlightCentre.x + highlightRadius, highlightCentre.y,
+                                                  true);
+        g.setGradientFill (highlightGradient);
         g.fillEllipse (highlightCentre.x - highlightRadius, highlightCentre.y - highlightRadius,
                         highlightRadius * 2.0f, highlightRadius * 2.0f);
     }

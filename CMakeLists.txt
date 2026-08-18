@@ -209,3 +209,26 @@ target_link_libraries(verify_camera
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Mute/solo decision-logic verification ---------------------------------
+# Runs MuteSoloLogic::isEffectivelyMuted() (own mute always wins, solo
+# silences everything else non-exclusively) against every combination of
+# muted/soloed/anySoloed. Pure logic, no JUCE dependency at all -- doesn't
+# even need juce_core, but linked for consistency/build-flag parity with
+# the other verify_ tools.
+juce_add_console_app(verify_mute_solo
+    PRODUCT_NAME "verify_mute_solo"
+)
+
+target_sources(verify_mute_solo
+    PRIVATE
+        Tools/verify_mute_solo.cpp
+)
+
+target_link_libraries(verify_mute_solo
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)

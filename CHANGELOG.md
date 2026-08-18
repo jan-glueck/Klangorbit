@@ -328,6 +328,36 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     effect proportionally, the approaching-case ratio matches the classic
     Doppler formula numerically, and extreme/pathological inputs stay
     finite and within the clamp (9/9 passing).
+- **Solo/Mute per object.** New `SoundObject::muted`/`soloed` fields
+  ("Muted"/"Soloed" toggles in the parameter panel's Object category).
+  - Own `muted` always wins over `soloed` (an object can't be
+    simultaneously "definitely silent" and "definitely audible");
+    otherwise, if any object is soloed, every non-soloed object goes
+    silent while every soloed object stays audible -- classic
+    non-exclusive DAW solo, not a single-object radio button. Decision
+    logic factored into `Source/MuteSoloLogic.h` (header-only, no JUCE
+    dependency at all, same "shared, not reimplemented" principle as
+    `SlingGesture.h`/`OrbitMath.h`/`GrainDoppler.h`), shared between
+    `PluginProcessor`'s two per-object loops (main object + its
+    `GrainCloud`'s grains) and `Tools/verify_mute_solo` (8/8 checks
+    passing, every muted/soloed/anySoloed combination).
+  - Applies to a muted/soloed-out object's `GrainCloud` too -- its grains
+    fade and get skipped right alongside the parent, not just the
+    object's own signal.
+  - Smoothly ramped (`muteRampSeconds` = 20ms) rather than switched
+    instantly, so toggling never clicks; once an object's ramp has
+    actually reached silence (not just close to it), its
+    propagation/encoding work is skipped entirely for that block -- the
+    actual performance win, rather than paying full cost every block just
+    to encode silence.
+  - Serialized in presets (optional, additive, no schemaVersion bump).
+  - Not yet wired into the object-list sidebar (`Source/ObjectListPanel.h`,
+    merged separately) -- both features share a `SoundObject` and a
+    selection index, but the sidebar rows themselves don't yet expose
+    Solo/Mute controls; only accessible from the parameter panel with an
+    object selected for now. Still an open follow-up now that both are
+    on `main` together, not a merge conflict to resolve -- the actual
+    UI hookup in `Source/ObjectListPanel.cpp` hasn't been written yet.
 
 ### Changed
 - **Room boundary now renders as a shaded, translucent sphere** instead

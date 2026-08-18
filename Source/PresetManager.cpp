@@ -327,6 +327,8 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         objVar->setProperty ("mass", (double) obj.mass);
         objVar->setProperty ("damping", (double) obj.damping);
         objVar->setProperty ("gain", (double) obj.gain);
+        objVar->setProperty ("muted", obj.muted);
+        objVar->setProperty ("soloed", obj.soloed);
 
         // Inertia/motion limits (optional fields, see Presets/schema/README.md)
         objVar->setProperty ("maxVelocity", (double) obj.maxVelocity);
@@ -441,6 +443,10 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         obj.mass                = (float) element.getProperty ("mass", (double) obj.mass);
         obj.damping              = (float) element.getProperty ("damping", (double) obj.damping);
         obj.gain                 = (float) element.getProperty ("gain", (double) obj.gain);
+        if (element.hasProperty ("muted"))
+            obj.muted = (bool) element.getProperty ("muted", obj.muted);
+        if (element.hasProperty ("soloed"))
+            obj.soloed = (bool) element.getProperty ("soloed", obj.soloed);
 
         // Inertia/motion limits (optional, default from SoundObject{})
         obj.maxVelocity           = (float) element.getProperty ("maxVelocity", (double) obj.maxVelocity);

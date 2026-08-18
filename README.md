@@ -380,8 +380,20 @@ purely random.
   directly via `AmbisonicsEncoder` (spatial encoding + distance gain, own
   ramped `previousChannelGains` per grain for zipper-free gain changes) --
   deliberately *not* run through `PropagationProcessor`, since a full
-  per-grain Doppler/delay/air-absorption/directivity pass would be too
-  expensive with dozens of concurrent grains.
+  per-grain delay/air-absorption/directivity pass would be too expensive
+  with dozens of concurrent grains.
+- **Optional per-grain Doppler** (`Source/GrainDoppler.h`, "Doppler" toggle
+  in the Grain Cloud parameter category, **off by default**): a much
+  cheaper approximation than `PropagationProcessor`'s delay-line-based
+  Doppler -- a single classic-Doppler-formula pitch ratio computed once
+  per grain per audio block from its control-rate position/velocity
+  snapshot, multiplied into the existing `pitchJitter`-based playback
+  rate, no delay line and no per-sample cost. Uses the parent object's own
+  `dopplerFactor` (Doppler parameter category) to scale strength, so it's
+  one familiar knob, not a second one. Off by default because it's a real
+  (if small) added cost per grain per block, and at up to 128 concurrent
+  grains that adds up -- opt-in rather than silently changing existing
+  grain-cloud sound.
 - **Global spawn budget.** `maxConcurrentGrains` caps each cloud
   individually (up to 128); a further system-wide cap
   (`SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal`, currently 128,

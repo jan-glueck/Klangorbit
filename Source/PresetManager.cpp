@@ -210,6 +210,7 @@ namespace
     {
         auto* obj = new juce::DynamicObject();
         obj->setProperty ("enabled", s.enabled);
+        obj->setProperty ("dopplerEnabled", s.dopplerEnabled);
         obj->setProperty ("grainRate", (double) s.grainRate);
         obj->setProperty ("grainDuration", (double) s.grainDuration);
         obj->setProperty ("pitchJitter", (double) s.pitchJitter);
@@ -243,6 +244,8 @@ namespace
 
         if (gcVar.hasProperty ("enabled"))
             out.enabled = (bool) gcVar.getProperty ("enabled", out.enabled);
+        if (gcVar.hasProperty ("dopplerEnabled"))
+            out.dopplerEnabled = (bool) gcVar.getProperty ("dopplerEnabled", out.dopplerEnabled);
 
         out.grainRate               = (float) gcVar.getProperty ("grainRate", (double) out.grainRate);
         out.grainDuration           = (float) gcVar.getProperty ("grainDuration", (double) out.grainDuration);

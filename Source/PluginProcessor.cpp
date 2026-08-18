@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "GrainRenderer.h"
+#include "GrainDoppler.h"
 #include <algorithm>
 #include <cmath>
 
@@ -186,7 +187,10 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // PropagationProcessor pass for grains (no per-grain delay line/air
     // absorption/directivity) -- with dozens of simultaneous short-lived
     // grains, that would be disproportionately expensive; grains only get
-    // AmbisonicsEncoder's built-in spatial encoding + distance gain.
+    // AmbisonicsEncoder's built-in spatial encoding + distance gain, plus
+    // an optional, much cheaper per-grain Doppler pitch shift (see
+    // GrainCloudSettings::dopplerEnabled/GrainDoppler.h below -- a single
+    // per-block ratio, not a delay line).
     float* grainOut = grainScratch.getWritePointer (0);
 
     for (int objIdx = 0; objIdx < trajectoryEngine.getNumObjects(); ++objIdx)
@@ -228,7 +232,16 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             if (state.samplesPlayed >= snap.grainLengthSamples)
                 continue; // this grain's audio envelope has already finished (physics may still be fading out)
 
-            renderGrainBlock (ringData, ringSize, snap.bufferReadStartSample, snap.playbackRate,
+            // Optional per-grain Doppler (default off, see
+            // GrainCloudSettings::dopplerEnabled) -- a per-block-constant
+            // pitch ratio multiplied into the existing pitchJitter-based
+            // rate, deliberately not a delay line (see GrainDoppler.h).
+            float effectivePlaybackRate = snap.playbackRate;
+            if (trajectoryEngine.getGrainCloud (objIdx).getSettings().dopplerEnabled)
+                effectivePlaybackRate *= GrainDoppler::computeDopplerRatio (snap.position, snap.velocity,
+                                                                             obj.dopplerFactor, sceneSettings.speedOfSound);
+
+            renderGrainBlock (ringData, ringSize, snap.bufferReadStartSample, effectivePlaybackRate,
                                snap.grainLengthSamples, state.samplesPlayed, grainOut, numSamples);
 
             float azimuth, elevation, distance;

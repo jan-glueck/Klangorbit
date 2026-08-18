@@ -298,6 +298,36 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   (`+`/`-` Object buttons, preset load). Only lists active objects, no
   per-grain entries (no such selection concept exists, see the Grain
   Cloud parameter category).
+- **Optional per-grain Doppler pitch shift**, off by default
+  (`GrainCloudSettings::dopplerEnabled`, new "Doppler" toggle in the
+  Grain Cloud parameter category). Main-object Doppler already existed
+  (`PropagationProcessor`/`SoundObject::dopplerFactor`); this is a
+  deliberately much cheaper per-grain approximation, not a reuse of that
+  machinery -- grains still skip `PropagationProcessor` entirely (no
+  delay line, no per-sample cost). New `Source/GrainDoppler.h`
+  (header-only, JUCE-GUI-free, same spirit as `SlingGesture.h`/`OrbitMath.h`):
+  a single classic-Doppler-formula pitch ratio
+  (`speedOfSound / (speedOfSound - radialVelocity)`) computed once per
+  grain per audio block from its control-rate position/velocity snapshot
+  (`GrainCloud::Snapshot` gained a `velocity` field), multiplied into the
+  existing `pitchJitter`-based playback rate. Uses the parent
+  `SoundObject`'s own `dopplerFactor` to scale strength (0 = no shift, 1 =
+  physical, >1 = exaggerated) -- one familiar knob, not a second one.
+  Defensively clamped (denominator floor, final ratio bounded to
+  `[0.25, 4.0]`) so a single mispitched grain can't become a jarring
+  artifact even at extreme/pathological inputs (velocity far exceeding
+  `speedOfSound`, an artistically very low `speedOfSound`, or a grain
+  exactly at the listener position). Default off because it's a real (if
+  small -- one `asin`-free sqrt+dot-product per grain per block, not per
+  sample) added cost per grain, and at up to 128 concurrent grains
+  (see above) that adds up -- opt-in rather than silently changing
+  existing grain-cloud sound.
+  - `Tools/verify_grain_cloud` gained checks: `dopplerFactor=0` disables
+    it exactly, approaching/receding grains raise/lower pitch, purely
+    tangential motion produces no shift, `dopplerFactor` scales the
+    effect proportionally, the approaching-case ratio matches the classic
+    Doppler formula numerically, and extreme/pathological inputs stay
+    finite and within the clamp (9/9 passing).
 
 ### Changed
 - **Room boundary now renders as a shaded, translucent sphere** instead

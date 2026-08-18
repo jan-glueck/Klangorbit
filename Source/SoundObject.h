@@ -155,6 +155,30 @@ struct SoundObject
     // hierarchies).
     int orbitReferenceObjectId = -1;
 
+    // --- Sling gesture: "slingshot" gravity assist ------------------------
+    // Runtime state set only by TrajectoryEngine::throwObject() when the
+    // sling gesture's Slingshot mode fires (see PluginEditor); not a
+    // starting parameter a preset would hand-author, so not serialized by
+    // PresetManager (same reasoning as attractionPulsePhase above).
+    //
+    // -1 = no active pull. >=0 = the object is continuously pulled toward
+    // that OTHER object's LIVE position every tick, in Impulse mode, via
+    // the same inverse-square force law as the ordinary n-body attraction
+    // system (see TrajectoryEngine::computeAttractionForce()) -- but
+    // deliberately kept as its own separate mechanism rather than reusing
+    // attractionStrength directly, so firing a slingshot never mutates the
+    // target object's own, independently-configured Attraction settings.
+    // Depending on approach speed/distance/strength, the result emerges
+    // naturally from the physics -- a deflected flyby that continues on a
+    // new course, or a capture into a bound, looping trajectory -- exactly
+    // like a real gravity-assist maneuver, not a scripted outcome.
+    int slingshotTargetId = -1;
+    // Pull strength for the above, analogous to attractionStrength but
+    // private to this one gesture-driven pull. Set once at throw time from
+    // SlingGesture::slingshotGravityStrength; 0 whenever slingshotTargetId
+    // is -1.
+    float slingshotStrength = 0.0f;
+
     // --- Acoustic propagation (Doppler, directivity) ---------------------
     // See PropagationProcessor for how these are used. 0 = no Doppler
     // pitch shift, 1 = physically correct (given SceneSettings::speedOfSound),

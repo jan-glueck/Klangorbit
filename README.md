@@ -86,21 +86,25 @@ the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
    object (only object 0 is active at startup), "- Remove Object"
    deactivates the selected one.
 7. Shift+drag an object -> "sling" launch gesture: pull it away from its
-   position like a catapult (a cyan bow line follows the cursor, plus
-   a dashed preview showing the actual upcoming throw/orbit -- see below)
-   and release to fire it in the opposite direction. Try it a few times to
-   compare with the plain throw gesture (4) -- the sling's launch speed is
+   position like a catapult (a bow line follows the cursor, plus a dashed
+   preview showing the actual upcoming result -- see below) and release
+   to fire it in the opposite direction. Try it a few times to compare
+   with the plain throw gesture (4) -- the sling's launch speed is
    proportional to how far you pulled, not to how fast you moved the
-   mouse. While pulling, hold Ctrl to switch the shot from a free throw to
-   an orbit shot (the bow line turns violet); with Ctrl held, tap Alt to
-   step through circular/elliptical orbit shapes, and tap Tab (repeatedly)
-   to cycle the orbit's center itself through every other active object
-   in the scene and back to the world origin ("slingshot" mode -- see
-   "Sling launch gesture" below) -- the dashed orbit preview updates live
-   as you do either. Releasing far enough from the object fires the shot
-   (the preview disappears the instant it does); releasing very close to
-   the anchor (a barely-there pull) cancels it, same as a plain click. See
-   `SlingGesture.h`/`PluginEditor::startSling()` for the full mechanics.
+   mouse. While pulling, tap Ctrl (repeatedly) to cycle through three
+   launch modes: Free Throw (cyan bow line, default), Orbit Shot (violet
+   -- a scripted ellipse/circle), and Slingshot (yellow-green -- a REAL
+   gravity-based deflection around another object, not scripted). With
+   Orbit Shot or Slingshot selected, tap Alt to step through
+   circular/elliptical orbit shapes (Orbit Shot only) and tap Tab
+   (repeatedly) to cycle which other active object the shot targets and
+   back to the world origin ("Center") -- see "Sling launch gesture"
+   below for what each mode's target selection actually does. The dashed
+   preview updates live to match. Releasing far enough from the object
+   fires the shot (the preview disappears the instant it does); releasing
+   very close to the anchor (a barely-there pull) cancels it, same as a
+   plain click. See `SlingGesture.h`/`PluginEditor::startSling()` for the
+   full mechanics.
 8. Drag on EMPTY space (no object/grain under the cursor) -> orbits the
    camera around the scene instead of moving anything; scroll the mouse
    wheel to zoom. The view starts pointing straight down (the same
@@ -273,40 +277,68 @@ fast the mouse happened to move.
   determines both the launch direction (opposite the pull) and its
   strength (proportional to the pull distance). Pulling less than ~15 cm
   cancels the shot, same as a plain click.
-- **Two launch modes, switchable mid-gesture.** While still holding Shift
-  and dragging:
-  - **Free throw** (default): reuses the existing throw/`Impulse` physics
+- **Three launch modes, cycled mid-gesture with Ctrl.** While still
+  holding Shift and dragging, tapping Ctrl steps through Free Throw ->
+  Orbit Shot -> Slingshot -> back to Free Throw (`SlingLaunchMode` in
+  `PluginEditor.h`). Every gesture starts on Free Throw, even if Ctrl
+  happens to already be held down when the drag begins -- only an actual
+  fresh press advances the mode, the same edge-detection rule Alt and Tab
+  already follow (see below), so briefly holding Shift while Ctrl is
+  already down for an unrelated reason can't silently skip a mode.
+  - **Free Throw** (default): reuses the existing throw/`Impulse` physics
     (`TrajectoryEngine::throwObject()`), just aimed by the pull instead of
     by release velocity.
-  - **Orbit shot** (hold Ctrl to switch into it, tap Alt to step through
-    circular/elliptical shapes): launches the object directly onto an
-    orbit instead of a free trajectory
-    (`TrajectoryEngine::startOrbit()`). Pull distance sets the orbit's
-    size (semi-major axis), the pull line's own direction sets the
-    ellipse's orientation (`SoundObject::orbitOrientation`, new field, see
-    below), and the spin direction (CW/CCW) is derived from the gesture's
-    geometry rather than a separate control -- pulling to one side of the
-    object versus the other naturally produces the opposite spin
+  - **Orbit Shot** (tap Alt to step through circular/elliptical shapes):
+    launches the object directly onto a *scripted* orbit instead of a
+    free trajectory (`TrajectoryEngine::startOrbit()`) -- a mathematically
+    exact ellipse/circle, not a physics simulation. Pull distance sets the
+    orbit's size (semi-major axis), the pull line's own direction sets the
+    ellipse's orientation (`SoundObject::orbitOrientation`), and the spin
+    direction (CW/CCW) is derived from the gesture's geometry rather than
+    a separate control -- pulling to one side of the object versus the
+    other naturally produces the opposite spin
     (`SlingGesture::computeOrbitDirectionSign()`, a signed 2D cross
     product of the anchor's position relative to the orbit center and the
     launch direction). Centers on the world origin ("Center") by default,
-    consistent with the double-click orbit gesture.
-  - **Slingshot targeting** -- while pulling, tap **Tab** (repeatedly) to
-    cycle the orbit shot's center through every other currently active
-    object in the scene and back to "Center", like choosing which body a
-    spacecraft's gravity-assist flyby swings around. The launched orbit
-    then tracks that object's LIVE, possibly-moving position every
-    control-rate tick (`TrajectoryEngine::startOrbit()`'s new
-    `referenceObjectId` parameter -> `SoundObject::orbitReferenceObjectId`,
-    which `integrate()` already re-reads every tick for exactly this
-    reason) rather than a one-time snapshot of where it was at release
-    time. The on-screen "Orbit: <shape>" label grows a second line
-    ("around Center" / "around Object N") showing the current selection,
-    and the dashed orbit preview itself already tracks the chosen
-    (possibly moving) target live while aiming, via the same
-    `SlingGesture::cycleSlingReference()` cycle. Only meaningful once the
-    gesture is already active -- Tab does nothing otherwise, and every
-    gesture starts back on "Center".
+    consistent with the double-click orbit gesture -- or tap **Tab**
+    (repeatedly) to cycle the center itself through every other active
+    object in the scene and back to "Center" first (see "Reference
+    targeting" below); the orbit then tracks that object's LIVE,
+    possibly-moving position every tick
+    (`TrajectoryEngine::startOrbit()`'s `referenceObjectId` parameter ->
+    `SoundObject::orbitReferenceObjectId`, which `integrate()` already
+    re-reads every tick for exactly this reason).
+  - **Slingshot** -- a REAL, physics-based gravity-assist, not a scripted
+    path. Pick a target object with Tab (see below; "Center" has no
+    gravity-well meaning here, so it just degrades to a plain Free Throw),
+    and the thrown object is continuously pulled toward that object's live
+    position via the exact same inverse-square n-body force law the
+    Attraction system already uses
+    (`TrajectoryEngine::computeAttractionForce()`, extended with a small,
+    self-contained addition for this -- see
+    `SoundObject::slingshotTargetId`/`slingshotStrength`). Crucially, this
+    does NOT touch the target object's own Attraction settings at all --
+    firing a slingshot never mutates anything about the object you aimed
+    at, the pull is private to the thrown object itself, with a fixed
+    strength (`SlingGesture::slingshotGravityStrength`) scaled by the
+    target's real `Mass` (already a per-object field). Depending on
+    approach speed, distance, and that mass, the outcome is a genuine
+    physics result, not a scripted one: a deflected flyby that continues
+    on a new course (a classic "gravity assist"), or a capture into a
+    bound, looping trajectory around the target -- try both by throwing
+    fast-and-wide versus slow-and-close past a heavy object.
+- **Reference targeting (Tab).** While pulling, tap **Tab** repeatedly to
+  cycle a shared target selection through every other currently active
+  object in the scene and back to "Center"
+  (`SlingGesture::cycleSlingReference()`, `PluginEditor::slingReferenceObjectId`).
+  Used by both Orbit Shot (which point the scripted ellipse centers on)
+  and Slingshot (which object's gravity pulls on the thrown one) --
+  tracked independently of the current launch mode, so a target can be
+  picked before or after Ctrl-cycling into a mode that uses it. Switching
+  into Slingshot while still on "Center" auto-selects the first available
+  object instead of silently doing nothing, if one exists. Only
+  meaningful while the gesture is active -- Tab does nothing otherwise,
+  and every gesture starts back on "Center".
 - **`SoundObject::orbitOrientation`** (new field): rotates an elliptical
   orbit's major axis within its orbit plane, radians, irrelevant at
   `orbitEccentricity=0`. `TrajectoryEngine::startOrbit()` gained matching
@@ -316,26 +348,37 @@ fast the mouse happened to move.
 - **All pull-to-launch math lives in `SlingGesture.h`**, deliberately
   separate from the JUCE mouse-handling code in `PluginEditor`, so the
   exact same functions run in the editor and in
-  `Tools/verify_orbit.cpp` (checks the direction-sign/orientation math
-  plus the ellipse-rotation formula in `TrajectoryEngine`) -- not a test
-  reimplementation.
+  `Tools/verify_orbit.cpp` (checks the direction-sign/orientation math,
+  the ellipse-rotation formula in `TrajectoryEngine`, the reference-cycle
+  logic, and the Slingshot gravity physics -- including that a pulled
+  throw is measurably deflected compared to an otherwise-identical plain
+  one) -- not a test reimplementation.
 - **Live movement preview while aiming.** In addition to the bow line
   (which shows the pull/aim, i.e. the *opposite* of where the object will
   actually go), a second, dashed element previews the actual result and
-  updates live as you drag:
-  - **Free throw:** a straight dashed line from the anchor in the launch
+  updates live as you drag, one per mode:
+  - **Free Throw:** a straight dashed line from the anchor in the launch
     direction, with a small dot at its tip, length proportional to pull
     distance -- deliberately not a full trajectory simulation (no
     `globalField`/damping curvature), just a clear directional hint, per
     the design brief.
-  - **Orbit shot:** the actual resulting ellipse/circle outline, sampled
+  - **Orbit Shot:** the actual resulting ellipse/circle outline, sampled
     with the same `OrbitMath.h` formula `TrajectoryEngine` itself uses to
     move an orbiting object -- reflects the current pull distance,
-    direction, and eccentricity step live, exactly as it will look the
-    instant the shot fires.
-  - Both are dashed specifically so they can never be confused with the
-    real, already-happened movement trail or a confirmed orbit path
-    (both solid) -- and both disappear completely the moment the mouse is
+    direction, eccentricity step, and target live, exactly as it will
+    look the instant the shot fires.
+  - **Slingshot:** the actual resulting curved path, forward-simulated a
+    couple of seconds ahead with the exact same force law/constant
+    `computeAttractionForce()` uses
+    (`SlingGesture::simulateSlingshotPreview()`, simple Euler integration)
+    -- a real, physically accurate preview of the deflection, not an
+    approximation, though it does treat the target as momentarily fixed
+    for the (short) preview horizon rather than also simulating its own
+    motion, the same kind of simplification the Free Throw preview above
+    already makes.
+  - All three are dashed specifically so they can never be confused with
+    the real, already-happened movement trail or a confirmed orbit path
+    (both solid) -- and all disappear completely the moment the mouse is
     released, nothing lingers once the object actually starts moving.
   - Grains are unaffected by any of this: a `GrainCloud` on the slung
     object (e.g. in `AttractRepelSiblings` mode) keeps moving independently

@@ -455,6 +455,35 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     case this shortcut simply won't fire in that host -- no crash or
     silent misbehavior, just a no-op. Not something a plugin can fully
     control; noted in "Known limitations" below.
+- **App/plugin icon and vendor name.** `Assets/AppIcon.png` (1024x1024,
+  editable vector source at `Assets/AppIcon.svg`) is now baked into a
+  proper `.icns` for both the Standalone `.app` and the VST3 bundle at
+  build time, via `ICON_BIG`/`ICON_SMALL` in `CMakeLists.txt`'s
+  `juce_add_plugin()` call -- JUCE's own icon tooling (`juceaide`) parses
+  the source image directly (SVG or raster) and rescales it as needed
+  per icon size, so a single square master image covers both slots, same
+  as JUCE's own example projects. The `.icns` itself is generated fresh
+  every build, not checked into the repo.
+  - `COMPANY_NAME` changed from the placeholder `"YourName"` to
+    `"Jan Glueck"` -- this is what a host's plugin browser (e.g. Reaper)
+    shows as the vendor/manufacturer, read from the VST3's own
+    `moduleinfo.json` (`"Vendor": "Jan Glueck"`, verified in the built
+    bundle). `PLUGIN_MANUFACTURER_CODE` updated to match (`Yrnm` -> `Jgck`,
+    a 4-character Steinberg-style code derived from the new name) --
+    changing this changes the plugin's persistent VST3 class ID, which is
+    fine to do now (still pre-release, no real users/presets depend on
+    the old identity) but would NOT be a safe change to make later after
+    any real release.
+  - Added an explicit `BUNDLE_ID "com.janglueck.spatialaudiopoc"`: JUCE's
+    own default bundle ID is derived from `COMPANY_NAME`, which now
+    contains a space and would otherwise produce an invalid (space-
+    containing) bundle identifier -- caught immediately via a CMake
+    configure-time warning, fixed before ever building.
+  - Verified: both the Standalone `.app` (`Contents/Resources/AppIcon.icns`
+    correctly referenced via `CFBundleIconFile`) and the VST3 bundle
+    (`Contents/Resources/AppIcon.icns`, `moduleinfo.json`'s `Vendor` field)
+    checked directly in the built artifacts, plus the usual full
+    rebuild/test-suite/app-launch check.
 
 ### Changed
 - **Solo/Mute controls moved to the object-list sidebar, removed from the

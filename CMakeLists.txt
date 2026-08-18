@@ -28,7 +28,11 @@ set(SAPOC_DEFAULT_AMBI_ORDER 3 CACHE STRING "Default Ambisonics order")
 set(SAPOC_MAX_LIVE_INPUTS 8 CACHE STRING "Max. number of simultaneous mono live inputs / SoundObjects")
 
 juce_add_plugin(SpatialAudioPOC
-    COMPANY_NAME "YourName"
+    COMPANY_NAME "Jan Glueck"
+    # Explicit, DNS-safe bundle identifier -- JUCE's own default derives
+    # this from COMPANY_NAME, which contains a space and is therefore not
+    # a valid bundle ID (a "Jan Glueck" default trips a CMake warning).
+    BUNDLE_ID "com.janglueck.spatialaudiopoc"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
@@ -39,8 +43,15 @@ juce_add_plugin(SpatialAudioPOC
     # of JUCE's per-user default (~/Library/Audio/Plug-Ins/VST3) -- world-
     # writable on this Mac, no sudo needed for the build.
     VST3_COPY_DIR "/Library/Audio/Plug-Ins/VST3"
-    PLUGIN_MANUFACTURER_CODE Yrnm
+    PLUGIN_MANUFACTURER_CODE Jgck
     PLUGIN_CODE Sapc
+    # App/plugin icon (Standalone .app + VST3 bundle), one 1024x1024 PNG
+    # for both slots -- juceaide rescales it as needed per icon size, same
+    # pattern JUCE's own examples use for a single square source image.
+    # Source/vector original kept alongside it (Assets/AppIcon.svg) for
+    # future edits; the .icns itself is baked at build time, not checked in.
+    ICON_BIG "${CMAKE_SOURCE_DIR}/Assets/AppIcon.png"
+    ICON_SMALL "${CMAKE_SOURCE_DIR}/Assets/AppIcon.png"
     FORMATS VST3 Standalone
     PRODUCT_NAME "Spatial Audio POC"
 )

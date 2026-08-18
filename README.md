@@ -60,6 +60,14 @@ Result: `SpatialAudioPOC.vst3` and the standalone app in the build directory
 (`SpatialAudioPOC_artefacts/`). The VST3 is also automatically copied to the
 system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
 
+App/plugin icon and vendor name: `Assets/AppIcon.png` (1024x1024, source
+vector at `Assets/AppIcon.svg`) is baked into a proper `.icns` for both the
+Standalone `.app` and the VST3 bundle at build time by JUCE's own icon
+tooling (`ICON_BIG`/`ICON_SMALL` in `CMakeLists.txt`) -- the `.icns` itself
+isn't checked in, it's regenerated every build. `COMPANY_NAME "Jan Glueck"`
+in the same `juce_add_plugin()` call is what a host like Reaper shows as
+the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
+
 ## Testing with Reaper + SPARTA/IEM
 
 1. Start the plugin/standalone app, connect a live input (microphone or
@@ -518,6 +526,9 @@ than styled ad hoc per widget:
 SpatialAudioPOC/
   CMakeLists.txt
   CHANGELOG.md          <- code versioning (SemVer)
+  Assets/
+    AppIcon.png           <- 1024x1024 master, baked into a .icns at build time (see "Build" above)
+    AppIcon.svg           <- editable vector source for AppIcon.png
   Source/                <- C++ code
   Tools/
     validate_presets.cpp     <- CLI tool, checks Presets/factory/*.json (see Docs/WORKFLOW.md)

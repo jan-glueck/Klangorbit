@@ -369,6 +369,17 @@ purely random.
   granulation is on). A spawned grain reads a short, Hann-windowed burst
   from it, with its own pitch (`pitchJitter`) and random start-position
   offset (`positionJitterInBuffer`).
+- **Read-depth range.** `grainReadDepthRangeMin`/`grainReadDepthRangeMax`
+  independently control how far into the ring buffer's *past* a grain's
+  start point may be drawn from, additive with `positionJitterInBuffer`
+  above (that one stays a small de-clicking offset near the current write
+  head; this is a deliberate, much larger reach into history -- up to 10s).
+  0/0 (default) disables it, same as before this existed.
+  `grainReadDepthDistribution` picks how the depth is sampled within the
+  range: `Uniform`, `WeightedTowardRecent`, or `WeightedTowardOld`. Bounded
+  by `GrainLimits::maxGrainReadDepthRange` (`Source/Grain.h`), the same
+  constant the ring buffer is sized from, so the UI simply cannot request a
+  depth beyond what's actually allocated.
 - **Single-shot grain model.** `grainDuration` is both the audio envelope
   length and the movement lifetime -- a grain is spawned, moves for that
   duration while fading, and is done. `grainRate` controls how often new

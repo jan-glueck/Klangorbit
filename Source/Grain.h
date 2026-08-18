@@ -21,6 +21,20 @@ enum class GrainWindowShape
 };
 
 /**
+    How a grain's start point is drawn from within [grainReadDepthRangeMin,
+    grainReadDepthRangeMax] (see GrainCloudSettings) -- deliberately just
+    three simple presets rather than a general parametric distribution
+    model, since that's what actually gets used in practice for this kind
+    of control (no user-facing need for e.g. a tunable skew exponent).
+*/
+enum class GrainReadDepthDistribution
+{
+    Uniform,              // every depth in the range equally likely
+    WeightedTowardRecent, // biased toward the MIN end (shallower into the past)
+    WeightedTowardOld     // biased toward the MAX end (deeper into the past)
+};
+
+/**
     Which single movement-related field gets +/- jitterRange randomization
     per spawned grain, on top of the always-present audio-side pitchJitter/
     positionJitterInBuffer (those are separate, named fields -- this is a
@@ -61,9 +75,19 @@ namespace GrainLimits
     // of output).
     constexpr float maxPitchJitterPlaybackRate = 2.0f;
 
+    // ParameterPanel's upper slider bound for grainReadDepthRangeMin/Max --
+    // also the mechanism that keeps the UI from ever letting the user
+    // configure a depth beyond what requiredRingBufferSeconds below
+    // actually allocates: the slider simply can't go higher, rather than
+    // silently clamping or failing at spawn time.
+    constexpr float maxGrainReadDepthRange = 10.0f;      // seconds
+
     // Longest possible look-back a single grain can ever need, given the
-    // limits above -- the ring buffer must be at least this long.
-    constexpr float requiredRingBufferSeconds = maxPositionJitterInBuffer + maxGrainDuration * maxPitchJitterPlaybackRate;
+    // limits above -- the ring buffer must be at least this long. The
+    // depth-range offset (grainReadDepthRange) and the pre-existing
+    // positionJitterInBuffer are sampled independently and ADD together
+    // (see GrainCloud::spawnGrain()), so both maxima are summed here.
+    constexpr float requiredRingBufferSeconds = maxPositionJitterInBuffer + maxGrainReadDepthRange + maxGrainDuration * maxPitchJitterPlaybackRate;
 }
 
 /**
@@ -99,6 +123,17 @@ struct GrainCloudSettings
     // strength (0 = no shift even if this is on, 1 = physical, >1 =
     // exaggerated) -- one familiar knob, not a second one.
     bool dopplerEnabled = false;
+
+    // How far into the ring buffer's PAST a grain's start point may be
+    // drawn from, independent of (and additive with) positionJitterInBuffer
+    // above -- that field is a small amount of "de-clicking" randomization
+    // near the current write head, this is a deliberate, potentially much
+    // larger reach back into history (e.g. to grab material from seconds
+    // ago instead of only the last ~50ms). Both 0.0f by default = disabled
+    // (grain start = write head, same as before this field existed).
+    float grainReadDepthRangeMin = 0.0f;      // seconds
+    float grainReadDepthRangeMax = 0.0f;      // seconds
+    GrainReadDepthDistribution grainReadDepthDistribution = GrainReadDepthDistribution::Uniform;
 
     // --- Movement side ----------------------------------------------------
     GrainMovementMode movementMode = GrainMovementMode::RandomWalk;

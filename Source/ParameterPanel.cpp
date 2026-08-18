@@ -301,6 +301,27 @@ ParameterPanel::ParameterPanel()
     addGrainFloatRow ("Grain Duration (s)", &GrainCloudSettings::grainDuration, 0.01, GrainLimits::maxGrainDuration, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Pitch Jitter", &GrainCloudSettings::pitchJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Position Jitter In Buffer (s)", &GrainCloudSettings::positionJitterInBuffer, 0.0, GrainLimits::maxPositionJitterInBuffer, 0.01, Category::GrainCloud);
+
+    // Bounded to GrainLimits::maxGrainReadDepthRange -- the same constant
+    // the ring buffer is sized from (see Grain.h) -- so the user simply
+    // cannot configure a depth beyond what's actually allocated; there is
+    // no separate runtime clamp/warning needed because the slider itself
+    // can't produce an out-of-range value.
+    addGrainFloatRow ("Read Depth Min (s)", &GrainCloudSettings::grainReadDepthRangeMin, 0.0, GrainLimits::maxGrainReadDepthRange, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Read Depth Max (s)", &GrainCloudSettings::grainReadDepthRangeMax, 0.0, GrainLimits::maxGrainReadDepthRange, 0.01, Category::GrainCloud);
+
+    grainReadDepthDistributionRow = std::make_unique<ComboRowComponent> ("Read Depth Distribution");
+    grainReadDepthDistributionRow->combo.addItem ("Uniform", 1);
+    grainReadDepthDistributionRow->combo.addItem ("Weighted Toward Recent", 2);
+    grainReadDepthDistributionRow->combo.addItem ("Weighted Toward Old", 3);
+    grainReadDepthDistributionRow->onSelected = [this] (int index)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->grainReadDepthDistribution = (GrainReadDepthDistribution) index;
+    };
+    content.addAndMakeVisible (*grainReadDepthDistributionRow);
+    addToLayout (*grainReadDepthDistributionRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
+
     addGrainIntRow ("Max Concurrent Grains (this cloud)", &GrainCloudSettings::maxConcurrentGrains, 1.0, 128.0, Category::GrainCloud);
 
     grainWindowShapeRow = std::make_unique<ComboRowComponent> ("Window Shape");
@@ -555,6 +576,7 @@ void ParameterPanel::refreshFromModel()
     grainWindowShapeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->windowShape, juce::dontSendNotification);
     grainMovementModeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->movementMode, juce::dontSendNotification);
     grainJitterTargetRow->combo.setSelectedItemIndex ((int) editedGrainCloud->jitterTarget, juce::dontSendNotification);
+    grainReadDepthDistributionRow->combo.setSelectedItemIndex ((int) editedGrainCloud->grainReadDepthDistribution, juce::dontSendNotification);
 }
 
 void ParameterPanel::layoutContent()

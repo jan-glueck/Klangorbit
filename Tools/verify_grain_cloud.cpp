@@ -492,6 +492,105 @@ static void testGrainDoppler()
     }
 }
 
+// ============================================================== grainReadDepthRange
+
+namespace
+{
+    // Spawns a burst of grains under the given settings and returns each
+    // one's observed read depth in seconds (writeHead - bufferReadStartSample,
+    // converted via kSampleRate) -- i.e. how far back into the ring buffer's
+    // history that grain's start point was drawn from.
+    std::vector<float> collectReadDepths (const GrainCloudSettings& settingsToUse, int numGrains, int rngSeed)
+    {
+        GrainCloud cloud (numGrains);
+        cloud.getSettings() = settingsToUse;
+        cloud.getSettings().enabled = true;
+        cloud.getSettings().grainRate = 1000.0f; // near-immediate spawns
+        cloud.getSettings().grainDuration = 5.0f; // long-lived, don't expire mid-burst
+        cloud.getSettings().maxConcurrentGrains = numGrains;
+
+        juce::Random rng (rngSeed);
+        int budget = numGrains;
+        constexpr int writeHead = 500000; // arbitrary, comfortably larger than any tested depth in samples
+
+        cloud.setRingBufferContext (writeHead, kSampleRate);
+        for (int i = 0; i < numGrains; ++i)
+            cloud.update (0.001, {}, {}, budget, rng); // one small tick per spawn, avoids exhausting the interval in one call
+
+        std::vector<GrainCloud::Snapshot> snap;
+        cloud.getSnapshot (snap);
+
+        std::vector<float> depths;
+        for (auto& s : snap)
+            if (s.active)
+                depths.push_back ((float) (writeHead - s.bufferReadStartSample) / (float) kSampleRate);
+        return depths;
+    }
+}
+
+static void testReadDepthRangeDisabledByDefault()
+{
+    GrainCloudSettings settings;
+    settings.positionJitterInBuffer = 0.05f;
+    // grainReadDepthRangeMin/Max left at their 0.0f defaults -- disabled.
+
+    const auto depths = collectReadDepths (settings, 20, 101);
+    check (! depths.empty(), "GrainCloud: read-depth test setup actually spawned grains (default settings)");
+
+    float maxDepth = 0.0f;
+    for (float d : depths) maxDepth = juce::jmax (maxDepth, d);
+    std::printf ("       max observed read depth with depth-range disabled: %.4fs (positionJitterInBuffer=0.05)\n", maxDepth);
+    check (maxDepth <= 0.05f + 0.001f, "GrainCloud: grainReadDepthRange at its default (0,0) is a no-op, behaves exactly like before this field existed");
+}
+
+static void testReadDepthRangeIsRespected()
+{
+    GrainCloudSettings settings;
+    settings.positionJitterInBuffer = 0.0f; // isolate the depth-range effect
+    settings.grainReadDepthRangeMin = 1.0f;
+    settings.grainReadDepthRangeMax = 2.0f;
+    settings.grainReadDepthDistribution = GrainReadDepthDistribution::Uniform;
+
+    const auto depths = collectReadDepths (settings, 40, 202);
+    check (! depths.empty(), "GrainCloud: read-depth test setup actually spawned grains (range test)");
+
+    bool allWithinRange = true;
+    for (float d : depths)
+        if (d < 1.0f - 0.001f || d > 2.0f + 0.001f)
+            allWithinRange = false;
+
+    std::printf ("       %d grains spawned, read depths within [1.0, 2.0]s: %s\n",
+                 (int) depths.size(), allWithinRange ? "yes" : "no");
+    check (allWithinRange, "GrainCloud: grainReadDepthRangeMin/Max bounds every spawned grain's read depth");
+}
+
+static void testReadDepthDistributionBias()
+{
+    GrainCloudSettings baseSettings;
+    baseSettings.positionJitterInBuffer = 0.0f;
+    baseSettings.grainReadDepthRangeMin = 0.0f;
+    baseSettings.grainReadDepthRangeMax = 4.0f;
+
+    auto averageDepth = [&] (GrainReadDepthDistribution distribution, int seed) -> float
+    {
+        auto settings = baseSettings;
+        settings.grainReadDepthDistribution = distribution;
+        const auto depths = collectReadDepths (settings, 300, seed);
+        float total = 0.0f;
+        for (float d : depths) total += d;
+        return depths.empty() ? -1.0f : total / (float) depths.size();
+    };
+
+    const float avgRecent  = averageDepth (GrainReadDepthDistribution::WeightedTowardRecent, 303);
+    const float avgUniform = averageDepth (GrainReadDepthDistribution::Uniform, 304);
+    const float avgOld     = averageDepth (GrainReadDepthDistribution::WeightedTowardOld, 305);
+
+    std::printf ("       average read depth over 300 grains (range [0,4]s): recent=%.3f uniform=%.3f old=%.3f\n",
+                 avgRecent, avgUniform, avgOld);
+    check (avgRecent < avgUniform, "GrainCloud: WeightedTowardRecent biases the average read depth below Uniform's");
+    check (avgOld > avgUniform, "GrainCloud: WeightedTowardOld biases the average read depth above Uniform's");
+}
+
 int main()
 {
     testRenderGrainBlock();
@@ -503,6 +602,9 @@ int main()
     testOrbitTracksMovingParent();
     testAttractRepelSiblings();
     testGrainDoppler();
+    testReadDepthRangeDisabledByDefault();
+    testReadDepthRangeIsRespected();
+    testReadDepthDistributionBias();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

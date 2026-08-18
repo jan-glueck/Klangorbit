@@ -15,6 +15,21 @@ namespace
     {
         return baseValue * (1.0f + range * (rng.nextFloat() * 2.0f - 1.0f));
     }
+
+    // Maps a uniform [0,1) draw to a [0,1] fraction biased per distribution.
+    // Deliberately simple power-curve shaping (not a general parametric
+    // model) -- see GrainReadDepthDistribution's own comment in Grain.h.
+    float sampleDepthFraction (GrainReadDepthDistribution distribution, juce::Random& rng)
+    {
+        const float u = rng.nextFloat();
+        switch (distribution)
+        {
+            case GrainReadDepthDistribution::WeightedTowardRecent: return u * u;                       // skewed toward 0 (shallow)
+            case GrainReadDepthDistribution::WeightedTowardOld:    return 1.0f - (1.0f - u) * (1.0f - u); // skewed toward 1 (deep)
+            case GrainReadDepthDistribution::Uniform:
+            default:                                               return u;
+        }
+    }
 }
 
 GrainCloud::GrainCloud (int poolSize)
@@ -154,7 +169,27 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
 
     // Audio trigger parameters, fixed for this grain's whole life.
     const int jitterSamples = (int) (settings.positionJitterInBuffer * sampleRate * rng.nextFloat());
-    g.bufferReadStartSample = writeHead - jitterSamples;
+
+    // Independent, additive reach further back into history -- see
+    // grainReadDepthRangeMin/Max's comment in Grain.h. min > max (e.g. a
+    // stale UI drag mid-adjustment) is treated as "just use max", rather
+    // than producing a negative range.
+    float depthSeconds = 0.0f;
+    if (settings.grainReadDepthRangeMax > 0.0f)
+    {
+        if (settings.grainReadDepthRangeMax > settings.grainReadDepthRangeMin)
+        {
+            const float t = sampleDepthFraction (settings.grainReadDepthDistribution, rng);
+            depthSeconds = settings.grainReadDepthRangeMin + t * (settings.grainReadDepthRangeMax - settings.grainReadDepthRangeMin);
+        }
+        else
+        {
+            depthSeconds = settings.grainReadDepthRangeMax;
+        }
+    }
+    const int depthSamples = (int) (depthSeconds * sampleRate);
+
+    g.bufferReadStartSample = writeHead - jitterSamples - depthSamples;
 
     float rate = 1.0f;
     if (settings.pitchJitter > 0.0f)

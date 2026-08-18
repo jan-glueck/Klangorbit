@@ -257,6 +257,20 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     silently drift out of sync again, backed by a `static_assert` that
     fails the build if the buffer formula ever stops covering the
     required reach.
+- **Object list sidebar** (`Source/ObjectListPanel.h/.cpp`, left side of
+  the editor window): lists every active `SoundObject` by id, click a row
+  to select it -- an alternative to clicking the object directly in the
+  scene view, for objects too small, fast, or far away to reliably hit
+  with the mouse. Reuses `PluginEditor::selectObject()`, the exact path a
+  scene-view click already used, so the highlight and parameter-panel
+  wiring are identical either way; selection stays in sync in both
+  directions (a scene-view click also updates the list's own highlight).
+  The panel owns no selection state itself -- `PluginEditor::selectedObjectIndex`
+  remains the single source of truth, unchanged from before this existed.
+  Refreshed after anything that can change which objects are active
+  (`+`/`-` Object buttons, preset load). Only lists active objects, no
+  per-grain entries (no such selection concept exists, see the Grain
+  Cloud parameter category).
 
 ### Changed
 - `Camera3D::maxDistance` raised from 30 to 150 meters -- generous enough

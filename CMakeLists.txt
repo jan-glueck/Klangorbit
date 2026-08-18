@@ -71,6 +71,7 @@ target_sources(SpatialAudioPOC
         Source/PropagationProcessor.cpp
         Source/GrainCloud.cpp
         Source/Camera3D.cpp
+        Source/ObjectListPanel.cpp
 )
 
 target_link_libraries(SpatialAudioPOC

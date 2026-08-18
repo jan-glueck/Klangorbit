@@ -257,6 +257,42 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     silently drift out of sync again, backed by a `static_assert` that
     fails the build if the buffer formula ever stops covering the
     required reach.
+- **Grain read-depth range** (`grainReadDepthRangeMin`/`grainReadDepthRangeMax`,
+  `grainReadDepthDistribution`, `Source/Grain.h`/`GrainCloud.cpp`): a new,
+  independent parameter set controlling how far into the ring buffer's
+  *past* a grain's start point may be drawn from, deliberately kept
+  separate from `pitchJitter`/`positionJitterInBuffer` (both sampled and
+  applied additively) rather than just extending
+  `positionJitterInBuffer`'s existing range -- so a small amount of
+  de-clicking jitter and a large, deliberate reach into history can be
+  configured independently instead of being the same knob. 0/0 (default)
+  disables it, reproducing exactly the previous behavior.
+  - Assessment on the distribution model, since this was flagged as a
+    judgment call rather than pure implementation: went with three fixed
+    presets (`Uniform`, `WeightedTowardRecent`, `WeightedTowardOld`, simple
+    `u^2`/`1-(1-u)^2` power-curve shaping of the uniform draw) instead of a
+    general parametric distribution (e.g. a tunable skew/beta exponent
+    exposed in the UI). A full parametric model would add a slider whose
+    musical effect is hard to predict from the number alone, for a use
+    case (biasing where in history grains are drawn from) that in
+    practice only needs "even", "prefer recent", or "prefer old" --
+    exactly the brief's own "no overengineering, two or three presets is
+    enough". If a specific bias curve turns out to be wanted later, it's
+    a self-contained addition to `sampleDepthFraction()`
+    (`Source/GrainCloud.cpp`), not a rearchitecture.
+  - `GrainLimits::maxGrainReadDepthRange` (10s) extends
+    `GrainLimits::requiredRingBufferSeconds`'s formula (additive with the
+    existing `positionJitterInBuffer` term, since the two offsets are
+    sampled independently and stack) and is the same constant
+    `ParameterPanel`'s new sliders are bounded to -- the user cannot
+    configure a depth beyond what the ring buffer actually holds, by
+    construction, rather than via a separate runtime clamp/warning.
+  - `Tools/verify_grain_cloud` extended with tests for backward-compatible
+    no-op at the 0/0 default, range enforcement (40 grains, range
+    respected in all cases), and a statistical check that the two weighted
+    presets actually shift the average sampled depth in the expected
+    direction relative to `Uniform` (measured over 300 grains: recent
+    ~1.31s / uniform ~1.97s / old ~2.58s for a configured [0, 4]s range).
 
 ### Changed
 - `Camera3D::maxDistance` raised from 30 to 150 meters -- generous enough

@@ -190,4 +190,5 @@ private:
     std::unique_ptr<ComboRowComponent> grainWindowShapeRow;
     std::unique_ptr<ComboRowComponent> grainMovementModeRow;
     std::unique_ptr<ComboRowComponent> grainJitterTargetRow;
+    std::unique_ptr<ComboRowComponent> grainReadDepthDistributionRow;
 };

@@ -145,6 +145,25 @@ namespace
         return false;
     }
 
+    juce::String readDepthDistributionToString (GrainReadDepthDistribution d)
+    {
+        switch (d)
+        {
+            case GrainReadDepthDistribution::Uniform:              return "uniform";
+            case GrainReadDepthDistribution::WeightedTowardRecent: return "weightedTowardRecent";
+            case GrainReadDepthDistribution::WeightedTowardOld:    return "weightedTowardOld";
+        }
+        return "uniform";
+    }
+
+    bool readDepthDistributionFromString (const juce::String& s, GrainReadDepthDistribution& out)
+    {
+        if (s == "uniform")              { out = GrainReadDepthDistribution::Uniform;              return true; }
+        if (s == "weightedTowardRecent") { out = GrainReadDepthDistribution::WeightedTowardRecent; return true; }
+        if (s == "weightedTowardOld")    { out = GrainReadDepthDistribution::WeightedTowardOld;    return true; }
+        return false;
+    }
+
     juce::var sceneSettingsToVar (const SceneSettings& s)
     {
         auto* obj = new juce::DynamicObject();
@@ -227,6 +246,9 @@ namespace
         obj->setProperty ("attractionStrength", (double) s.attractionStrength);
         obj->setProperty ("jitterTarget", jitterTargetToString (s.jitterTarget));
         obj->setProperty ("jitterRange", (double) s.jitterRange);
+        obj->setProperty ("grainReadDepthRangeMin", (double) s.grainReadDepthRangeMin);
+        obj->setProperty ("grainReadDepthRangeMax", (double) s.grainReadDepthRangeMax);
+        obj->setProperty ("grainReadDepthDistribution", readDepthDistributionToString (s.grainReadDepthDistribution));
         return juce::var (obj);
     }
 
@@ -279,6 +301,15 @@ namespace
                 return juce::Result::fail ("'grainCloud.jitterTarget': unknown value '" + s + "'.");
         }
         out.jitterRange = (float) gcVar.getProperty ("jitterRange", (double) out.jitterRange);
+
+        out.grainReadDepthRangeMin = (float) gcVar.getProperty ("grainReadDepthRangeMin", (double) out.grainReadDepthRangeMin);
+        out.grainReadDepthRangeMax = (float) gcVar.getProperty ("grainReadDepthRangeMax", (double) out.grainReadDepthRangeMax);
+        if (gcVar.hasProperty ("grainReadDepthDistribution"))
+        {
+            const auto s = gcVar.getProperty ("grainReadDepthDistribution", juce::var()).toString();
+            if (! readDepthDistributionFromString (s, out.grainReadDepthDistribution))
+                return juce::Result::fail ("'grainCloud.grainReadDepthDistribution': unknown value '" + s + "'.");
+        }
 
         return juce::Result::ok();
     }

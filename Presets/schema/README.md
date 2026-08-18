@@ -128,7 +128,19 @@ defaults for everything new.
         "attractionStrength": 1.0,     // used by attractRepelSiblings; negative = repulsive, n-body only within this cloud (see TrajectoryEngine::computeAttractionForce)
 
         "jitterTarget": "none",        // none | initialSpeed | lifetime | boundaryRadius | orbitRadius -- which field randomRange applies to
-        "jitterRange": 0.0             // +/- range applied to jitterTarget, in that field's own unit
+        "jitterRange": 0.0,            // +/- range applied to jitterTarget, in that field's own unit
+
+        // How far into the ring buffer's past a grain's start point may be
+        // drawn from, in seconds -- independent of and additive with
+        // positionJitterInBuffer above (that one is a small de-clicking
+        // offset near the write head; this is a deliberate, potentially
+        // much larger reach into history). Both 0.0 (default) = disabled,
+        // grain start = write head, same as before this field existed.
+        // Bounded by Source/Grain.h::GrainLimits::maxGrainReadDepthRange
+        // (10s), which is also what the ring buffer is sized to hold.
+        "grainReadDepthRangeMin": 0.0,
+        "grainReadDepthRangeMax": 0.0,
+        "grainReadDepthDistribution": "uniform" // uniform | weightedTowardRecent | weightedTowardOld -- how the depth is sampled within the range
       }
     }
   ]

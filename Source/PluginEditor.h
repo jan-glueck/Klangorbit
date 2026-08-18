@@ -4,6 +4,7 @@
 #include "ParameterPanel.h"
 #include "SlingGesture.h"
 #include "Camera3D.h"
+#include "ObjectListPanel.h"
 #include <deque>
 #include <vector>
 
@@ -31,6 +32,11 @@
       dragging only starts otherwise. See startCameraDrag() below.
     - Mouse wheel: zooms the camera (changes its distance from the origin).
     - Click on empty space (no drag): clear the selection
+    - Object list (left side, see ObjectListPanel): click an object's row
+      to select it, same as clicking it in the scene view -- useful for
+      objects too small, fast, or far away to reliably click directly.
+      Selection made either way stays in sync between the list and the
+      scene view's highlight.
     - Toolbar at the top: load/save preset (PresetManager), add/remove object
     - Panel on the right: all parameters of the selected object + scene-wide
       parameters (room boundary, global field, time scale), see ParameterPanel
@@ -150,7 +156,13 @@ private:
 
     static constexpr int toolbarHeight = 64; // two rows of 32px
     static constexpr int parameterPanelWidth = 340;
+    static constexpr int objectListWidth = 160;
     juce::Rectangle<int> viewArea;
+
+    // Sidebar list of active objects, clickable to select -- see
+    // ObjectListPanel's class comment. Reuses selectObject() (below),
+    // exactly the same path a scene-view click already used.
+    ObjectListPanel objectListPanel;
 
     juce::TextButton loadPresetButton { "Load Preset..." };
     juce::TextButton savePresetButton { "Save Preset..." };

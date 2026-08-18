@@ -169,7 +169,10 @@ SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
     addAndMakeVisible (removeObjectButton);
     addAndMakeVisible (objectCountLabel);
     addAndMakeVisible (cpuLoadLabel);
+    addAndMakeVisible (objectListPanel);
     addAndMakeVisible (parameterPanel);
+
+    objectListPanel.onObjectSelected = [this] (int index) { selectObject (index); };
 
     loadPresetButton.onClick = [this] { loadPresetClicked(); };
     savePresetButton.onClick = [this] { savePresetClicked(); };
@@ -188,9 +191,10 @@ SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
 
     parameterPanel.setSceneSettings (&audioProcessor.getTrajectoryEngine().getSceneSettings());
     parameterPanel.refreshFromModel(); // show scene defaults (roomSize etc.) right away
+    objectListPanel.refresh (audioProcessor.getTrajectoryEngine());
     selectObject (-1);                 // initializes panel enablement + object count label consistently
 
-    setSize (700 + parameterPanelWidth, 700 + toolbarHeight);
+    setSize (700 + objectListWidth + parameterPanelWidth, 700 + toolbarHeight);
     setWantsKeyboardFocus (true);
     lastTimerMs = juce::Time::getMillisecondCounter();
     startTimerHz (90); // control rate for the TrajectoryEngine
@@ -611,6 +615,7 @@ void SpatialAudioPOCEditor::resized()
     cpuLoadLabel.setBounds (row2.removeFromLeft (140).reduced (4));
 
     parameterPanel.setBounds (bounds.removeFromRight (parameterPanelWidth));
+    objectListPanel.setBounds (bounds.removeFromLeft (objectListWidth));
     viewArea = bounds;
 }
 
@@ -649,7 +654,10 @@ void SpatialAudioPOCEditor::loadPresetClicked()
             presetStatusLabel.setText ("Loaded: " + currentPresetName, juce::dontSendNotification);
 
             // The scene was replaced entirely -- the old selection/panel
-            // values no longer make sense.
+            // values no longer make sense, and the active-object set
+            // itself may have changed (a preset can activate/deactivate
+            // any number of objects at once).
+            objectListPanel.refresh (audioProcessor.getTrajectoryEngine());
             selectObject (-1);
             parameterPanel.refreshFromModel();
         });
@@ -701,6 +709,7 @@ void SpatialAudioPOCEditor::addObjectClicked()
         return; // all objects already active
 
     engine.activateObject (idx);
+    objectListPanel.refresh (engine); // the active-object set just changed
     selectObject (idx); // select it right away, convenient for immediate tweaking
 }
 
@@ -710,6 +719,7 @@ void SpatialAudioPOCEditor::removeObjectClicked()
         return;
 
     audioProcessor.getTrajectoryEngine().deactivateObject (selectedObjectIndex);
+    objectListPanel.refresh (audioProcessor.getTrajectoryEngine()); // the active-object set just changed
     selectObject (-1);
 }
 
@@ -728,6 +738,12 @@ void SpatialAudioPOCEditor::selectObject (int index)
         parameterPanel.setEditedObject (&engine.getObject (index), index, engine.getNumObjects());
         parameterPanel.setEditedGrainCloud (&engine.getGrainCloud (index).getSettings());
     }
+
+    // Reflects the selection into the list's own highlight regardless of
+    // which side triggered it (scene-view click, list click, +/- Object
+    // buttons, or a preset load clearing the selection) -- see
+    // ObjectListPanel's class comment.
+    objectListPanel.setSelectedIndex (index);
 
     updateObjectUiState();
 }

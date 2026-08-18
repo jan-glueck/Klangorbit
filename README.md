@@ -97,6 +97,10 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
    framing the old fixed 2D view always had) -- rotate it to see orbits
    tilted out of the ground plane, movement trails, and the room-boundary
    sphere from any angle. See "3D camera view" below.
+9. Click a row in the object list on the left to select that object --
+   same effect as clicking it in the scene, but doesn't require actually
+   hitting it with the mouse. Useful once several objects are orbiting or
+   flying around and one is hard to click directly.
 
 ## Objects, motion physics, and the parameter panel
 
@@ -133,6 +137,17 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
   scene parameters. Writes directly to the engine, no preset file needed
   to try things out. Full field reference including defaults in
   `Presets/schema/README.md`.
+- **Object list** (left side of the editor window, `Source/ObjectListPanel.h/.cpp`):
+  lists every currently active object by id, click a row to select it --
+  an alternative to clicking the object directly in the scene view, for
+  objects that are small, far away, or moving/orbiting too fast to
+  reliably hit with the mouse. Selecting via the list highlights the
+  object in the scene exactly like a direct click would (same
+  `selectObject()` path, same highlight, same parameter panel), and stays
+  in sync the other way too -- clicking in the scene updates the list's
+  own highlight. Only active objects are listed, matching what's actually
+  visible/clickable in the scene; individual grains aren't listed (no
+  per-grain selection exists, see the Grain Cloud parameter category).
 
 ## 3D camera view
 

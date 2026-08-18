@@ -190,7 +190,13 @@ Vec3 TrajectoryEngine::computeAttractionForce (const SoundObject& obj) const
     {
         const auto& target = objects[(size_t) obj.slingshotTargetId];
         const auto diff = target.position - obj.position;
-        constexpr float softening = 0.05f; // matches SoundObject::minDistance's own default
+        // Bigger than SoundObject::minDistance's default (0.05) on purpose:
+        // this pull has no damping to bleed off a fast, close pass (see
+        // integrate()'s Impulse case below), so at the fixed control-rate
+        // timestep a too-small softening floor lets the force spike hard
+        // enough in a single step to overshoot past the target and bounce
+        // back and forth ("jitter") instead of swinging smoothly by it.
+        constexpr float softening = 0.3f; // keep in sync with SlingGesture::simulateSlingshotPreview()
         const float dist = juce::jmax (diff.length(), softening);
         const float magnitude = gravityLikeConstant * obj.slingshotStrength * target.mass / (dist * dist);
         force += (diff / dist) * magnitude;
@@ -289,11 +295,26 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
         {
             auto force = computeAttractionForce (obj);
             force += sceneSettings.globalField * obj.mass; // globalField is force/mass, like gravity
-            force -= obj.velocity * obj.dragCoefficient;    // real, velocity-proportional braking force
+
+            // While an active slingshot pull (see SoundObject::slingshotTargetId)
+            // is deflecting this object, treat it as real, frictionless
+            // space flight -- a genuine gravity-assist maneuver conserves
+            // (approximately) its own energy. The object's own damping/
+            // dragCoefficient are tuned for ordinary decelerating throws in
+            // the scene and, applied here too, would bleed off the throw's
+            // own momentum within a fraction of a second while the pull
+            // (itself undamped) keeps re-accelerating it toward the
+            // target -- so instead of swinging past or settling into a
+            // smooth captured orbit, it dives almost straight in and then
+            // hovers/jitters right at the target once its momentum is gone.
+            const bool underSlingshotPull = obj.slingshotTargetId >= 0;
+            if (! underSlingshotPull)
+                force -= obj.velocity * obj.dragCoefficient; // real, velocity-proportional braking force
 
             auto accel = force / juce::jmax (obj.mass, 1.0e-3f);
             obj.velocity += accel * fdt;
-            obj.velocity *= (1.0f - juce::jlimit (0.0f, 1.0f, obj.damping)); // existing simple extra decay
+            if (! underSlingshotPull)
+                obj.velocity *= (1.0f - juce::jlimit (0.0f, 1.0f, obj.damping)); // existing simple extra decay
 
             if (obj.maxVelocity > 0.0f && obj.velocity.length() > obj.maxVelocity)
                 obj.velocity = obj.velocity * (obj.maxVelocity / obj.velocity.length());

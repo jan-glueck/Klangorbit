@@ -43,7 +43,24 @@ inline void renderGrainBlock (const float* ringBufferData, int ringBufferSize,
         // Hann window over [0, grainLengthSamples): zero at both ends, peak
         // in the middle -- the only shape implemented so far
         // (GrainWindowShape is deliberately extensible).
-        const float t = (float) samplesPlayed / (float) grainLengthSamples;
+        //
+        // Denominator is (grainLengthSamples - 1), NOT grainLengthSamples:
+        // that makes t reach EXACTLY 1.0 (envelope exactly 0.0) on the
+        // LAST rendered sample, matching the silent sample that follows it
+        // once samplesPlayed reaches grainLengthSamples above. With a
+        // plain "/ grainLengthSamples" denominator, the last rendered
+        // sample's t falls just short of 1.0, leaving a small residual
+        // envelope value that then jumps to a hard 0.0 on the next call --
+        // a real, audible discontinuity for short grains (the residual is
+        // ~(pi/grainLengthSamples)^2, e.g. ~10% of peak amplitude at
+        // grainLengthSamples=100, i.e. a ~2ms grain at 48kHz). This is
+        // rate-independent (grainLengthSamples is fixed in OUTPUT samples
+        // regardless of playbackRate -- see Grain.h), so it affects every
+        // grain, not specifically pitch-shifted ones; extreme pitchJitter
+        // just makes short/dense grain clouds a common way to notice it.
+        // See Tools/verify_grain_cloud.cpp for the before/after measurement.
+        const float denom = (grainLengthSamples > 1) ? (float) (grainLengthSamples - 1) : 1.0f;
+        const float t = (float) samplesPlayed / denom;
         const float envelope = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * t);
 
         destBlock[i] = sample * envelope;

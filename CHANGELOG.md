@@ -301,6 +301,36 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   `Static` on every selection click.
 
 ### Fixed
+- **Grain click/discontinuity bug, reported as happening with `pitchJitter`.**
+  Investigated both suggested hypotheses rather than assuming either was
+  correct:
+  - *Non-interpolated ring-buffer read position* -- checked and already
+    correctly implemented (`GrainRenderer.h` already does linear
+    interpolation between adjacent samples via a fractional read
+    position); this was not the cause.
+  - *Envelope not reliably reaching exactly 0* -- this WAS a real bug,
+    but a different mechanism than described: the Hann window's
+    denominator was `grainLengthSamples`, so the last actually-rendered
+    sample's phase fell just short of a true zero-crossing (residual
+    ~`(pi/grainLengthSamples)^2` of peak amplitude -- e.g. ~10% for a
+    ~2ms/100-sample grain), which then jumped to a hard `0.0` on the next
+    call -- a real, audible discontinuity. Crucially, this is
+    rate-*independent* (`grainLengthSamples` is fixed in output samples
+    regardless of `playbackRate`, see `Grain.h`), so it affected every
+    short grain, not specifically pitch-shifted ones -- `pitchJitter` is
+    presumably how it was noticed, since jitter naturally produces the
+    short, dense grain clouds where the residual is largest relative to
+    peak amplitude, not because pitch itself was the cause.
+  - Fixed in `GrainRenderer.h` by using `grainLengthSamples - 1` as the
+    envelope denominator, so the last sample's phase reaches exactly 1.0
+    (envelope exactly 0.0) by construction, for any grain length.
+  - `Tools/verify_grain_cloud` gained a direct, empirical measurement:
+    worst-case tail residual and tail-to-silence jump across
+    `playbackRate` 0.1..2.0 (the full range `pitchJitter` can actually
+    produce) for a short (100-sample) grain -- both now measure exactly
+    `0.00000` for every tested rate, confirming the fix holds at the
+    extremes the bug report specifically asked to re-check, not just at
+    `rate=1.0`.
 - `TrajectoryEngine::startOrbit()` always sets an explicit, fixed orbit
   center, but `integrate()` prefers a valid `orbitReferenceObjectId`'s
   live position over `orbitCenter` whenever one is set -- a leftover

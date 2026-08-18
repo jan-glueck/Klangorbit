@@ -457,6 +457,43 @@ purely random.
   reimplemented) plus all five movement modes and the spawn-budget logic,
   no GUI/audio device needed.
 
+## GUI design
+
+Dark, cyan-accented, reduced "sci-fi HUD" look, applied uniformly rather
+than styled ad hoc per widget:
+
+- **`Source/UiTheme.h`** -- the single source of truth for every colour and
+  spacing value used across the GUI (backgrounds, borders, the cyan accent,
+  text tones, Mute/Solo's red/amber, a 4/8/12/16/24px spacing scale).
+  `PluginEditor`, `ParameterPanel`, and `ObjectListPanel` all read from it
+  instead of each picking their own shade of grey.
+- **`Source/SciFiLookAndFeel.h/.cpp`** -- a `juce::LookAndFeel_V4` subclass
+  applied once to the top-level editor (`setLookAndFeel()` in its
+  constructor, cleared in its destructor), so every child component
+  inherits it automatically. Mostly just recolours JUCE's own stock V4
+  widget shapes via `setColour()` (safe, well-tested colour cascading) --
+  plus three deliberately simple, hand-drawn overrides where the stock
+  shapes didn't fit the brief: flat buttons with an accent underline for
+  the active state (used by both the parameter panel's category tabs and
+  any other toggle-driven button, incl. the object list's Mute/Solo,
+  entirely through `Button::getToggleState()` + its own `buttonOnColourId`
+  -- the same mechanism handles cyan, red, or amber "on" states without
+  hardcoding any of them into the drawing code itself), a thin-track
+  slider instead of a filled pill + circular knob, and a pill-style toggle
+  switch instead of a checkbox tick.
+- Each of the three panels (toolbar, object list, parameter panel) paints
+  its own solid background plus a hairline border where it meets the 3D
+  viewport or another panel, so the layout reads as distinct regions
+  instead of floating controls over a shared black canvas.
+- Per-object colours in the 3D view are restricted to a blue -> violet ->
+  magenta hue band (`PluginEditor.cpp`'s `objectColour()`) rather than the
+  full hue wheel, specifically so no object colour can ever coincide with
+  the cyan selection-ring accent or the red/amber Mute/Solo indicators.
+- Not independently visually verified (see "Known limitations / next
+  steps" below) -- built and reasoned through carefully, checked via
+  successful compilation and the app launching/staying stable, but never
+  seen on an actual screen in this environment.
+
 ## Project structure
 
 ```

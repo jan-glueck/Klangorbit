@@ -1,9 +1,11 @@
 #include "ObjectListPanel.h"
+#include "UiTheme.h"
 
 ObjectListPanel::ObjectListPanel()
 {
     titleLabel.setJustificationType (juce::Justification::centred);
-    titleLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    titleLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
+    titleLabel.setFont (juce::Font (juce::FontOptions (13.0f)).withExtraKerningFactor (0.08f));
     addAndMakeVisible (titleLabel);
 
     viewport.setViewedComponent (&rowContainer, false);
@@ -26,6 +28,11 @@ void ObjectListPanel::refresh (TrajectoryEngine& engineIn)
         row.objectIndex = i;
 
         row.selectButton = std::make_unique<juce::TextButton> ("Object " + juce::String (i));
+        row.selectButton->setClickingTogglesState (false); // toggle state reflects selection, driven by updateRowColours(), not by clicking itself
+        row.selectButton->setColour (juce::TextButton::buttonColourId, UiColours::bgRaised());
+        row.selectButton->setColour (juce::TextButton::buttonOnColourId, UiColours::accentDim());
+        row.selectButton->setColour (juce::TextButton::textColourOffId, UiColours::textPrimary());
+        row.selectButton->setColour (juce::TextButton::textColourOnId, UiColours::textPrimary());
         row.selectButton->onClick = [this, i]
         {
             if (onObjectSelected != nullptr)
@@ -34,6 +41,11 @@ void ObjectListPanel::refresh (TrajectoryEngine& engineIn)
         rowContainer.addAndMakeVisible (*row.selectButton);
 
         row.muteButton = std::make_unique<juce::TextButton> ("M");
+        row.muteButton->setClickingTogglesState (false); // we flip the model field ourselves, see onClick below
+        row.muteButton->setColour (juce::TextButton::buttonColourId, UiColours::bgRaised());
+        row.muteButton->setColour (juce::TextButton::buttonOnColourId, UiColours::mute());
+        row.muteButton->setColour (juce::TextButton::textColourOffId, UiColours::textSecondary());
+        row.muteButton->setColour (juce::TextButton::textColourOnId, UiColours::textPrimary());
         row.muteButton->onClick = [this, i]
         {
             if (engine == nullptr) return;
@@ -44,6 +56,14 @@ void ObjectListPanel::refresh (TrajectoryEngine& engineIn)
         rowContainer.addAndMakeVisible (*row.muteButton);
 
         row.soloButton = std::make_unique<juce::TextButton> ("S");
+        row.soloButton->setClickingTogglesState (false);
+        row.soloButton->setColour (juce::TextButton::buttonColourId, UiColours::bgRaised());
+        row.soloButton->setColour (juce::TextButton::buttonOnColourId, UiColours::solo());
+        row.soloButton->setColour (juce::TextButton::textColourOffId, UiColours::textSecondary());
+        // Solo's "on" colour (amber) is light, so its own text needs to be
+        // dark to stay readable -- unlike mute/select, whose "on" colours
+        // are dark enough for the usual light text.
+        row.soloButton->setColour (juce::TextButton::textColourOnId, juce::Colours::black);
         row.soloButton->onClick = [this, i]
         {
             if (engine == nullptr) return;
@@ -70,21 +90,13 @@ void ObjectListPanel::updateRowColours()
 {
     for (auto& row : rows)
     {
-        const bool isSelected = (row.objectIndex == selectedIndex);
-        row.selectButton->setColour (juce::TextButton::buttonColourId,
-                                      isSelected ? juce::Colours::darkslateblue : juce::Colours::darkgrey);
-        row.selectButton->setColour (juce::TextButton::textColourOffId,
-                                      isSelected ? juce::Colours::white : juce::Colours::lightgrey);
+        row.selectButton->setToggleState (row.objectIndex == selectedIndex, juce::dontSendNotification);
 
         if (engine != nullptr)
         {
             const auto& obj = engine->getObject (row.objectIndex);
-            row.muteButton->setColour (juce::TextButton::buttonColourId,
-                                        obj.muted ? juce::Colours::orangered : juce::Colours::darkgrey);
-            row.soloButton->setColour (juce::TextButton::buttonColourId,
-                                        obj.soloed ? juce::Colours::gold : juce::Colours::darkgrey);
-            row.soloButton->setColour (juce::TextButton::textColourOffId,
-                                        obj.soloed ? juce::Colours::black : juce::Colours::lightgrey);
+            row.muteButton->setToggleState (obj.muted, juce::dontSendNotification);
+            row.soloButton->setToggleState (obj.soloed, juce::dontSendNotification);
         }
     }
 }
@@ -92,29 +104,34 @@ void ObjectListPanel::updateRowColours()
 void ObjectListPanel::resized()
 {
     auto bounds = getLocalBounds();
-    titleLabel.setBounds (bounds.removeFromTop (24));
+    titleLabel.setBounds (bounds.removeFromTop (headerHeight));
+    bounds.removeFromLeft (sidePadding);
+    bounds.removeFromRight (sidePadding);
     viewport.setBounds (bounds);
 
-    rowContainer.setSize (viewport.getWidth(), juce::jmax (1, (int) rows.size() * rowHeight));
+    rowContainer.setSize (viewport.getWidth(), juce::jmax (1, (int) rows.size() * (rowHeight + rowGap)));
 
-    constexpr int gap = 2;
     int y = 0;
     for (auto& row : rows)
     {
-        auto rowBounds = juce::Rectangle<int> (0, y, rowContainer.getWidth(), rowHeight - 2);
+        auto rowBounds = juce::Rectangle<int> (0, y, rowContainer.getWidth(), rowHeight);
         auto soloBounds = rowBounds.removeFromRight (toggleButtonWidth);
-        rowBounds.removeFromRight (gap);
+        rowBounds.removeFromRight (UiSpacing::xs);
         auto muteBounds = rowBounds.removeFromRight (toggleButtonWidth);
-        rowBounds.removeFromRight (gap);
+        rowBounds.removeFromRight (UiSpacing::xs);
 
         row.selectButton->setBounds (rowBounds);
         row.muteButton->setBounds (muteBounds);
         row.soloButton->setBounds (soloBounds);
-        y += rowHeight;
+        y += rowHeight + rowGap;
     }
 }
 
 void ObjectListPanel::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colours::black.withAlpha (0.3f));
+    g.fillAll (UiColours::bgPanel());
+
+    g.setColour (UiColours::border());
+    g.fillRect (0, headerHeight - 1, getWidth(), 1); // divider under the "Objects" header
+    g.fillRect (getWidth() - 1, 0, 1, getHeight());  // right edge, separates the panel from the 3D viewport
 }

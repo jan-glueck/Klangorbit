@@ -1,4 +1,5 @@
 #include "ParameterPanel.h"
+#include "UiTheme.h"
 #include <cmath>
 
 namespace
@@ -15,7 +16,7 @@ namespace
 
 FloatRowComponent::FloatRowComponent (const juce::String& name, double min, double max, double step)
 {
-    styleRowLabel (label, name, 13.0f, juce::Colours::lightgrey);
+    styleRowLabel (label, name, 13.0f, UiColours::textSecondary());
     addAndMakeVisible (label);
 
     slider.setRange (min, max, step);
@@ -35,6 +36,7 @@ void FloatRowComponent::resized()
 {
     auto b = getLocalBounds();
     label.setBounds (b.removeFromTop (16));
+    b.removeFromTop (UiSpacing::xs);
     slider.setBounds (b);
 }
 
@@ -47,7 +49,7 @@ void FloatRowComponent::setValueQuiet (float v)
 
 Vec3RowComponent::Vec3RowComponent (const juce::String& name, double min, double max, double step)
 {
-    styleRowLabel (label, name, 13.0f, juce::Colours::lightgrey);
+    styleRowLabel (label, name, 13.0f, UiColours::textSecondary());
     addAndMakeVisible (label);
 
     setupAxis (xLabel, xSlider, "X", min, max, step);
@@ -67,7 +69,7 @@ Vec3RowComponent::Vec3RowComponent (const juce::String& name, double min, double
 void Vec3RowComponent::setupAxis (juce::Label& l, juce::Slider& s, const juce::String& axisName,
                                    double min, double max, double step)
 {
-    styleRowLabel (l, axisName, 11.0f, juce::Colours::grey);
+    styleRowLabel (l, axisName, 11.0f, UiColours::textDisabled());
     addAndMakeVisible (l);
 
     s.setRange (min, max, step);
@@ -80,12 +82,13 @@ void Vec3RowComponent::setupAxis (juce::Label& l, juce::Slider& s, const juce::S
 void Vec3RowComponent::resized()
 {
     auto b = getLocalBounds();
-    label.setBounds (b.removeFromTop (16));
+    label.setBounds (b.removeFromTop (18));
 
     auto layoutAxis = [&] (juce::Label& l, juce::Slider& s)
     {
-        auto row = b.removeFromTop (20);
-        l.setBounds (row.removeFromLeft (16));
+        auto row = b.removeFromTop (22);
+        l.setBounds (row.removeFromLeft (20));
+        row.removeFromLeft (UiSpacing::xs);
         s.setBounds (row);
     };
     layoutAxis (xLabel, xSlider);
@@ -104,7 +107,7 @@ void Vec3RowComponent::setValueQuiet (Vec3 v)
 
 ComboRowComponent::ComboRowComponent (const juce::String& name)
 {
-    styleRowLabel (label, name, 13.0f, juce::Colours::lightgrey);
+    styleRowLabel (label, name, 13.0f, UiColours::textSecondary());
     addAndMakeVisible (label);
     addAndMakeVisible (combo);
 
@@ -115,7 +118,8 @@ void ComboRowComponent::resized()
 {
     auto b = getLocalBounds();
     label.setBounds (b.removeFromTop (16));
-    combo.setBounds (b.removeFromTop (22));
+    b.removeFromTop (UiSpacing::xs);
+    combo.setBounds (b.removeFromTop (24));
 }
 
 // ============================================================== ToggleRowComponent
@@ -123,7 +127,7 @@ void ComboRowComponent::resized()
 ToggleRowComponent::ToggleRowComponent (const juce::String& name)
 {
     toggle.setButtonText (name);
-    toggle.setColour (juce::ToggleButton::textColourId, juce::Colours::lightgrey);
+    toggle.setColour (juce::ToggleButton::textColourId, UiColours::textSecondary());
     addAndMakeVisible (toggle);
 
     toggle.onClick = [this] { if (onToggled) onToggled (toggle.getToggleState()); };
@@ -150,7 +154,8 @@ bool ParameterPanel::categoryRequiresObject (Category category)
 
 ParameterPanel::ParameterPanel()
 {
-    styleRowLabel (objectHeaderLabel, "No object selected", 15.0f, juce::Colours::white);
+    styleRowLabel (objectHeaderLabel, "No object selected", 15.0f, UiColours::textPrimary());
+    objectHeaderLabel.setFont (juce::Font (juce::FontOptions (15.0f, juce::Font::bold)).withExtraKerningFactor (0.03f));
     addAndMakeVisible (objectHeaderLabel);
 
     addAndMakeVisible (viewport);
@@ -378,7 +383,10 @@ void ParameterPanel::addCategoryButton (const juce::String& label, Category cate
 {
     auto button = std::make_unique<juce::TextButton> (label);
     button->setClickingTogglesState (false); // state is driven entirely by selectCategory(), see there
-    button->setColour (juce::TextButton::buttonOnColourId, juce::Colours::steelblue);
+    button->setColour (juce::TextButton::buttonColourId, UiColours::bgRaised());
+    button->setColour (juce::TextButton::buttonOnColourId, UiColours::accentDim());
+    button->setColour (juce::TextButton::textColourOffId, UiColours::textSecondary());
+    button->setColour (juce::TextButton::textColourOnId, UiColours::textPrimary());
     button->onClick = [this, category] { selectCategory (category); };
     addAndMakeVisible (*button);
 
@@ -576,41 +584,53 @@ void ParameterPanel::refreshFromModel()
 
 void ParameterPanel::layoutContent()
 {
-    const int width = juce::jmax (140, viewport.getWidth() - 24);
-    int y = 6;
+    constexpr int margin = UiSpacing::m;
+    const int width = juce::jmax (140, viewport.getWidth() - margin * 2);
+    int y = UiSpacing::s;
     for (size_t i = 0; i < layoutOrder.size(); ++i)
     {
         if (! layoutOrder[i]->isVisible())
             continue;
-        layoutOrder[i]->setBounds (6, y, width, layoutHeights[i]);
-        y += layoutHeights[i] + 6;
+        layoutOrder[i]->setBounds (margin, y, width, layoutHeights[i]);
+        y += layoutHeights[i] + UiSpacing::m;
     }
-    content.setSize (width + 18, y);
+    content.setSize (width + margin * 2, y);
 }
 
 void ParameterPanel::resized()
 {
     auto bounds = getLocalBounds();
 
-    objectHeaderLabel.setBounds (bounds.removeFromTop (24).reduced (6, 0));
+    objectHeaderLabel.setBounds (bounds.removeFromTop (36).reduced (UiSpacing::m, 0));
+    bounds.removeFromTop (UiSpacing::xs);
 
-    constexpr int buttonHeight = 26;
+    constexpr int buttonHeight = 32;
     constexpr int buttonsPerRow = 2;
     const int numRows = (int) std::ceil ((double) categoryButtons.size() / (double) buttonsPerRow);
 
+    auto buttonGrid = bounds.removeFromTop (numRows * buttonHeight).reduced (UiSpacing::s, 0);
     for (int r = 0; r < numRows; ++r)
     {
-        auto row = bounds.removeFromTop (buttonHeight);
+        auto row = buttonGrid.removeFromTop (buttonHeight);
         const int buttonWidth = row.getWidth() / buttonsPerRow;
         for (int c = 0; c < buttonsPerRow; ++c)
         {
             const size_t idx = (size_t) (r * buttonsPerRow + c);
             if (idx >= categoryButtons.size())
                 break;
-            categoryButtons[idx].button->setBounds (row.removeFromLeft (buttonWidth).reduced (2));
+            categoryButtons[idx].button->setBounds (row.removeFromLeft (buttonWidth).reduced (UiSpacing::xs));
         }
     }
 
+    bounds.removeFromTop (UiSpacing::s);
+
     viewport.setBounds (bounds);
     layoutContent();
+}
+
+void ParameterPanel::paint (juce::Graphics& g)
+{
+    g.fillAll (UiColours::bgPanel());
+    g.setColour (UiColours::border());
+    g.fillRect (0, 0, 1, getHeight()); // left edge, separates the panel from the 3D viewport
 }

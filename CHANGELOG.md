@@ -461,6 +461,65 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   click was immediately translated into `Mode::Manual` (`beginDrag()` in
   `mouseDown()`), which would have reset a running orbit/impulse to
   `Static` on every selection click.
+- **Full GUI visual redesign: dark, cyan-accented, reduced "sci-fi HUD"
+  theme, applied consistently across the whole editor instead of relying
+  on JUCE's stock look.** See the README's new "GUI design" section for
+  the summary; details:
+  - New `Source/UiTheme.h` -- one shared set of colour/spacing tokens
+    (backgrounds, borders, the cyan accent, text tones, Mute/Solo's
+    red/amber, a 4/8/12/16/24px spacing scale) that `PluginEditor`,
+    `ParameterPanel`, and `ObjectListPanel` all read from, replacing each
+    file's own ad hoc `juce::Colours::lightgrey`/`darkgrey`/etc. calls.
+  - New `Source/SciFiLookAndFeel.h/.cpp` (`juce::LookAndFeel_V4`
+    subclass), applied once to the top-level editor
+    (`setLookAndFeel()`/`setLookAndFeel(nullptr)` in its
+    constructor/destructor) so every child component inherits it
+    automatically. Deliberately conservative in scope: mostly just
+    recolours JUCE's own stock V4 widget shapes via `setColour()` (safe,
+    well-tested colour cascading, essentially zero geometry risk), plus
+    exactly three simple hand-drawn overrides where the stock shapes
+    didn't fit the brief -- flat buttons with an accent-coloured
+    underline for the active state, a thin-track slider (flat fill +
+    a thin vertical tick thumb) instead of a filled pill + circular
+    knob, and a pill-style toggle switch instead of a checkbox tick.
+    Kept intentionally minimal: without an interactive GUI session
+    (still not available in this environment) a geometry bug in custom
+    LookAndFeel drawing code is very hard to catch, so anything not
+    clearly worth that risk was left as V4's default, just recoloured.
+  - The "active" button treatment (accent border + underline stripe)
+    derives its colour from the button's own `buttonOnColourId` rather
+    than a single hardcoded colour -- the same code path handles cyan
+    (category tabs, the object-list's selection button) and Mute/Solo's
+    red/amber (`ObjectListPanel`, now driven by real `Button` toggle
+    state instead of manually swapping `buttonColourId` by hand) without
+    special-casing either.
+  - `PluginEditor`'s toolbar, `ObjectListPanel`, and `ParameterPanel` each
+    now paint their own solid panel background plus a hairline border
+    where they meet the 3D viewport or each other, so the window reads as
+    distinct regions instead of controls floating over one shared black
+    canvas. Toolbar height 64 -> 76px (two even 38px rows), object-list
+    width 190 -> 208px, parameter-panel width 340 -> 360px, and every row
+    component (`FloatRowComponent`/`Vec3RowComponent`/`ComboRowComponent`/
+    `ToggleRowComponent`) gained a small label-to-control gap plus taller
+    preferred heights -- all specifically for more breathing room, per
+    the request ("ausreichend padding für Felder, Buttons, Text").
+  - 3D-viewport recolouring: the ground-reference grid and the boundary
+    sphere both moved from plain grey/dark-red to the theme's grid/accent
+    colours; the object-selection ring moved from white to the cyan
+    accent; the free-throw sling preview moved from orange to the same
+    accent (kept distinct from the existing violet orbit-shot preview).
+  - Per-object colours (`objectColour()`) are now restricted to a blue ->
+    violet -> magenta hue band instead of the full hue wheel, still via
+    the same golden-ratio stepping as before. Two reasons: staying within
+    one hue family reads as more cohesive with the rest of the theme, and
+    it keeps every object colour clear of both the cyan accent (an object
+    landing on that exact hue would make its own selection ring nearly
+    invisible against its fill) and Mute/Solo's red/amber.
+  - No functional/audio changes anywhere in this entry -- purely visual.
+    Verified via full rebuild (zero warnings), all `Tools/verify_*` +
+    `validate_presets` still passing (none of them touch GUI code), and
+    the standalone app launching and staying stable; the actual on-screen
+    result is unverified, see "Known limitations" below.
 
 ### Fixed
 - **Grain click/discontinuity bug, reported as happening with `pitchJitter`.**
@@ -562,6 +621,11 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   audible result of every new audio feature (grain Doppler, Solo/Mute
   fades, grain read-depth range) -- all of these are only verified
   mathematically/numerically (`Tools/verify_*`), never by ear or by eye.
+  Applies in full to the entire "GUI design" overhaul (see the README
+  section of that name): the whole dark/cyan `SciFiLookAndFeel` theme,
+  every panel's new padding/spacing, and the three hand-drawn control
+  shapes (buttons, sliders, toggle switches) were built and reasoned
+  through carefully but never actually seen rendered on a screen.
 - Object dragging is still constrained to the ground plane (z=0), now via
   a camera ray cast rather than a fixed formula, but still no direct way
   to drag an object's height with the mouse.

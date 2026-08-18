@@ -1,0 +1,32 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="10%" y1="0%" x2="90%" y2="100%">
+      <stop offset="0%" stop-color="#1B2430"/>
+      <stop offset="100%" stop-color="#080B10"/>
+    </linearGradient>
+
+    <linearGradient id="accent" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7CF2D6"/>
+      <stop offset="100%" stop-color="#2E8FE0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Flaeche: abgerundetes Quadrat, macOS uebernimmt das Feinmasking selbst -->
+  <rect width="1024" height="1024" rx="220" fill="url(#bg)"/>
+
+  <!-- Flaches Liniensymbol: Umlaufbahnen als duenne, klare Konturen -->
+  <g fill="none" stroke="#E8EDF4" stroke-linecap="round">
+    <ellipse cx="512" cy="512" rx="420" ry="196" stroke-width="30" opacity="0.55" transform="rotate(-10 512 512)"/>
+    <ellipse cx="512" cy="512" rx="330" ry="330" stroke-width="30" opacity="0.4" transform="rotate(15 512 512)"/>
+  </g>
+
+  <!-- Zentrum: flache Flaeche, kein Verlauf, kein Glanz -->
+  <circle cx="512" cy="512" r="118" fill="#F5F8FC"/>
+
+  <!-- Objekte: eine Akzentfarbe, als durchgehender Verlauf ueber das
+       gesamte Icon (userSpaceOnUse, nicht pro Objekt einzeln) -->
+  <circle cx="889.0" cy="377.4" r="64" fill="url(#accent)"/>
+  <circle cx="111.7" cy="514.5" r="58" fill="url(#accent)"/>
+  <circle cx="624.9" cy="822.1" r="50" fill="url(#accent)"/>
+  <circle cx="399.1" cy="201.9" r="46" fill="url(#accent)"/>
+</svg>

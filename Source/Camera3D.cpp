@@ -95,6 +95,17 @@ float Camera3D::worldSizeToScreenSize (float worldSizeMeters, float cameraSpaceD
     return worldSizeMeters * focalLengthPixels (viewportHeightPixels) / std::max (cameraSpaceDepth, nearClipMeters);
 }
 
+bool Camera3D::projectSphereSilhouetteRadius (float sphereRadius, float viewportHeightPixels, float& outScreenRadius) const
+{
+    if (sphereRadius <= 0.0f || distance <= sphereRadius)
+        return false; // camera at/inside the sphere -- no silhouette circle exists
+
+    const float ratio = std::min (1.0f, std::max (0.0f, sphereRadius / distance));
+    const float angularRadius = std::asin (ratio);
+    outScreenRadius = focalLengthPixels (viewportHeightPixels) * std::tan (angularRadius);
+    return true;
+}
+
 bool Camera3D::screenToGroundPlane (float screenX, float screenY, float viewportHeightPixels, Vec3& outWorldPos) const
 {
     // Inverse of project(): a point at camera-space depth d projects to

@@ -27,6 +27,16 @@
     visible/clickable in the scene view -- not grains, which have no
     individual selection concept (see ParameterPanel's Grain Cloud
     category: one parameter set per cloud, not per grain).
+
+    Each row also has its own Mute/Solo buttons (SoundObject::muted/soloed) --
+    this is the only place in the GUI those two fields are exposed; there is
+    deliberately no separate checkbox for them in ParameterPanel's Object
+    category, one control surface per feature. The buttons write directly
+    into the SoundObject held by the TrajectoryEngine reference passed to
+    refresh() (stored for the lifetime of the current row set), same
+    message-thread-only access rule as everywhere else in the GUI --
+    PluginProcessor's audio thread reads muted/soloed itself every block,
+    no callback/round trip needed here.
 */
 class ObjectListPanel : public juce::Component
 {
@@ -35,7 +45,8 @@ public:
 
     // Rebuilds the row list from the engine's current active objects --
     // call after anything that can change which objects are active
-    // (activate/deactivate, preset load) or their id ordering.
+    // (activate/deactivate, preset load) or their id ordering, or their
+    // muted/soloed state (e.g. after loading a preset).
     void refresh (TrajectoryEngine& engine);
 
     // Reflects an externally-driven selection (e.g. a scene-view click)
@@ -52,14 +63,23 @@ public:
 
 private:
     static constexpr int rowHeight = 28;
+    static constexpr int toggleButtonWidth = 22;
 
     struct Row
     {
         int objectIndex = -1;
-        std::unique_ptr<juce::TextButton> button;
+        std::unique_ptr<juce::TextButton> selectButton;
+        std::unique_ptr<juce::TextButton> muteButton;
+        std::unique_ptr<juce::TextButton> soloButton;
     };
     std::vector<Row> rows;
     int selectedIndex = -1;
+
+    // Not owned -- valid only because refresh() is called again by
+    // PluginEditor any time the object set could change; used solely to
+    // read current muted/soloed state for the button colours and to
+    // toggle it on click, both message-thread-only.
+    TrajectoryEngine* engine = nullptr;
 
     juce::Viewport viewport;
     juce::Component rowContainer; // hosted inside viewport, holds the actual row buttons

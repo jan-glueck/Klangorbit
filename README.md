@@ -148,19 +148,18 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
   own highlight. Only active objects are listed, matching what's actually
   visible/clickable in the scene; individual grains aren't listed (no
   per-grain selection exists, see the Grain Cloud parameter category).
-- **Solo/Mute** (top of the Object category in the parameter panel,
-  `SoundObject::muted`/`soloed`): own `muted` always wins over `soloed`;
-  otherwise, soloing any object silences every object that isn't itself
-  soloed (classic non-exclusive DAW solo -- several objects can be soloed
-  together and all stay audible, it's not a single-object radio button).
-  Applies to an object's `GrainCloud` too, not just its own signal.
-  Toggling fades over ~20ms rather than cutting instantly, so it never
-  clicks; once an object has actually reached silence, its
+  Each row also has its own **M**(ute)/**S**(olo) buttons
+  (`SoundObject::muted`/`soloed`) -- this is the ONLY place these two are
+  exposed in the GUI, deliberately not duplicated as checkboxes in the
+  parameter panel's Object category. Own `muted` always wins over
+  `soloed`; otherwise, soloing any object silences every object that
+  isn't itself soloed (classic non-exclusive DAW solo -- several objects
+  can be soloed together and all stay audible, it's not a single-object
+  radio button). Applies to an object's `GrainCloud` too, not just its
+  own signal. Toggling fades over ~20ms rather than cutting instantly, so
+  it never clicks; once an object has actually reached silence, its
   propagation/encoding work (and its grains') is skipped entirely for
-  performance, not just gained down to zero every block. Currently only
-  accessible from the parameter panel with an object selected -- hooking
-  Solo/Mute into the object-list sidebar above is a natural follow-up
-  (the sidebar rows don't expose these controls yet).
+  performance, not just gained down to zero every block.
 
 ## 3D camera view
 
@@ -211,7 +210,11 @@ away from it is purely additive.
   rim, plus a small offset highlight) reads as a translucent shell that
   clearly marks the boundary without hiding objects/grains inside it. A
   flat ground grid (1m/2m/3m circles) and a small "Front" marker/label at
-  the origin remain as orientation aids.
+  the origin remain as orientation aids. Purely cosmetic
+  `SceneSettings::showRoomBoundary` toggle (Scene category, "Show
+  Boundary") hides the sphere without disabling the boundary itself --
+  `reflect`/`wrap`/`absorb` keep applying while it's hidden, only the
+  drawing is skipped.
 - **Orbit-path preview.** An object currently in `Mode::Orbit` draws its
   full ellipse, not just the current point, sampled via the same formula
   `TrajectoryEngine` itself uses to move it (`Source/OrbitMath.h`, factored

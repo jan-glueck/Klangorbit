@@ -169,6 +169,7 @@ namespace
         auto* obj = new juce::DynamicObject();
         obj->setProperty ("roomSize", (double) s.roomSize);
         obj->setProperty ("boundaryBehavior", boundaryBehaviorToString (s.boundaryBehavior));
+        obj->setProperty ("showRoomBoundary", s.showRoomBoundary);
         obj->setProperty ("globalField", vecToVar (s.globalField));
         obj->setProperty ("timeScale", (double) s.timeScale);
 
@@ -201,6 +202,9 @@ namespace
             if (! boundaryBehaviorFromString (s, out.boundaryBehavior))
                 return juce::Result::fail ("'scene.boundaryBehavior': unknown value '" + s + "'.");
         }
+
+        if (sceneVar.hasProperty ("showRoomBoundary"))
+            out.showRoomBoundary = (bool) sceneVar.getProperty ("showRoomBoundary", out.showRoomBoundary);
 
         if (sceneVar.hasProperty ("globalField"))
         {

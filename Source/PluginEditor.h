@@ -156,7 +156,7 @@ private:
 
     static constexpr int toolbarHeight = 64; // two rows of 32px
     static constexpr int parameterPanelWidth = 340;
-    static constexpr int objectListWidth = 160;
+    static constexpr int objectListWidth = 190; // wide enough for "Object N" + its Mute/Solo buttons, see ObjectListPanel
     juce::Rectangle<int> viewArea;
 
     // Sidebar list of active objects, clickable to select -- see

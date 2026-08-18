@@ -100,6 +100,32 @@ int main()
                "startOrbit() without eccentricity/orientation args defaults to a circular, unrotated orbit");
     }
 
+    // --- startOrbit() resets a stale orbitReferenceObjectId ---
+    // Regression test: startOrbit() always passes an explicit fixed
+    // center, but integrate() prefers a valid orbitReferenceObjectId's
+    // live position over orbitCenter if one is set. A leftover reference
+    // id from earlier editing must not silently hijack the center
+    // startOrbit() was just told to use (affects both the double-click
+    // gesture and the sling orbit-shot, which both document "always
+    // centered on the origin").
+    {
+        TrajectoryEngine engine (2);
+        engine.activateObject (0);
+        engine.activateObject (1);
+        engine.getObject (1).position = { 5.0f, 5.0f, 0.0f }; // far from the intended center
+
+        engine.getObject (0).orbitReferenceObjectId = 1; // stale, set before startOrbit()
+        engine.startOrbit (0, center, semiMajor, 1.0f);
+
+        check (engine.getObject (0).orbitReferenceObjectId < 0,
+               "startOrbit() resets a pre-existing orbitReferenceObjectId to -1");
+
+        engine.update (0.001);
+        const float distFromIntendedCenter = (engine.getObject (0).position - center).length();
+        check (distFromIntendedCenter < semiMajor + 0.5f,
+               "startOrbit() orbits the given center, not a stale orbitReferenceObjectId's position");
+    }
+
     // --- SlingGesture: pure math helpers ---
     {
         const Vec3 anchor { 1.0f, 2.0f, 0.0f };

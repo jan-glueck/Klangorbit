@@ -115,6 +115,16 @@ int main()
         cam.zoom (-1000.0f);
         check (cam.getDistance() > 0.0f && cam.getDistance() < startDistance, "zoom() clamps to a positive minimum distance, doesn't go to/past zero");
     }
+    {
+        // Upper bound: generous enough to fit a much-larger-than-default
+        // custom SceneSettings::roomSize in frame (see Camera3D.h), but
+        // still a finite, sane clamp -- zooming out extremely far doesn't
+        // grow the distance unboundedly or produce a non-finite value.
+        Camera3D cam;
+        cam.zoom (1.0e6f);
+        check (std::isfinite (cam.getDistance()) && cam.getDistance() >= 100.0f && cam.getDistance() <= 200.0f,
+               "zoom() clamps to a large-but-finite maximum distance (roughly in [100, 200])");
+    }
 
     // --- Near-clip visibility ---
     {

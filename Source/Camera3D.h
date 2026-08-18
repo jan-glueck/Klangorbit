@@ -87,7 +87,12 @@ private:
     Vec3 position, right, up, forward;
 
     static constexpr float minDistance = 1.0f;
-    static constexpr float maxDistance = 30.0f;
+    // Generous enough to fit a much larger-than-default custom
+    // SceneSettings::roomSize (default 5m) comfortably in frame -- at this
+    // FOV, fitting a radius-50m room needs a distance of roughly
+    // radius / tan(fovY/2) ~= 95m, so 150 leaves real margin rather than
+    // capping out right at the edge of "large but plausible" scenes.
+    static constexpr float maxDistance = 150.0f;
     static constexpr float fovYDegrees = 55.0f;
     static constexpr float nearClipMeters = 0.1f;
 };

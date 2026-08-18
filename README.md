@@ -78,16 +78,19 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
    object (only object 0 is active at startup), "- Remove Object"
    deactivates the selected one.
 7. Shift+drag an object -> "sling" launch gesture: pull it away from its
-   position like a catapult (an orange bow line follows the cursor) and
-   release to fire it in the opposite direction. Try it a few times to
+   position like a catapult (an orange bow line follows the cursor, plus
+   a dashed preview showing the actual upcoming throw/orbit -- see below)
+   and release to fire it in the opposite direction. Try it a few times to
    compare with the plain throw gesture (4) -- the sling's launch speed is
    proportional to how far you pulled, not to how fast you moved the
    mouse. While pulling, hold Ctrl to switch the shot from a free throw to
    an orbit shot (the bow line turns violet); with Ctrl held, tap Alt to
-   step through circular/elliptical orbit shapes. Releasing far enough
-   from the object fires the shot; releasing very close to the anchor
-   (a barely-there pull) cancels it, same as a plain click. See
-   `SlingGesture.h`/`PluginEditor::startSling()` for the full mechanics.
+   step through circular/elliptical orbit shapes -- the dashed orbit
+   preview updates live as you do. Releasing far enough from the object
+   fires the shot (the preview disappears the instant it does); releasing
+   very close to the anchor (a barely-there pull) cancels it, same as a
+   plain click. See `SlingGesture.h`/`PluginEditor::startSling()` for the
+   full mechanics.
 8. Drag on EMPTY space (no object/grain under the cursor) -> orbits the
    camera around the scene instead of moving anything; scroll the mouse
    wheel to zoom. The view starts pointing straight down (the same
@@ -145,8 +148,15 @@ away from it is purely additive.
 - **Orbit/zoom.** Drag on empty space (no object or grain under the
   cursor -- an object/sling drag always takes priority when something is
   actually hit) to rotate the camera's azimuth/elevation; scroll to zoom
-  (changes the camera's distance from the origin). Elevation is clamped to
-  straight-down..straight-up, azimuth is unbounded.
+  (changes the camera's distance from the origin, multiplicatively --
+  proportional at any zoom level rather than a fixed step that would feel
+  too fast zoomed in and too slow zoomed out). Elevation is clamped to
+  straight-down..straight-up, azimuth is unbounded. Distance itself is
+  clamped to a 1..150m range -- generous enough to fit a much
+  larger-than-default custom `SceneSettings.roomSize` (5m default) in
+  frame without an artificial cap, but still finite. The wheel is its own
+  independent input, so zooming never collides with or interrupts an
+  object drag or the sling gesture.
 - **Dragging objects now happens on the ground plane (z=0)**, via a
   camera ray cast onto that plane (`Camera3D::screenToGroundPlane()`)
   instead of the old fixed screen<->world formula -- works the same as
@@ -235,9 +245,29 @@ fast the mouse happened to move.
   `Tools/verify_orbit.cpp` (checks the direction-sign/orientation math
   plus the ellipse-rotation formula in `TrajectoryEngine`) -- not a test
   reimplementation.
-- **Trajectory/orbit-shape preview while aiming is not implemented yet**
-  (only the bow line itself) -- a natural follow-up once the basic gesture
-  has been tried out.
+- **Live movement preview while aiming.** In addition to the bow line
+  (which shows the pull/aim, i.e. the *opposite* of where the object will
+  actually go), a second, dashed element previews the actual result and
+  updates live as you drag:
+  - **Free throw:** a straight dashed line from the anchor in the launch
+    direction, with a small dot at its tip, length proportional to pull
+    distance -- deliberately not a full trajectory simulation (no
+    `globalField`/damping curvature), just a clear directional hint, per
+    the design brief.
+  - **Orbit shot:** the actual resulting ellipse/circle outline, sampled
+    with the same `OrbitMath.h` formula `TrajectoryEngine` itself uses to
+    move an orbiting object -- reflects the current pull distance,
+    direction, and eccentricity step live, exactly as it will look the
+    instant the shot fires.
+  - Both are dashed specifically so they can never be confused with the
+    real, already-happened movement trail or a confirmed orbit path
+    (both solid) -- and both disappear completely the moment the mouse is
+    released, nothing lingers once the object actually starts moving.
+  - Grains are unaffected by any of this: a `GrainCloud` on the slung
+    object (e.g. in `AttractRepelSiblings` mode) keeps moving independently
+    of the parent object's own preview/throw, exactly as already
+    established -- the preview only ever describes the parent object's
+    own upcoming motion, never the grains'.
 
 ## Acoustic propagation: Doppler, delay, air absorption, directivity
 
@@ -381,26 +411,21 @@ Docs/WORKFLOW.md.
 
 - **3D camera view interaction is unverified by hand.** `Camera3D`'s
   projection/rotation/zoom math is covered by `Tools/verify_camera`
-  (19+ passing checks, including that the default framing exactly matches
+  (22+ passing checks, including that the default framing exactly matches
   the old fixed top-down view), but the actual *feel* of dragging to
   rotate and scrolling to zoom hasn't been manually tried in a running
   app in this environment (no interactive GUI testing available here) --
   in particular the drag/zoom direction sign conventions
   (`PluginEditor::mouseDrag()`/`mouseWheelMove()`) are a reasonable but
   untested guess and may feel inverted; each is a one-line sign flip if so.
+  The zoom distance bounds (1..150m) and the sling movement preview added
+  alongside it are likewise verified mathematically/by build+run stability
+  only, not by eye.
 - **Object dragging is still constrained to the ground plane (z=0)**,
   now via a camera ray cast onto that plane rather than a fixed formula
   (see "3D camera view" above) -- there's no way to drag an object's
   height directly with the mouse yet (it still only changes through
   physics: orbit planes, global field, n-body forces, etc.).
-- **No MIDI mapping.** The `InputMapper` module from the architecture
-  sketch isn't implemented yet; MIDI CC on object parameters is missing.
-- **Ambisonics order is fixed per instance.** `AmbisonicsEncoder::setOrder()`
-  exists, but the output bus is fixed at prepare/construction time (VST3
-  buses aren't trivially reconfigurable at runtime). For runtime order
-  switching: easier to implement in the standalone case than in the plugin
-  context, since no host bus contract exists there -- possibly extend the
-  standalone case first.
 - **No MIDI mapping.** The `InputMapper` module from the architecture
   sketch isn't implemented yet; MIDI CC on object parameters is missing.
 - **Ambisonics order is fixed per instance.** `AmbisonicsEncoder::setOrder()`

@@ -204,8 +204,39 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   directions/signs, rotation/zoom clamping, near-clip visibility,
   perspective size scaling, and the ground-plane raycast's round-trip
   accuracy with `project()` (including after rotating the camera).
+- **Live movement preview for the sling gesture** (the optional second
+  step from the original sling-launch design, now implemented): while
+  Shift-dragging, a second, dashed element previews what will actually
+  happen on release, live-updating with pull distance/direction and (in
+  orbit mode) the current eccentricity step.
+  - Free throw: a straight dashed line from the anchor in the launch
+    direction (length proportional to pull distance) with a small dot at
+    its tip -- deliberately not a full trajectory simulation, just a
+    clear directional hint.
+  - Orbit shot: the actual resulting ellipse/circle outline, sampled with
+    the same `OrbitMath.h` formula `TrajectoryEngine` itself uses to move
+    an orbiting object (via a scratch `SoundObject` holding only the
+    orbit-shape fields), so the preview can't drift out of sync with what
+    a release would actually produce.
+  - Dashed specifically to stay visually distinct from the real,
+    already-happened movement trail and from a confirmed orbit path
+    (both solid); disappears completely and immediately on release
+    (gated on the existing `slingActive` flag, nothing new needed to make
+    it vanish).
+  - Deliberately no special-cased preview for a slung object's own
+    `GrainCloud` (e.g. in `AttractRepelSiblings` mode) -- grains already
+    move and render independently of their parent object, and the sling
+    preview only ever describes the parent object's own upcoming motion.
 
 ### Changed
+- `Camera3D::maxDistance` raised from 30 to 150 meters -- generous enough
+  to fit a much larger-than-default custom `SceneSettings.roomSize`
+  (default 5m) in frame; reviewed alongside the zoom speed
+  (`PluginEditor::mouseWheelMove()`'s multiplicative sensitivity), which
+  was already implemented and needed no change. No second zoom
+  implementation was added -- the mouse wheel already controlled
+  `Camera3D`'s distance from `feature/3d-view`; this only adjusts its
+  bounds.
 - Clicking an object (without dragging) selects it for the parameter
   panel, without affecting its motion mode anymore -- previously every
   click was immediately translated into `Mode::Manual` (`beginDrag()` in
@@ -213,6 +244,18 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   `Static` on every selection click.
 
 ### Fixed
+- `TrajectoryEngine::startOrbit()` always sets an explicit, fixed orbit
+  center, but `integrate()` prefers a valid `orbitReferenceObjectId`'s
+  live position over `orbitCenter` whenever one is set -- a leftover
+  reference id from earlier `ParameterPanel` editing could therefore
+  silently override the center `startOrbit()` was just told to use,
+  affecting both the double-click orbit gesture and the sling orbit-shot
+  (both of which document "always centered on the origin"). Found while
+  building the sling orbit preview (which assumes the same guarantee, to
+  match what a release actually produces). Fixed by resetting
+  `orbitReferenceObjectId` to -1 inside `startOrbit()` itself, covering
+  every caller. `orbitPlaneNormal` is deliberately left untouched (no
+  such conflict -- a tilted plane around an explicit center is coherent).
 - First working build (VST3 + standalone): custom `Vec3` type instead of
   `juce::Vector3D` (which lives in the `juce_opengl` module and would have
   pulled in an unnecessary OpenGL dependency), `BusesProperties`

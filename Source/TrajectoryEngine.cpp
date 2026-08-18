@@ -100,6 +100,15 @@ void TrajectoryEngine::startOrbit (int objectIndex, Vec3 center, float semiMajor
     auto& o = getObject (objectIndex);
     o.mode = SoundObject::Mode::Orbit;
     o.orbitCenter = center;
+    // startOrbit() always sets an explicit, fixed center -- a leftover
+    // orbitReferenceObjectId from earlier ParameterPanel editing would
+    // otherwise silently override that center in integrate() (which
+    // prefers the reference object's live position over orbitCenter
+    // whenever a valid reference id is set). Reset it so the center this
+    // call just specified actually takes effect, for both callers of
+    // startOrbit() (the double-click gesture and the sling orbit-shot,
+    // both of which document "always centered on the origin").
+    o.orbitReferenceObjectId = -1;
     o.orbitRadius = semiMajorAxis;
     o.orbitAngularSpeed = angularSpeed;
     o.orbitEccentricity = eccentricity;

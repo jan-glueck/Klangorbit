@@ -68,6 +68,20 @@ namespace
         return path;
     }
 
+    // Dashed stroke, so a movement PREVIEW (sling aiming -- see the
+    // paint() sling overlay below) can never be mistaken for the real,
+    // already-happened trail (drawTrail(), solid) or a confirmed orbit
+    // path (drawOrbitPath(), solid) -- same dash pattern used for both the
+    // throw-direction line and the orbit-ellipse preview.
+    void strokeDashedPath (juce::Graphics& g, const juce::Path& path, juce::Colour colour, float lineWidth)
+    {
+        static const float dashLengths[] = { 6.0f, 4.0f };
+        juce::Path dashed;
+        juce::PathStrokeType (lineWidth).createDashedStroke (dashed, path, dashLengths, 2);
+        g.setColour (colour);
+        g.fillPath (dashed);
+    }
+
     void drawWireframeCircle (juce::Graphics& g, const Camera3D& camera, juce::Point<float> viewportCentre, float viewportHeight,
                                Vec3 center, Vec3 planeU, Vec3 planeV, float radius, int numSegments,
                                juce::Colour colour, float lineWidth)
@@ -486,6 +500,71 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 
         g.setColour (objectColour (slingObjectIndex));
         g.fillEllipse (slingCursorScreenPos.x - 8.0f, slingCursorScreenPos.y - 8.0f, 16.0f, 16.0f);
+
+        // Movement preview: what will actually happen on release, as
+        // opposed to the bow line above (which shows the pull/aim, i.e.
+        // the opposite direction). Dashed (see strokeDashedPath()) so it's
+        // never confused with the real trail or a confirmed orbit path.
+        // Gated entirely on slingActive -- disappears the instant the
+        // gesture ends, nothing lingers.
+        Vec3 releasePreviewPoint;
+        if (screenToGroundWorld (slingCursorScreenPos, releasePreviewPoint))
+        {
+            const Vec3 pullVector = SlingGesture::computePullVector (slingAnchorWorldPos, releasePreviewPoint);
+
+            if (pullVector.length() >= SlingGesture::minPullDistanceMeters)
+            {
+                const Vec3 launchDirection = pullVector; // opposite the pull, i.e. where it will actually go
+
+                if (isOrbit)
+                {
+                    // Same shape a release would actually produce (see
+                    // releaseSling()) -- reuses OrbitMath.h, the exact
+                    // formula TrajectoryEngine itself uses to move an
+                    // orbiting object, via a scratch object holding only
+                    // the orbit-shape fields. orbitPlaneNormal is read
+                    // from the real object so a previously tilted orbit
+                    // plane previews correctly too.
+                    SoundObject previewObj;
+                    previewObj.orbitPlaneNormal = engine.getObject (slingObjectIndex).orbitPlaneNormal;
+                    previewObj.orbitRadius = juce::jmax (SlingGesture::minOrbitRadiusMeters,
+                                                          pullVector.length() * SlingGesture::orbitRadiusScale);
+                    previewObj.orbitEccentricity = SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].eccentricity;
+                    previewObj.orbitOrientation = SlingGesture::computeOrbitOrientation (pullVector);
+
+                    constexpr int numSegments = 64;
+                    std::vector<Vec3> previewPoints;
+                    previewPoints.reserve (numSegments + 1);
+                    for (int i = 0; i <= numSegments; ++i)
+                    {
+                        const float phase = juce::MathConstants<float>::twoPi * (float) i / (float) numSegments;
+                        previewPoints.push_back (OrbitMath::computePosition (previewObj, { 0.0f, 0.0f, 0.0f }, phase));
+                    }
+
+                    bool anyVisible = false;
+                    auto previewPath = buildProjectedPath (camera, centre, viewportHeight, previewPoints, anyVisible);
+                    if (anyVisible)
+                        strokeDashedPath (g, previewPath, juce::Colours::violet.withAlpha (0.85f), 1.5f);
+                }
+                else
+                {
+                    // Simple straight preview in the launch direction --
+                    // deliberately not a full trajectory simulation (no
+                    // globalField/damping), just a clear visual hint, per
+                    // the feature request.
+                    const Vec3 previewEndWorld = slingAnchorWorldPos + launchDirection;
+                    const auto endScreen = worldToScreen (previewEndWorld);
+
+                    juce::Path throwPath;
+                    throwPath.startNewSubPath (anchorScreen);
+                    throwPath.lineTo (endScreen);
+                    strokeDashedPath (g, throwPath, juce::Colours::orange.withAlpha (0.9f), 2.0f);
+
+                    g.setColour (juce::Colours::orange);
+                    g.fillEllipse (endScreen.x - 4.0f, endScreen.y - 4.0f, 8.0f, 8.0f);
+                }
+            }
+        }
 
         const auto label = isOrbit
             ? juce::String ("Orbit: ") + SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].label

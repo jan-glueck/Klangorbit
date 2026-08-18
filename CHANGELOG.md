@@ -300,6 +300,25 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   Cloud parameter category).
 
 ### Changed
+- **Room boundary now renders as a shaded, translucent sphere** instead
+  of a flat wireframe outline (`PluginEditor::drawShadedBoundarySphere()`).
+  Still no 3D mesh/lighting model (no OpenGL, see "3D camera view") --
+  a cheap "fake sphere" trick instead: `Camera3D::projectSphereSilhouetteRadius()`
+  (new method) computes the sphere's screen-space silhouette radius
+  exactly, not approximately, exploiting the fact that this camera always
+  looks directly at the world origin -- an origin-centered sphere is
+  therefore always exactly on the optical axis, so its projected
+  silhouette is a true circle centered on the viewport middle for any
+  camera angle/zoom (a general off-axis sphere would project to an
+  ellipse under perspective; this one never needs to). A radial gradient
+  (transparent center -> semi-opaque rim) plus a small offset highlight
+  gives a "translucent shell" look that keeps objects/grains inside fully
+  visible while still reading clearly as a spatial boundary.
+  `Tools/verify_camera` gained checks for the new method: succeeds/fails
+  correctly (no silhouette when the camera is at/inside the sphere),
+  larger spheres project larger, and the exact tangent-based geometry
+  cross-checks against the already-verified linear `worldSizeToScreenSize()`
+  estimate in the small-angle limit (27/27 checks passing).
 - `Camera3D::maxDistance` raised from 30 to 150 meters -- generous enough
   to fit a much larger-than-default custom `SceneSettings.roomSize`
   (default 5m) in frame; reviewed alongside the zoom speed

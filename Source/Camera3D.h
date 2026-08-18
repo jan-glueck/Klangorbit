@@ -59,6 +59,17 @@ public:
     // with distance like an actual object would.
     float worldSizeToScreenSize (float worldSizeMeters, float cameraSpaceDepth, float viewportHeightPixels) const;
 
+    // Screen-space radius (pixels) of the silhouette a sphere of the given
+    // world radius, centered at the world origin, would project to for
+    // this camera. Exact (not an approximation): since this camera always
+    // looks directly at the origin (see the class comment), an
+    // origin-centered sphere is always exactly on the optical axis, so
+    // its silhouette is a true circle, not the general off-axis ellipse a
+    // perspective camera would otherwise produce. Returns false if the
+    // camera is at or inside the sphere (distance <= sphereRadius) -- no
+    // silhouette exists in that case.
+    bool projectSphereSilhouetteRadius (float sphereRadius, float viewportHeightPixels, float& outScreenRadius) const;
+
     // Casts a ray from the camera through the given screen-space offset
     // (from the viewport center, pixels -- the inverse of project()'s x/y)
     // and returns where it crosses the world's z=0 ground plane. Used to

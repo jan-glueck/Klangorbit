@@ -185,11 +185,20 @@ away from it is purely additive.
   without caching -- see the Performance note below.
 - **Size and opacity scale with camera distance** for a spatial depth cue,
   on top of the perspective projection's natural size falloff.
-- **Room boundary** renders as a wireframe sphere (three orthogonal great
-  circles) instead of the old flat reference circle -- `SceneSettings.roomSize`
-  was already conceptually spherical, this just makes that visible from
-  any angle. A flat ground grid (1m/2m/3m circles) and a small "Front"
-  marker/label at the origin remain as orientation aids.
+- **Room boundary** renders as a shaded, translucent sphere
+  (`SceneSettings.roomSize` was already conceptually spherical -- see
+  `PluginEditor.cpp`'s `drawShadedBoundarySphere()`) instead of a flat
+  reference circle. No 3D mesh/lighting model (still no OpenGL, see
+  above) -- a cheap "fake sphere" trick instead: since this camera always
+  looks directly at the world origin, an origin-centered sphere's
+  silhouette is always an *exact* circle centered on the viewport middle,
+  for any camera angle or zoom
+  (`Camera3D::projectSphereSilhouetteRadius()`, geometrically exact, not
+  an approximation). A radial gradient (transparent center -> semi-opaque
+  rim, plus a small offset highlight) reads as a translucent shell that
+  clearly marks the boundary without hiding objects/grains inside it. A
+  flat ground grid (1m/2m/3m circles) and a small "Front" marker/label at
+  the origin remain as orientation aids.
 - **Orbit-path preview.** An object currently in `Mode::Orbit` draws its
   full ellipse, not just the current point, sampled via the same formula
   `TrajectoryEngine` itself uses to move it (`Source/OrbitMath.h`, factored

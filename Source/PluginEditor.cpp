@@ -103,6 +103,48 @@ namespace
         }
     }
 
+    // Shaded, translucent sphere for the room boundary (SceneSettings::roomSize),
+    // replacing a flat wireframe outline. No 3D mesh/lighting model (this
+    // project deliberately has no OpenGL, see Camera3D's class comment) --
+    // instead a cheap "fake sphere" trick: the boundary is always centered
+    // on the world origin, and this camera always looks directly at the
+    // origin (see Camera3D's class comment), so the sphere's silhouette is
+    // an EXACT circle centered at the viewport center for any camera
+    // angle/zoom (Camera3D::projectSphereSilhouetteRadius() -- not an
+    // approximation). A radial gradient (transparent center -> semi-opaque
+    // rim) reads as a translucent shell without hiding anything inside it,
+    // plus a small offset highlight for a touch of "shaded sphere" look
+    // beyond a flat gradient.
+    void drawShadedBoundarySphere (juce::Graphics& g, const Camera3D& camera, juce::Point<float> viewportCentre,
+                                    float viewportHeight, float sphereRadius, juce::Colour boundaryColour)
+    {
+        float screenRadius = 0.0f;
+        if (! camera.projectSphereSilhouetteRadius (sphereRadius, viewportHeight, screenRadius))
+            return; // camera is at/inside the boundary -- no silhouette exists to draw
+
+        juce::ColourGradient rim (boundaryColour.withAlpha (0.0f), viewportCentre.x, viewportCentre.y,
+                                   boundaryColour.withAlpha (0.4f), viewportCentre.x + screenRadius, viewportCentre.y,
+                                   true); // radial
+        rim.addColour (0.75, boundaryColour.withAlpha (0.08f)); // stays mostly transparent through most of the interior
+        g.setGradientFill (rim);
+        g.fillEllipse (viewportCentre.x - screenRadius, viewportCentre.y - screenRadius, screenRadius * 2.0f, screenRadius * 2.0f);
+
+        g.setColour (boundaryColour.withAlpha (0.7f));
+        g.drawEllipse (viewportCentre.x - screenRadius, viewportCentre.y - screenRadius, screenRadius * 2.0f, screenRadius * 2.0f, 1.5f);
+
+        // Small soft highlight offset toward the upper-left -- a cheap
+        // specular-glint approximation, not a real light source, just a
+        // visual cue that this is meant to read as a sphere.
+        const float highlightRadius = screenRadius * 0.35f;
+        const auto highlightCentre = viewportCentre.translated (-screenRadius * 0.35f, -screenRadius * 0.35f);
+        juce::ColourGradient highlight (juce::Colours::white.withAlpha (0.18f), highlightCentre.x, highlightCentre.y,
+                                         juce::Colours::white.withAlpha (0.0f), highlightCentre.x + highlightRadius, highlightCentre.y,
+                                         true);
+        g.setGradientFill (highlight);
+        g.fillEllipse (highlightCentre.x - highlightRadius, highlightCentre.y - highlightRadius,
+                        highlightRadius * 2.0f, highlightRadius * 2.0f);
+    }
+
     // Samples the exact same ellipse formula TrajectoryEngine uses to move
     // an orbiting object (OrbitMath.h) to draw a preview of the whole path,
     // not just the current point -- "shared, not reimplemented" math, same
@@ -361,16 +403,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 
     const auto& sceneSettings = audioProcessor.getTrajectoryEngine().getSceneSettings();
     if (sceneSettings.roomSize > 0.0f)
-    {
-        // Wireframe sphere: three orthogonal great circles is enough to
-        // read clearly as a sphere without heavy geometry (the room
-        // boundary is spherical, see SceneSettings.h).
-        const float r = sceneSettings.roomSize;
-        const auto sphereColour = juce::Colours::darkred;
-        drawWireframeCircle (g, camera, centre, viewportHeight, { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, r, 64, sphereColour, 1.5f);
-        drawWireframeCircle (g, camera, centre, viewportHeight, { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, r, 64, sphereColour, 1.5f);
-        drawWireframeCircle (g, camera, centre, viewportHeight, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, r, 64, sphereColour, 1.5f);
-    }
+        drawShadedBoundarySphere (g, camera, centre, viewportHeight, sceneSettings.roomSize, juce::Colours::darkred);
 
     {
         const auto originProj = camera.project ({ 0.0f, 0.0f, 0.0f }, viewportHeight);

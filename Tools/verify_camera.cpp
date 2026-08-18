@@ -173,6 +173,45 @@ int main()
         check (approxEqual (recovered, groundPoint, 0.01f), "screenToGroundPlane still recovers the original point after rotation");
     }
 
+    // --- projectSphereSilhouetteRadius (room-boundary sphere visual) ---
+    {
+        Camera3D cam; // default distance ~6.5, elevation=halfPi (looking straight down)
+        float screenRadius = 0.0f;
+        const bool ok = cam.projectSphereSilhouetteRadius (2.0f, viewportHeight, screenRadius);
+        check (ok && screenRadius > 0.0f, "projectSphereSilhouetteRadius succeeds for a sphere well inside the camera's distance");
+
+        // A larger sphere (closer to the camera's own distance) must
+        // subtend a larger angle, and so project to a larger screen
+        // radius, than a smaller one at the same camera distance.
+        float smallerScreenRadius = 0.0f;
+        cam.projectSphereSilhouetteRadius (0.5f, viewportHeight, smallerScreenRadius);
+        check (screenRadius > smallerScreenRadius, "a larger sphere projects to a larger silhouette than a smaller one at the same camera distance");
+    }
+    {
+        // Camera at/inside the sphere: no silhouette exists.
+        Camera3D cam;
+        cam.zoom (-1000.0f); // clamps to minDistance
+        float screenRadius = 0.0f;
+        const bool ok = cam.projectSphereSilhouetteRadius (cam.getDistance() + 1.0f, viewportHeight, screenRadius);
+        check (! ok, "projectSphereSilhouetteRadius reports no silhouette when the camera is inside the sphere");
+    }
+    {
+        // Cross-check against project()/worldSizeToScreenSize()'s
+        // independent, already-verified small-angle math: for a sphere
+        // whose radius is tiny relative to the camera's distance,
+        // asin(r/d) ~= r/d (small-angle approximation), so the exact
+        // tangent-based silhouette radius should closely agree with the
+        // linear worldSizeToScreenSize() estimate at the same depth.
+        Camera3D cam;
+        const float tinyRadius = 0.01f;
+        float screenRadius = 0.0f;
+        cam.projectSphereSilhouetteRadius (tinyRadius, viewportHeight, screenRadius);
+
+        const float linearEstimate = cam.worldSizeToScreenSize (tinyRadius, cam.getDistance(), viewportHeight);
+        check (approxEqual (screenRadius, linearEstimate, 0.05f),
+               "projectSphereSilhouetteRadius agrees with the independent linear estimate for a small sphere (small-angle cross-check)");
+    }
+
     std::printf ("\n%s (%d failures)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

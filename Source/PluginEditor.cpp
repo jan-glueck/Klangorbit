@@ -103,18 +103,6 @@ namespace
         }
     }
 
-    // Fixed WORLD-SPACE direction the boundary sphere's specular highlight
-    // is lit from (see drawShadedBoundarySphere below) -- an arbitrary but
-    // fixed "key light" choice (mostly from above, slightly front-left),
-    // NOT attached to the camera. Rotating the view therefore moves the
-    // bright spot across the sphere's surface exactly like a real
-    // directional light would, instead of a screen-space decal glued to
-    // one corner regardless of orientation.
-    const Vec3 boundaryHighlightLightDir = [] {
-        const Vec3 v { 0.35f, 0.35f, 0.85f };
-        return v / v.length();
-    }();
-
     // Shaded, translucent sphere for the room boundary (SceneSettings::roomSize),
     // replacing a flat wireframe outline. No 3D mesh/lighting model (this
     // project deliberately has no OpenGL, see Camera3D's class comment) --
@@ -124,9 +112,11 @@ namespace
     // an EXACT circle centered at the viewport center for any camera
     // angle/zoom (Camera3D::projectSphereSilhouetteRadius() -- not an
     // approximation). A radial gradient (transparent center -> semi-opaque
-    // rim) reads as a translucent shell without hiding anything inside it,
-    // plus a specular highlight for a touch of "shaded sphere" look beyond
-    // a flat gradient.
+    // rim) reads as a translucent shell without hiding anything inside it.
+    // (An earlier version also drew a specular highlight here, lit from a
+    // fixed world-space direction via Camera3D::computeSphereHighlight() --
+    // removed again, it didn't read well visually; the gradient alone is
+    // enough to suggest a sphere.)
     void drawShadedBoundarySphere (juce::Graphics& g, const Camera3D& camera, juce::Point<float> viewportCentre,
                                     float viewportHeight, float sphereRadius, juce::Colour boundaryColour)
     {
@@ -143,25 +133,6 @@ namespace
 
         g.setColour (boundaryColour.withAlpha (0.7f));
         g.drawEllipse (viewportCentre.x - screenRadius, viewportCentre.y - screenRadius, screenRadius * 2.0f, screenRadius * 2.0f, 1.5f);
-
-        // Specular highlight -- the point on the sphere's surface nearest
-        // the fixed world-space light direction above, projected through
-        // the SAME camera used for everything else (Camera3D::
-        // computeSphereHighlight()), so it moves exactly as a real lit
-        // sphere would when the view rotates, rather than staying glued
-        // to a fixed screen offset.
-        Camera3D::SphereHighlight highlight;
-        if (! camera.computeSphereHighlight (boundaryHighlightLightDir, sphereRadius, viewportHeight, highlight))
-            return; // on the far side of the sphere from here, or behind the near clip plane -- nothing to draw
-
-        const float highlightRadius = screenRadius * 0.35f;
-        const auto highlightCentre = viewportCentre + juce::Point<float> (highlight.x, highlight.y);
-        juce::ColourGradient highlightGradient (juce::Colours::white.withAlpha (0.18f * highlight.intensity), highlightCentre.x, highlightCentre.y,
-                                                  juce::Colours::white.withAlpha (0.0f), highlightCentre.x + highlightRadius, highlightCentre.y,
-                                                  true);
-        g.setGradientFill (highlightGradient);
-        g.fillEllipse (highlightCentre.x - highlightRadius, highlightCentre.y - highlightRadius,
-                        highlightRadius * 2.0f, highlightRadius * 2.0f);
     }
 
     // Samples the exact same ellipse formula TrajectoryEngine uses to move
@@ -645,6 +616,28 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
             : juce::String ("Free Throw");
         g.setColour (juce::Colours::white);
         g.drawText (label, (int) slingCursorScreenPos.x - 60, (int) slingCursorScreenPos.y + 12, 120, 16, juce::Justification::centred);
+    }
+
+    // Persistent on-screen reminder of the two modifier-key mouse gestures
+    // (orbit, sling launch) -- both are otherwise fully hidden (no button,
+    // no menu entry), so without this a first-time user has no way to
+    // discover them at all. Drawn every frame at a fixed position rather
+    // than e.g. a one-time tooltip, since it's cheap and the gestures are
+    // easy to forget.
+    {
+        // Local copy -- removeFromBottom() mutates its receiver, and
+        // viewArea is the editor's own member (set once in resized()), not
+        // a value to be shrunk a little more on every single repaint.
+        auto viewAreaBottom = viewArea;
+        auto hintArea = viewAreaBottom.removeFromBottom (34).reduced (6, 2);
+        g.setColour (juce::Colours::white.withAlpha (0.55f));
+        g.setFont (12.5f);
+        g.drawText ("Double-click object: Orbit    |    Shift+Drag object: Sling launch",
+                    hintArea.removeFromTop (16), juce::Justification::centred);
+        g.setColour (juce::Colours::white.withAlpha (0.4f));
+        g.setFont (11.0f);
+        g.drawText ("(while pulling: hold Ctrl = orbit shot, tap Alt = cycle shape)    |    Drag empty space: rotate view    |    Scroll: zoom",
+                    hintArea, juce::Justification::centred);
     }
 
     g.restoreState();

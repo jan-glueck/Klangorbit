@@ -21,11 +21,19 @@
     - Double-click on an object: start/stop an orbit around the origin (demo)
     - Shift+left-click+drag on an object: "sling" launch gesture -- pull the
       object away from its rest position like a catapult; releasing fires it
-      in the opposite direction, scaled by how far it was pulled. Holding
-      Ctrl while dragging toggles between a free throw (Impulse) and an
-      orbit shot (Mode::Orbit, always centered on the origin, direction
-      derived from the gesture -- see SlingGesture.h); holding Alt cycles
-      through discrete orbit-eccentricity steps (circular/ellipse). See
+      in the opposite direction, scaled by how far it was pulled. Tapping
+      Ctrl while dragging cycles through three launch modes: Free Throw
+      (Mode::Impulse, the default), Orbit Shot (Mode::Orbit, a scripted
+      ellipse/circle -- direction derived from the gesture, see
+      SlingGesture.h), and Slingshot (Mode::Impulse with a real,
+      physics-based gravity pull toward another object -- see
+      SoundObject::slingshotTargetId/TrajectoryEngine::computeAttractionForce(),
+      NOT a scripted path: whether the result looks like a deflected flyby
+      or a captured orbit emerges from the actual physics). Tapping Alt
+      cycles discrete orbit-eccentricity steps for Orbit Shot; tapping Tab
+      cycles which other object Orbit Shot centers on / Slingshot targets
+      (SlingLaunchMode, slingReferenceObjectId,
+      SlingGesture::cycleSlingReference()). See
       startSling()/updateSlingModifiers()/releaseSling() below.
     - Left-click+drag on EMPTY space (no object or grain under the cursor):
       orbits the camera (azimuth/elevation) instead -- object/sling
@@ -139,21 +147,27 @@ private:
     Vec3 estimatedDragVelocity;
 
     // --- Sling launch gesture state -------------------------------------
+    // Cycled by Ctrl (edge-detected in updateSlingModifiers()), one full
+    // cycle back to FreeThrow after Slingshot -- see the class comment.
+    enum class SlingLaunchMode { FreeThrow, OrbitShot, Slingshot };
+
     bool slingActive = false;
     int slingObjectIndex = -1;
     Vec3 slingAnchorWorldPos;             // object's rest position when the gesture started; never written to the engine while aiming
     juce::Point<float> slingCursorScreenPos;
-    bool slingWantsOrbit = false;         // toggled by Ctrl (edge-detected in updateSlingModifiers())
-    int slingEccentricityStepIndex = 0;   // into SlingGesture::orbitEccentricitySteps, cycled by Alt
+    SlingLaunchMode slingMode = SlingLaunchMode::FreeThrow;
+    int slingEccentricityStepIndex = 0;   // into SlingGesture::orbitEccentricitySteps, cycled by Alt (Orbit Shot only)
     bool slingPrevCtrlDown = false;
     bool slingPrevAltDown = false;
-    // -1 = orbit shot centers on the world origin ("Center"); >=0 = center
-    // on that other active object's LIVE position instead -- a
-    // gravity-assist "slingshot" flyby around a (possibly moving) body,
-    // cycled with the Tab key while the gesture is active (see
-    // cycleSlingReference()/keyPressed()). Only meaningful once
-    // slingWantsOrbit is also true, but tracked independently of it so
-    // choosing a target doesn't require Ctrl to already be held.
+    // -1 = "Center" (the world origin); >=0 = that other active object's
+    // id. Meaning depends on slingMode: for OrbitShot, the (possibly
+    // moving) point the scripted ellipse is centered on; for Slingshot,
+    // which object's real gravity the thrown object is pulled toward (see
+    // SlingGesture::cycleSlingReference()'s own comment for the full
+    // picture). Cycled with the Tab key while the gesture is active (see
+    // cycleSlingReference()/keyPressed()) -- tracked independently of
+    // slingMode so a target can be picked before or after Ctrl-cycling
+    // into a mode that actually uses it.
     int slingReferenceObjectId = -1;
 
     // --- Fading movement trails -------------------------------------------

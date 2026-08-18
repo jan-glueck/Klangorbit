@@ -484,6 +484,71 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     (`Contents/Resources/AppIcon.icns`, `moduleinfo.json`'s `Vendor` field)
     checked directly in the built artifacts, plus the usual full
     rebuild/test-suite/app-launch check.
+- **Sling gesture: Slingshot mode -- a real, physics-based gravity assist,
+  not a scripted path.** Supersedes/extends the earlier "slingshot
+  targeting" entry above: that one only let Orbit Shot's scripted ellipse
+  center on a chosen object, which turned out not to be what "slingshot
+  maneuver" actually meant -- an object thrown so it passes near another,
+  gets deflected by that object's real gravity, and continues on a new
+  course or gets captured into an orbit, as an emergent RESULT of the
+  physics rather than a chosen shape. The Tab-based reference-selection
+  infrastructure from that earlier entry is kept and reused here, now
+  serving two different interpretations depending on the launch mode.
+  - The sling gesture's Ctrl key now CYCLES through three launch modes
+    (`PluginEditor::SlingLaunchMode`: FreeThrow -> OrbitShot -> Slingshot
+    -> FreeThrow) instead of toggling two. Every gesture starts on
+    FreeThrow regardless of Ctrl's state when the drag begins -- only an
+    actual fresh press advances anything, unifying Ctrl's edge-detection
+    behavior with Alt's (previously slightly inconsistent: Ctrl used to
+    read its *held* state at gesture start, Alt never did).
+  - New `SoundObject::slingshotTargetId`/`slingshotStrength`: a one-off,
+    gesture-set pull toward another object's LIVE position, integrated by
+    a small, self-contained addition to the existing
+    `TrajectoryEngine::computeAttractionForce()` (same inverse-square law
+    and `gravityLikeConstant`, now `public` specifically so the preview
+    code below can share it too, fixed small softening floor). Kept fully
+    separate from `SoundObject::attractionStrength` on purpose: firing a
+    Slingshot never mutates the target object's own, independently
+    configured Attraction settings -- the strength is fixed
+    (`SlingGesture::slingshotGravityStrength`) and scaled only by the
+    target's real `Mass` (already user-adjustable), not by pull distance
+    (which already controls launch *speed*, same as Free Throw -- tying
+    gravity strength to the same gesture dimension would read as two
+    controls fighting over one drag).
+  - `TrajectoryEngine::throwObject()` gained optional
+    `slingshotTargetId`/`slingshotStrength` parameters (default `-1`/`0`),
+    mirroring `startOrbit()`'s existing `referenceObjectId` pattern
+    exactly: the default clears any leftover pull from a previous throw
+    of the same object, the same stale-state hazard already fixed once
+    for `orbitReferenceObjectId`.
+  - Not serialized by `PresetManager` -- transient, gesture-driven runtime
+    state, same treatment as `orbitPhase`/`attractionPulsePhase`/
+    `velocity` (explicitly reset to inert defaults on preset load, so a
+    freshly loaded object never keeps a leftover mid-flight pull).
+  - New `SlingGesture::simulateSlingshotPreview()`: forward-simulates the
+    Slingshot preview a couple of seconds ahead with the SAME force
+    law/constant `computeAttractionForce()` uses (simple Euler
+    integration, target treated as momentarily fixed for the short
+    preview horizon -- the same kind of simplification the pre-existing
+    Free Throw preview already documents for itself). A real, physically
+    accurate preview, not an approximation -- 0 strength (no target
+    selected) collapses it to the same straight line Free Throw draws.
+  - Picking "Center" (no real object) for Slingshot has no gravity-well
+    meaning, so it degrades gracefully to a plain, unaffected throw
+    rather than needing special-casing anywhere. Switching INTO Slingshot
+    while still on "Center" auto-selects the first available object
+    instead of silently doing nothing, if one exists -- directly
+    addresses the exact confusion that prompted this feature (a user
+    testing the earlier Tab-cycling entry with only one active object in
+    the scene had nothing to cycle to, and no other feedback that this
+    was expected).
+  - `Tools/verify_orbit` gained 6 checks: `throwObject()`'s new
+    parameters are stored correctly and the default clears a stale pull,
+    a pulled throw is measurably deflected toward the target compared to
+    an otherwise-identical unaffected throw (direct force-integration
+    check, not just that the fields are set), and
+    `simulateSlingshotPreview()`'s zero-strength/nonzero-strength/
+    always-finite behavior (30/30 checks passing).
 
 ### Changed
 - **Solo/Mute controls moved to the object-list sidebar, removed from the

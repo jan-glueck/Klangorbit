@@ -79,8 +79,17 @@ public:
     void dragTo (int objectIndex, Vec3 newPosition);
     void endDrag (int objectIndex);
 
-    // "Throws" an object: sets Mode=Impulse and an initial velocity
-    void throwObject (int objectIndex, Vec3 initialVelocity);
+    // "Throws" an object: sets Mode=Impulse and an initial velocity.
+    // slingshotTargetId (default -1 = none) optionally activates a one-off
+    // "slingshot" gravity-assist pull toward another object's LIVE
+    // position (see SoundObject::slingshotTargetId/slingshotStrength and
+    // computeAttractionForce()) -- the sling gesture's Slingshot mode is
+    // currently the only caller that passes anything other than -1. The
+    // plain drag-throw gesture and the sling's Free Throw mode both use
+    // the default, which ALSO resets any leftover slingshot pull from a
+    // previous throw (same stale-state hazard startOrbit() already
+    // guards against for orbitReferenceObjectId).
+    void throwObject (int objectIndex, Vec3 initialVelocity, int slingshotTargetId = -1, float slingshotStrength = 0.0f);
 
     // Starts orbit motion around a point. eccentricity/orientation are
     // optional (default = circular orbit, matching the pre-ellipse
@@ -101,6 +110,12 @@ public:
     // Lock-free snapshot for the audio thread: position + velocity per object.
     struct Snapshot { Vec3 position, velocity; bool active; };
     void getSnapshot (std::vector<Snapshot>& out) const;
+
+    // Public specifically so PluginEditor's Slingshot preview
+    // (SlingGesture::simulateSlingshotPreview()) can use the exact same
+    // constant computeAttractionForce() does below, rather than a second,
+    // easy-to-drift-out-of-sync copy of the same magic number.
+    static constexpr float gravityLikeConstant = 1.0f;
 
 private:
     void integrate (SoundObject& obj, double dt);
@@ -127,6 +142,4 @@ private:
     // Double buffering for lock-free access from the audio thread
     mutable juce::CriticalSection snapshotLock;
     std::vector<Snapshot> snapshotBuffer;
-
-    static constexpr float gravityLikeConstant = 1.0f;
 };

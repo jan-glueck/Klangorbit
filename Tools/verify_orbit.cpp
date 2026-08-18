@@ -220,6 +220,96 @@ int main()
         check (next == 1, "cycleSlingReference(): a stale current id recovers to the first real candidate instead of getting stuck");
     }
 
+    // --- Sling gesture: Slingshot mode (real gravity assist, not a scripted path) ---
+    {
+        // throwObject() with a valid slingshotTargetId stores it (and a
+        // nonzero strength) on the thrown object.
+        TrajectoryEngine engine (2);
+        engine.activateObject (0);
+        engine.activateObject (1);
+        engine.throwObject (0, { 1.0f, 0.0f, 0.0f }, /*slingshotTargetId*/ 1, /*strength*/ 5.0f);
+        check (engine.getObject (0).slingshotTargetId == 1 && approxEqual (engine.getObject (0).slingshotStrength, 5.0f),
+               "throwObject(): a valid slingshotTargetId/strength is stored on the thrown object");
+    }
+    {
+        // The default (-1) must clear a stale slingshotTargetId left over
+        // from an earlier throw -- same stale-state hazard startOrbit()
+        // already guards against for orbitReferenceObjectId, now checked
+        // here for throwObject() too.
+        TrajectoryEngine engine (2);
+        engine.activateObject (0);
+        engine.activateObject (1);
+        engine.throwObject (0, { 1.0f, 0.0f, 0.0f }, 1, 5.0f);
+        engine.throwObject (0, { 1.0f, 0.0f, 0.0f }); // default args -- an ordinary Free Throw
+        check (engine.getObject (0).slingshotTargetId == -1 && approxEqual (engine.getObject (0).slingshotStrength, 0.0f),
+               "throwObject() with the default slingshotTargetId (-1) clears a leftover pull from a previous throw");
+    }
+    {
+        // The actual gravity-assist physics: with a slingshot target off
+        // to the side of the initial straight-line path, only the PULLED
+        // object's velocity should gain a sideways component toward it --
+        // i.e. computeAttractionForce()'s slingshot contribution is
+        // really being integrated every tick, not just stored inertly on
+        // the object. A short burst (well before damping/drift dominates
+        // either simulation) keeps this a direct, robust force check
+        // rather than a longer-horizon trajectory comparison.
+        TrajectoryEngine plain (2), pulled (2);
+        for (auto* e : { &plain, &pulled })
+        {
+            e->activateObject (0);
+            e->activateObject (1);
+            e->getObject (1).position = { 1.0f, 1.0f, 0.0f }; // "planet", off to the side
+            e->getObject (1).mass = 2.0f;
+        }
+        plain.throwObject (0, { 2.0f, 0.0f, 0.0f });
+        pulled.throwObject (0, { 2.0f, 0.0f, 0.0f }, /*slingshotTargetId*/ 1, SlingGesture::slingshotGravityStrength);
+
+        for (int i = 0; i < 10; ++i)
+        {
+            plain.update (0.01);
+            pulled.update (0.01);
+        }
+
+        const float plainY = plain.getObject (0).position.y;
+        const float pulledY = pulled.getObject (0).position.y;
+        std::printf ("       y-position after a short burst: unaffected=%.5f, slingshot=%.5f (planet at y=1)\n", plainY, pulledY);
+        check (approxEqual (plainY, 0.0f, 1.0e-4f),
+               "Slingshot test setup: an unaffected throw stays exactly on the x-axis (no sideways force acting on it)");
+        check (pulledY > plainY,
+               "Slingshot: the gravity pull measurably deflects the thrown object toward the target (gains a y-component toward it)");
+    }
+    {
+        // simulateSlingshotPreview() with strength=0 (no target selected,
+        // see PluginEditor::paint()) must collapse to a perfectly straight
+        // line, matching the Free Throw preview it stands in for.
+        const auto straight = SlingGesture::simulateSlingshotPreview (
+            { 0.0f, 0.0f, 0.0f }, { 2.0f, 0.0f, 0.0f }, { 0.0f, 5.0f, 0.0f },
+            /*targetMass*/ 1.0f, /*strength*/ 0.0f, /*thrownMass*/ 1.0f, /*gravityConstant*/ 1.0f, 30);
+        check (! straight.empty(), "simulateSlingshotPreview() test setup produced points");
+        bool allOnStraightLine = true;
+        for (auto& p : straight)
+            if (std::abs (p.y) > 1.0e-4f || std::abs (p.z) > 1.0e-4f) // pure +x motion expected
+                allOnStraightLine = false;
+        check (allOnStraightLine, "simulateSlingshotPreview(): zero strength degrades to a perfectly straight line");
+    }
+    {
+        // Nonzero strength must curve the previewed path toward the
+        // target, and never produce NaN/Inf even close to the target.
+        const auto curved = SlingGesture::simulateSlingshotPreview (
+            { 0.0f, 0.0f, 0.0f }, { 2.0f, 0.0f, 0.0f }, { 0.0f, 3.0f, 0.0f },
+            /*targetMass*/ 2.0f, /*strength*/ SlingGesture::slingshotGravityStrength, /*thrownMass*/ 1.0f,
+            /*gravityConstant*/ 1.0f, 60);
+
+        bool allFinite = true;
+        for (auto& p : curved)
+            if (! std::isfinite (p.x) || ! std::isfinite (p.y) || ! std::isfinite (p.z))
+                allFinite = false;
+        check (allFinite, "simulateSlingshotPreview(): stays finite throughout, even close to the target");
+
+        const float finalY = curved.back().y;
+        check (finalY > 0.5f, "simulateSlingshotPreview(): nonzero strength visibly curves the path toward the target (off the straight +x line)");
+    }
+
     // --- Mean-reverting orbit radius (Ornstein-Uhlenbeck process) ---
     {
         // Default (reversionRate=0, noiseAmplitude=0): must be a complete

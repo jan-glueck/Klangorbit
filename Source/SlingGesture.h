@@ -58,6 +58,19 @@ namespace SlingGesture
     // gesture's effect on the orbit predictable (distance -> size only).
     constexpr float orbitAngularSpeedMagnitude = 1.0f;
 
+    // Gravity-well strength (SoundObject::slingshotStrength) for the sling
+    // gesture's Slingshot mode -- a fixed constant, deliberately NOT scaled
+    // by pull distance like throwVelocityScale/orbitRadiusScale above:
+    // pulling harder should just mean "faster" (same launch-speed formula
+    // Free Throw already uses), not ALSO "more strongly attracted", which
+    // would read as two gesture dimensions fighting for the same control.
+    // How strongly a given encounter actually deflects the thrown object
+    // is then a genuine, undictated consequence of the physics (approach
+    // speed vs. this fixed strength vs. the target's own real Mass, which
+    // the user can already dial in via the parameter panel) rather than
+    // something this constant tries to guarantee on its own.
+    constexpr float slingshotGravityStrength = 8.0f;
+
     // "Zugvektor" per the design spec: anchor minus release point. Points
     // in the launch direction (opposite of the drag itself); its length is
     // the pull distance.
@@ -89,13 +102,20 @@ namespace SlingGesture
         return std::atan2 (pullVector.y, pullVector.x);
     }
 
-    // Advances the sling gesture's "slingshot" reference target: which
-    // point the launched orbit is centered on. -1 means the world origin
-    // ("Center"); any other value is another active object's id, whose
-    // LIVE position becomes the orbit center instead of a fixed point --
-    // a gravitational-slingshot-style flyby around a (possibly moving)
-    // body rather than a fixed point in space (see
-    // TrajectoryEngine::startOrbit()'s referenceObjectId parameter).
+    // Advances the sling gesture's reference-target selection (see
+    // PluginEditor::slingReferenceObjectId), tapped via Tab while the
+    // gesture is active. -1 means the world origin ("Center"); any other
+    // value is another active object's id. Shared by two of the sling
+    // gesture's launch modes, each interpreting it differently: Orbit
+    // Shot centers its scripted ellipse there (a fixed point, or another
+    // object's LIVE position via `TrajectoryEngine::startOrbit()`'s
+    // referenceObjectId parameter); Slingshot instead pulls the thrown
+    // object toward it with real gravity (see
+    // SoundObject::slingshotTargetId, TrajectoryEngine::throwObject()'s
+    // slingshotTargetId parameter, and simulateSlingshotPreview() below).
+    // "Center" has no gravity-well meaning for Slingshot -- selecting it
+    // there just means no pull is applied, degrading gracefully to a
+    // plain Free Throw rather than needing special-casing.
     //
     // Cycles through [-1 ("Center"), every id in activeObjectIds except
     // selfId], wrapping back to -1 after the last one. Rebuilding this
@@ -114,5 +134,51 @@ namespace SlingGesture
         const auto it = std::find (candidates.begin(), candidates.end(), current);
         const size_t pos = (it != candidates.end()) ? (size_t) std::distance (candidates.begin(), it) : 0;
         return candidates[(pos + 1) % candidates.size()];
+    }
+
+    // Forward-simulates a Slingshot throw's near-term path for the live
+    // dashed preview while aiming (see PluginEditor::paint()) -- NOT a
+    // general N-body simulator, just enough physics to preview what
+    // release will actually do: the exact same inverse-square force law,
+    // gravityLikeConstant, and softening floor
+    // TrajectoryEngine::computeAttractionForce() uses for
+    // SoundObject::slingshotTargetId, integrated forward with simple
+    // (symplectic) Euler steps at a small fixed dt.
+    //
+    // The target is treated as fixed at targetPos for the whole preview
+    // horizon rather than also simulating ITS motion -- a deliberate
+    // simplification for a short (couple-of-seconds) look-ahead, in the
+    // same spirit as the Free Throw preview's own documented
+    // simplifications (no globalField/damping curvature there either).
+    // strength == 0 (no target selected, see cycleSlingReference above)
+    // degrades this to a perfectly straight line, i.e. the same preview
+    // Free Throw already draws.
+    inline std::vector<Vec3> simulateSlingshotPreview (Vec3 startPos, Vec3 initialVelocity,
+                                                         Vec3 targetPos, float targetMass, float strength,
+                                                         float thrownMass, float gravityConstant,
+                                                         int numSteps = 90, float dt = 1.0f / 30.0f)
+    {
+        std::vector<Vec3> points;
+        points.reserve ((size_t) numSteps + 1);
+
+        Vec3 pos = startPos;
+        Vec3 vel = initialVelocity;
+        points.push_back (pos);
+
+        constexpr float softening = 0.05f; // matches computeAttractionForce()'s own softening floor for this pull
+        const float safeMass = std::max (thrownMass, 1.0e-3f);
+
+        for (int i = 0; i < numSteps; ++i)
+        {
+            const Vec3 diff = targetPos - pos;
+            const float dist = std::max (diff.length(), softening);
+            const float magnitude = gravityConstant * strength * targetMass / (dist * dist);
+            const Vec3 accel = (diff / dist) * (magnitude / safeMass);
+
+            vel += accel * dt;
+            pos += vel * dt;
+            points.push_back (pos);
+        }
+        return points;
     }
 }

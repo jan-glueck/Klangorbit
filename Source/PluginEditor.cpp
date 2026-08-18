@@ -560,8 +560,9 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
     if (slingActive)
     {
         const auto anchorScreen = worldToScreen (slingAnchorWorldPos);
-        const bool isOrbit = slingWantsOrbit;
-        const auto slingLineColour = isOrbit ? juce::Colours::violet : UiColours::accent();
+        const auto slingLineColour = slingMode == SlingLaunchMode::OrbitShot  ? juce::Colours::violet
+                                    : slingMode == SlingLaunchMode::Slingshot ? juce::Colours::yellowgreen
+                                                                               : UiColours::accent();
 
         g.setColour (slingLineColour);
         g.drawLine (anchorScreen.x, anchorScreen.y, slingCursorScreenPos.x, slingCursorScreenPos.y, 2.0f);
@@ -584,7 +585,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
             {
                 const Vec3 launchDirection = pullVector; // opposite the pull, i.e. where it will actually go
 
-                if (isOrbit)
+                if (slingMode == SlingLaunchMode::OrbitShot)
                 {
                     // Same shape a release would actually produce (see
                     // releaseSling()) -- reuses OrbitMath.h, the exact
@@ -601,9 +602,9 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
                     previewObj.orbitOrientation = SlingGesture::computeOrbitOrientation (pullVector);
 
                     // Same center resolution as releaseSling() -- if a
-                    // "slingshot" target is selected, this reads its
-                    // CURRENT live position every repaint, so the preview
-                    // itself already tracks a moving target while aiming.
+                    // target is selected, this reads its CURRENT live
+                    // position every repaint, so the preview itself
+                    // already tracks a moving target while aiming.
                     const Vec3 previewCenter = (slingReferenceObjectId >= 0)
                                                     ? engine.getObject (slingReferenceObjectId).position
                                                     : Vec3 { 0.0f, 0.0f, 0.0f };
@@ -621,6 +622,34 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
                     auto previewPath = buildProjectedPath (camera, centre, viewportHeight, previewPoints, anyVisible);
                     if (anyVisible)
                         strokeDashedPath (g, previewPath, juce::Colours::violet.withAlpha (0.85f), 1.5f);
+                }
+                else if (slingMode == SlingLaunchMode::Slingshot)
+                {
+                    // Same physics a release would actually integrate (see
+                    // releaseSling()/TrajectoryEngine::computeAttractionForce()) --
+                    // forward-simulated a couple of seconds ahead via
+                    // SlingGesture::simulateSlingshotPreview(), the exact
+                    // same force law/constant, so the curve shown is what
+                    // will actually happen, not an approximation. No
+                    // target selected (-1) still previews correctly: 0
+                    // strength collapses this to the same straight line
+                    // Free Throw draws.
+                    const auto& thrown = engine.getObject (slingObjectIndex);
+                    const Vec3 targetPos = (slingReferenceObjectId >= 0)
+                                                ? engine.getObject (slingReferenceObjectId).position
+                                                : Vec3 { 0.0f, 0.0f, 0.0f };
+                    const float targetMass = (slingReferenceObjectId >= 0)
+                                                  ? engine.getObject (slingReferenceObjectId).mass : 0.0f;
+                    const float strength = (slingReferenceObjectId >= 0) ? SlingGesture::slingshotGravityStrength : 0.0f;
+
+                    const auto previewPoints = SlingGesture::simulateSlingshotPreview (
+                        slingAnchorWorldPos, launchDirection * SlingGesture::throwVelocityScale,
+                        targetPos, targetMass, strength, thrown.mass, TrajectoryEngine::gravityLikeConstant);
+
+                    bool anyVisible = false;
+                    auto previewPath = buildProjectedPath (camera, centre, viewportHeight, previewPoints, anyVisible);
+                    if (anyVisible)
+                        strokeDashedPath (g, previewPath, juce::Colours::yellowgreen.withAlpha (0.85f), 1.5f);
                 }
                 else
                 {
@@ -642,21 +671,30 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
             }
         }
 
-        if (isOrbit)
+        // "Center" = the world origin; otherwise the chosen object's id --
+        // see slingReferenceObjectId's comment (Tab cycles this while the
+        // gesture is active). Shared by Orbit Shot and Slingshot's labels.
+        const auto targetLabel = juce::String ("around ")
+            + (slingReferenceObjectId >= 0 ? ("Object " + juce::String (slingReferenceObjectId))
+                                            : juce::String ("Center"));
+
+        if (slingMode == SlingLaunchMode::OrbitShot)
         {
             const auto shapeLabel = juce::String ("Orbit: ")
                 + SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].label;
-            // "Center" = the world origin; otherwise the chosen object's id --
-            // see slingReferenceObjectId's comment (Tab cycles this while
-            // the gesture is active).
-            const auto targetLabel = juce::String ("around ")
-                + (slingReferenceObjectId >= 0 ? ("Object " + juce::String (slingReferenceObjectId))
-                                                : juce::String ("Center"));
 
             g.setColour (UiColours::textPrimary());
             g.drawText (shapeLabel, (int) slingCursorScreenPos.x - 70, (int) slingCursorScreenPos.y + 12, 140, 16, juce::Justification::centred);
             g.setColour (UiColours::textSecondary());
             g.drawText (targetLabel, (int) slingCursorScreenPos.x - 70, (int) slingCursorScreenPos.y + 28, 140, 14, juce::Justification::centred);
+        }
+        else if (slingMode == SlingLaunchMode::Slingshot)
+        {
+            g.setColour (UiColours::textPrimary());
+            g.drawText ("Slingshot", (int) slingCursorScreenPos.x - 70, (int) slingCursorScreenPos.y + 12, 140, 16, juce::Justification::centred);
+            g.setColour (UiColours::textSecondary());
+            g.drawText (slingReferenceObjectId >= 0 ? targetLabel : juce::String ("(no target -- tap Tab)"),
+                        (int) slingCursorScreenPos.x - 70, (int) slingCursorScreenPos.y + 28, 140, 14, juce::Justification::centred);
         }
         else
         {
@@ -683,7 +721,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
                     hintArea.removeFromTop (16), juce::Justification::centred);
         g.setColour (UiColours::textSecondary().withAlpha (0.85f));
         g.setFont (11.0f);
-        g.drawText ("(while pulling: hold Ctrl = orbit shot, tap Alt = cycle shape, tap Tab = slingshot target)    |    Drag empty space: rotate view    |    Scroll: zoom",
+        g.drawText ("(while pulling: tap Ctrl = cycle Free Throw/Orbit/Slingshot, Alt = cycle shape, Tab = target)    |    Drag empty space: rotate view    |    Scroll: zoom",
                     hintArea, juce::Justification::centred);
     }
 
@@ -865,15 +903,15 @@ void SpatialAudioPOCEditor::startSling (int objectIndex)
     slingAnchorWorldPos = engine.getObject (objectIndex).position;
     slingCursorScreenPos = worldToScreen (slingAnchorWorldPos);
 
-    // If Ctrl/Alt already happen to be held when the gesture starts, take
-    // that as the starting state directly (rather than requiring a
-    // press-transition first) -- but don't auto-cycle the eccentricity
-    // step just because Alt happens to already be down; that only
-    // advances on an actual press (see updateSlingModifiers()).
-    const auto mods = juce::ModifierKeys::getCurrentModifiers();
-    slingWantsOrbit = mods.isCtrlDown();
+    // Always starts on FreeThrow/"Center", even if Ctrl/Alt already happen
+    // to be held -- consistent edge-detection philosophy for all three
+    // modifier keys (Ctrl/Alt/Tab): only an actual fresh press advances
+    // anything (see updateSlingModifiers()/keyPressed()), never merely
+    // holding a key down through the start of a new gesture.
+    slingMode = SlingLaunchMode::FreeThrow;
     slingEccentricityStepIndex = 0;
-    slingReferenceObjectId = -1; // always starts on "Center", see its own comment in PluginEditor.h
+    slingReferenceObjectId = -1;
+    const auto mods = juce::ModifierKeys::getCurrentModifiers();
     slingPrevCtrlDown = mods.isCtrlDown();
     slingPrevAltDown = mods.isAltDown();
 }
@@ -902,7 +940,18 @@ void SpatialAudioPOCEditor::updateSlingModifiers()
     // Edge-detected (only on the down-transition), so holding a key
     // doesn't repeatedly toggle/cycle every timer tick.
     if (ctrlDown && ! slingPrevCtrlDown)
-        slingWantsOrbit = ! slingWantsOrbit;
+    {
+        slingMode = static_cast<SlingLaunchMode> ((static_cast<int> (slingMode) + 1) % 3);
+
+        // Slingshot needs a real target to mean anything ("Center" has no
+        // gravity-well interpretation, see cycleSlingReference()'s own
+        // comment) -- if the user hasn't already picked one via Tab,
+        // auto-select the first available candidate instead of silently
+        // doing nothing, so switching into Slingshot always visibly does
+        // something if any other object exists to target.
+        if (slingMode == SlingLaunchMode::Slingshot && slingReferenceObjectId < 0)
+            cycleSlingReference();
+    }
 
     if (altDown && ! slingPrevAltDown)
         slingEccentricityStepIndex = (slingEccentricityStepIndex + 1)
@@ -929,31 +978,49 @@ void SpatialAudioPOCEditor::releaseSling()
     {
         const Vec3 launchDirection = pullVector; // already points opposite the drag, i.e. the launch direction
 
-        if (slingWantsOrbit)
+        switch (slingMode)
         {
-            // -1 ("Center") uses the world origin, same as before this
-            // feature existed; >=0 ("slingshot" around another object,
-            // see slingReferenceObjectId's comment) uses that object's
-            // CURRENT position as the center at release time -- its live
-            // position going forward is then tracked by
-            // TrajectoryEngine::integrate() itself via referenceObjectId
-            // below, not by this snapshot.
-            const Vec3 center = (slingReferenceObjectId >= 0)
-                                     ? engine.getObject (slingReferenceObjectId).position
-                                     : Vec3 { 0.0f, 0.0f, 0.0f };
-            const float semiMajor = juce::jmax (SlingGesture::minOrbitRadiusMeters,
-                                                 pullVector.length() * SlingGesture::orbitRadiusScale);
-            const float orientation = SlingGesture::computeOrbitOrientation (pullVector);
-            const float directionSign = SlingGesture::computeOrbitDirectionSign (slingAnchorWorldPos - center, launchDirection);
-            const float eccentricity = SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].eccentricity;
+            case SlingLaunchMode::OrbitShot:
+            {
+                // -1 ("Center") uses the world origin, same as before this
+                // feature existed; >=0 (orbiting another object, see
+                // slingReferenceObjectId's comment) uses that object's
+                // CURRENT position as the center at release time -- its
+                // live position going forward is then tracked by
+                // TrajectoryEngine::integrate() itself via
+                // referenceObjectId below, not by this snapshot.
+                const Vec3 center = (slingReferenceObjectId >= 0)
+                                         ? engine.getObject (slingReferenceObjectId).position
+                                         : Vec3 { 0.0f, 0.0f, 0.0f };
+                const float semiMajor = juce::jmax (SlingGesture::minOrbitRadiusMeters,
+                                                     pullVector.length() * SlingGesture::orbitRadiusScale);
+                const float orientation = SlingGesture::computeOrbitOrientation (pullVector);
+                const float directionSign = SlingGesture::computeOrbitDirectionSign (slingAnchorWorldPos - center, launchDirection);
+                const float eccentricity = SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].eccentricity;
 
-            engine.startOrbit (slingObjectIndex, center, semiMajor,
-                                directionSign * SlingGesture::orbitAngularSpeedMagnitude,
-                                eccentricity, orientation, slingReferenceObjectId);
-        }
-        else
-        {
-            engine.throwObject (slingObjectIndex, launchDirection * SlingGesture::throwVelocityScale);
+                engine.startOrbit (slingObjectIndex, center, semiMajor,
+                                    directionSign * SlingGesture::orbitAngularSpeedMagnitude,
+                                    eccentricity, orientation, slingReferenceObjectId);
+                break;
+            }
+
+            case SlingLaunchMode::Slingshot:
+            {
+                // A real, physics-based gravity pull -- NOT a scripted
+                // path. -1 ("Center") has no gravity-well meaning, so it
+                // degrades gracefully to a plain, unaffected throw (0
+                // strength) rather than needing special-casing here; see
+                // SlingGesture::cycleSlingReference()'s own comment.
+                const float strength = (slingReferenceObjectId >= 0) ? SlingGesture::slingshotGravityStrength : 0.0f;
+                engine.throwObject (slingObjectIndex, launchDirection * SlingGesture::throwVelocityScale,
+                                     slingReferenceObjectId, strength);
+                break;
+            }
+
+            case SlingLaunchMode::FreeThrow:
+            default:
+                engine.throwObject (slingObjectIndex, launchDirection * SlingGesture::throwVelocityScale);
+                break;
         }
     }
 

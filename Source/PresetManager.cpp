@@ -530,6 +530,8 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         obj.orbitPhase = 0.0f;
         obj.attractionPulsePhase = 0.0f;
         obj.velocity = {};
+        obj.slingshotTargetId = -1;
+        obj.slingshotStrength = 0.0f;
     }
 
     return juce::Result::ok();

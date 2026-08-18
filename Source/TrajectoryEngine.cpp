@@ -105,11 +105,15 @@ void TrajectoryEngine::endDrag (int objectIndex)
     getObject (objectIndex).mode = SoundObject::Mode::Static;
 }
 
-void TrajectoryEngine::throwObject (int objectIndex, Vec3 initialVelocity)
+void TrajectoryEngine::throwObject (int objectIndex, Vec3 initialVelocity, int slingshotTargetId, float slingshotStrength)
 {
     auto& o = getObject (objectIndex);
     o.mode = SoundObject::Mode::Impulse;
     o.velocity = initialVelocity;
+    // See this method's own header comment: -1 (the default) always wins
+    // and clears any leftover pull from a previous throw.
+    o.slingshotTargetId = (slingshotTargetId >= 0 && slingshotTargetId != o.id) ? slingshotTargetId : -1;
+    o.slingshotStrength = (o.slingshotTargetId >= 0) ? slingshotStrength : 0.0f;
 }
 
 void TrajectoryEngine::startOrbit (int objectIndex, Vec3 center, float semiMajorAxis, float angularSpeed,
@@ -171,6 +175,27 @@ Vec3 TrajectoryEngine::computeAttractionForce (const SoundObject& obj) const
         auto dir = diff / dist;
         force += dir * magnitude;
     }
+
+    // Sling gesture's one-off "slingshot" gravity assist (see
+    // SoundObject::slingshotTargetId/slingshotStrength's own comment) --
+    // same inverse-square law and gravityLikeConstant as the loop above,
+    // fixed forceExponent (2) and a fixed small softening floor rather
+    // than exposing them for this one gesture-driven pull -- deliberately
+    // NOT folded into the loop above: this pull's source is obj's own
+    // slingshotTargetId, not another object's attractionStrength, so it
+    // isn't "another object acting as a source" in the same sense, and
+    // keeping it separate means firing a slingshot never touches the
+    // target object's own, independently-configured Attraction settings.
+    if (juce::isPositiveAndBelow (obj.slingshotTargetId, (int) objects.size()) && obj.slingshotTargetId != obj.id)
+    {
+        const auto& target = objects[(size_t) obj.slingshotTargetId];
+        const auto diff = target.position - obj.position;
+        constexpr float softening = 0.05f; // matches SoundObject::minDistance's own default
+        const float dist = juce::jmax (diff.length(), softening);
+        const float magnitude = gravityLikeConstant * obj.slingshotStrength * target.mass / (dist * dist);
+        force += (diff / dist) * magnitude;
+    }
+
     return force;
 }
 

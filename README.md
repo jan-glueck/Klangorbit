@@ -133,6 +133,20 @@ system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
   scene parameters. Writes directly to the engine, no preset file needed
   to try things out. Full field reference including defaults in
   `Presets/schema/README.md`.
+- **Solo/Mute** (top of the Object category in the parameter panel,
+  `SoundObject::muted`/`soloed`): own `muted` always wins over `soloed`;
+  otherwise, soloing any object silences every object that isn't itself
+  soloed (classic non-exclusive DAW solo -- several objects can be soloed
+  together and all stay audible, it's not a single-object radio button).
+  Applies to an object's `GrainCloud` too, not just its own signal.
+  Toggling fades over ~20ms rather than cutting instantly, so it never
+  clicks; once an object has actually reached silence, its
+  propagation/encoding work (and its grains') is skipped entirely for
+  performance, not just gained down to zero every block. Currently only
+  accessible from the parameter panel with an object selected -- hooking
+  Solo/Mute into the object-list sidebar (see `Source/ObjectListPanel.h`,
+  a separate, not-yet-merged feature) is a natural follow-up once both
+  exist together.
 
 ## 3D camera view
 

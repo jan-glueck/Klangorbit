@@ -74,6 +74,8 @@ defaults for everything new.
       "mass": 1.0,
       "damping": 0.02,
       "gain": 1.0,
+      "muted": false,                 // own mute always wins over solo; applies to this object's GrainCloud too
+      "soloed": false,                // if ANY object is soloed, every non-soloed object goes silent (non-exclusive, several can be soloed at once)
 
       // Inertia/motion limits
       "maxVelocity": 6.0,             // <= 0 = unlimited

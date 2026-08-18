@@ -58,6 +58,19 @@ struct SoundObject
 
     float gain = 1.0f; // manual per-object gain, in addition to distance attenuation
 
+    // --- Solo/mute (mixing, not physics) --------------------------------
+    // Own mute always wins over solo (see below) -- an object can never be
+    // simultaneously "definitely silent" and "definitely audible", so a
+    // contradictory muted=true + soloed=true state can't happen in
+    // practice. Applies to this object AND all of its GrainCloud's grains
+    // -- see PluginProcessor::processBlock().
+    bool muted = false;
+    // If ANY active object is soloed, every object that is NOT soloed
+    // goes silent (regardless of its own `muted`), while every soloed
+    // object stays audible -- classic non-exclusive DAW solo, not a
+    // single-object radio-button. See PluginProcessor::processBlock().
+    bool soloed = false;
+
     // --- Inertia / motion limits ---------------------------------------
     // <= 0 = unlimited.
     float maxVelocity = 6.0f;

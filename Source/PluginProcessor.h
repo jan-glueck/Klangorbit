@@ -113,6 +113,17 @@ private:
     // Per-object persistent gain state for zipper-free ramping
     std::vector<std::vector<float>> previousGainsPerObject;
 
+    // Per-object smoothed solo/mute multiplier (0..1), ramped a fixed
+    // amount per block toward 1 (audible) or 0 (silent) rather than
+    // switching instantly -- see SoundObject::muted/soloed and
+    // processBlock()'s effective-mute computation. Once an object has
+    // fully reached 0 (not just close to it), its propagation/encoding
+    // work is skipped entirely for that block -- the actual performance
+    // win -- rather than paying the full cost every block just to encode
+    // silence.
+    std::vector<float> muteRampGain;
+    static constexpr float muteRampSeconds = 0.02f; // a few ms, per the design brief -- short enough to feel instant, long enough to never click
+
     // Per-object propagation delay/Doppler/air-absorption state (see
     // PropagationProcessor). Applied to the mono source signal before
     // AmbisonicsEncoder::encodeBlock().

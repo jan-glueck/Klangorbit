@@ -257,6 +257,33 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     silently drift out of sync again, backed by a `static_assert` that
     fails the build if the buffer formula ever stops covering the
     required reach.
+- **Solo/Mute per object.** New `SoundObject::muted`/`soloed` fields
+  ("Muted"/"Soloed" toggles in the parameter panel's Object category).
+  - Own `muted` always wins over `soloed` (an object can't be
+    simultaneously "definitely silent" and "definitely audible");
+    otherwise, if any object is soloed, every non-soloed object goes
+    silent while every soloed object stays audible -- classic
+    non-exclusive DAW solo, not a single-object radio button. Decision
+    logic factored into `Source/MuteSoloLogic.h` (header-only, no JUCE
+    dependency at all, same "shared, not reimplemented" principle as
+    `SlingGesture.h`/`OrbitMath.h`/`GrainDoppler.h`), shared between
+    `PluginProcessor`'s two per-object loops (main object + its
+    `GrainCloud`'s grains) and `Tools/verify_mute_solo` (8/8 checks
+    passing, every muted/soloed/anySoloed combination).
+  - Applies to a muted/soloed-out object's `GrainCloud` too -- its grains
+    fade and get skipped right alongside the parent, not just the
+    object's own signal.
+  - Smoothly ramped (`muteRampSeconds` = 20ms) rather than switched
+    instantly, so toggling never clicks; once an object's ramp has
+    actually reached silence (not just close to it), its
+    propagation/encoding work is skipped entirely for that block -- the
+    actual performance win, rather than paying full cost every block just
+    to encode silence.
+  - Serialized in presets (optional, additive, no schemaVersion bump).
+  - Not yet wired into the object-list sidebar (`Source/ObjectListPanel.h`,
+    a separate, not-yet-merged feature) -- only accessible from the
+    parameter panel with an object selected for now; noted as a follow-up
+    once both branches are merged together.
 
 ### Changed
 - `Camera3D::maxDistance` raised from 30 to 150 meters -- generous enough

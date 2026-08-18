@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "GrainRenderer.h"
+#include "MuteSoloLogic.h"
 #include <algorithm>
 #include <cmath>
 
@@ -37,6 +38,8 @@ SpatialAudioPOCProcessor::SpatialAudioPOCProcessor()
     for (auto& g : previousGainsPerObject)
         g.assign ((size_t) encoder.getNumChannels(), 0.0f);
 
+    muteRampGain.assign ((size_t) numLiveInputs, 1.0f); // start unmuted/audible
+
     propagationPerObject.resize ((size_t) numLiveInputs);
     wasActiveLastBlock.assign ((size_t) numLiveInputs, false);
 
@@ -57,6 +60,7 @@ void SpatialAudioPOCProcessor::prepareToPlay (double sampleRate, int samplesPerB
     for (auto& p : propagationPerObject)
         p.prepare (sampleRate, samplesPerBlock);
     std::fill (wasActiveLastBlock.begin(), wasActiveLastBlock.end(), false);
+    std::fill (muteRampGain.begin(), muteRampGain.end(), 1.0f);
 
     propagationScratch.setSize (1, samplesPerBlock);
 
@@ -121,6 +125,17 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto& sceneSettings = trajectoryEngine.getSceneSettings();
     float* propagated = propagationScratch.getWritePointer (0);
 
+    // Solo: if ANY active object is soloed, every object that is NOT
+    // soloed goes silent (classic non-exclusive DAW solo -- several
+    // objects can be soloed together and all stay audible). Computed once
+    // per block, not per object.
+    bool anySoloed = false;
+    for (int i = 0; i < trajectoryEngine.getNumObjects(); ++i)
+    {
+        auto& o = trajectoryEngine.getObject (i);
+        if (o.inputChannel >= 0 && o.soloed) { anySoloed = true; break; }
+    }
+
     for (int objIdx = 0; objIdx < trajectoryEngine.getNumObjects(); ++objIdx)
     {
         auto& obj = trajectoryEngine.getObject (objIdx);
@@ -156,6 +171,36 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             continue;
         }
 
+        // Solo/mute: own mute always wins over solo (an object can't be
+        // simultaneously "definitely silent" and "definitely audible");
+        // otherwise silenced if some other object is soloed and this one
+        // isn't. Smoothly ramped over muteRampSeconds rather than switched
+        // instantly, so toggling never clicks (the encoder's own
+        // per-sample gain interpolation from previousChannelGains smooths
+        // it further still, within the ramp).
+        const bool effectivelyMuted = MuteSoloLogic::isEffectivelyMuted (obj.muted, obj.soloed, anySoloed);
+        const float muteTarget = effectivelyMuted ? 0.0f : 1.0f;
+        auto& ramp = muteRampGain[(size_t) objIdx];
+        const float rampStep = (float) ((double) numSamples / juce::jmax (1.0, currentSampleRate)) / muteRampSeconds;
+        if (ramp < muteTarget)      ramp = juce::jmin (muteTarget, ramp + rampStep);
+        else if (ramp > muteTarget) ramp = juce::jmax (muteTarget, ramp - rampStep);
+
+        // Only once the ramp has actually reached silence (not just close
+        // to it) do we skip propagation+encoding entirely for this object
+        // -- the actual performance win, rather than paying full cost
+        // every block just to encode silence while muted/soloed-out.
+        const bool audioProcessingActive = ! (effectivelyMuted && ramp <= 0.0f);
+
+        if (! audioProcessingActive)
+        {
+            // Treated like "became inactive" for PropagationProcessor's
+            // internal delay-line state -- resuming later re-syncs
+            // (.reset()) instead of resuming from state that's now stale
+            // relative to however far the object has actually moved.
+            wasActiveLastBlock[(size_t) objIdx] = false;
+            continue;
+        }
+
         if (! wasActiveLastBlock[(size_t) objIdx])
             propagationPerObject[(size_t) objIdx].reset();
         wasActiveLastBlock[(size_t) objIdx] = true;
@@ -173,7 +218,7 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         encoder.encodeBlock (propagated,
                               numSamples,
                               azimuth, elevation, distance,
-                              obj.gain * directivityGain,
+                              obj.gain * directivityGain * ramp,
                               buffer,
                               previousGainsPerObject[(size_t) objIdx]);
     }
@@ -194,6 +239,17 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         auto& obj = trajectoryEngine.getObject (objIdx);
         if (obj.inputChannel < 0)
             continue; // no parent, no cloud -- see GrainCloud/PluginEditor: an inactive object's cloud is frozen, not rendered
+
+        // Mute/solo applies to a muted object's grains too (see
+        // SoundObject::muted/soloed) -- reuses the ramp already advanced
+        // for the parent object in the loop above (same block, same
+        // smoothed fade), skipping this object's grains entirely once
+        // that ramp has actually reached silence, same performance
+        // reasoning as the main-object loop above.
+        const bool effectivelyMuted = MuteSoloLogic::isEffectivelyMuted (obj.muted, obj.soloed, anySoloed);
+        const float muteRamp = muteRampGain[(size_t) objIdx];
+        if (effectivelyMuted && muteRamp <= 0.0f)
+            continue;
 
         std::vector<GrainCloud::Snapshot> grainSnapshot;
         trajectoryEngine.getGrainCloud (objIdx).getSnapshot (grainSnapshot);
@@ -235,7 +291,7 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             cartesianToSpherical (snap.position, azimuth, elevation, distance);
 
             encoder.encodeBlock (grainOut, numSamples, azimuth, elevation, distance,
-                                  obj.gain, buffer, state.previousChannelGains);
+                                  obj.gain * muteRamp, buffer, state.previousChannelGains);
         }
     }
 

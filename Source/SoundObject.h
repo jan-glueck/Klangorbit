@@ -53,7 +53,9 @@ struct SoundObject
     // Friction/damping for Impulse mode, 0 = no damping, 1 = stops instantly.
     // Simple multiplicative decay per simulation step (cheap, but step-rate
     // dependent). For a more physically consistent, velocity-proportional
-    // brake, see dragCoefficient.
+    // brake, see dragCoefficient. Ignored (along with dragCoefficient)
+    // while slingshotTargetId below is active -- see
+    // TrajectoryEngine::integrate()'s Impulse case for why.
     float damping = 0.02f;
 
     float gain = 1.0f; // manual per-object gain, in addition to distance attenuation

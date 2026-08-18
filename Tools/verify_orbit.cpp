@@ -279,6 +279,42 @@ int main()
                "Slingshot: the gravity pull measurably deflects the thrown object toward the target (gains a y-component toward it)");
     }
     {
+        // Root-cause regression for the "flies almost straight into the
+        // target and jitters there" bug report: an object's own
+        // damping/dragCoefficient (tuned for ordinary decelerating throws)
+        // must be IGNORED while a slingshot pull is active -- a real
+        // gravity assist is frictionless. Give both objects heavy
+        // damping/drag; the target is placed far enough away that its
+        // actual pull force is negligible, isolating just the
+        // damping-skip behavior (not the deflection itself, already
+        // covered above).
+        TrajectoryEngine undamped (2), damped (2);
+        for (auto* e : { &undamped, &damped })
+        {
+            e->activateObject (0);
+            e->activateObject (1);
+            e->getObject (0).damping = 0.5f;
+            e->getObject (0).dragCoefficient = 5.0f;
+            e->getObject (1).position = { 1000.0f, 0.0f, 0.0f }; // far enough that its pull is negligible
+        }
+        damped.throwObject (0, { 2.0f, 0.0f, 0.0f }); // ordinary Free Throw -- damping/drag apply as before
+        undamped.throwObject (0, { 2.0f, 0.0f, 0.0f }, /*slingshotTargetId*/ 1, 1.0f); // pull active (target too far to matter)
+
+        for (int i = 0; i < 20; ++i)
+        {
+            damped.update (0.01);
+            undamped.update (0.01);
+        }
+
+        const float damped_speed = damped.getObject (0).velocity.length();
+        const float undamped_speed = undamped.getObject (0).velocity.length();
+        std::printf ("       speed after 20 damped steps: ordinary throw=%.5f, slingshot pull=%.5f (initial=2.0)\n", damped_speed, undamped_speed);
+        check (damped_speed < 1.0f,
+               "Slingshot test setup: an ordinary throw with heavy damping/drag loses most of its speed");
+        check (undamped_speed > 1.9f,
+               "Slingshot: an active pull suppresses the object's own damping/dragCoefficient (frictionless space flight)");
+    }
+    {
         // simulateSlingshotPreview() with strength=0 (no target selected,
         // see PluginEditor::paint()) must collapse to a perfectly straight
         // line, matching the Free Throw preview it stands in for.

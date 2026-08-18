@@ -664,6 +664,54 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     result is unverified, see "Known limitations" below.
 
 ### Fixed
+- **Slingshot mode: thrown objects fell almost straight into the target and
+  jittered there instead of swinging past or settling into a smooth orbit.**
+  Reported right after the Slingshot mode above shipped: the bow-line
+  preview looked right, but the actual release didn't follow it. Root
+  cause was that the thrown object's own `damping`/`dragCoefficient` --
+  tuned for ordinary decelerating throws elsewhere in the scene -- were
+  also being applied while a slingshot pull was active. A real
+  gravity-assist maneuver is (approximately) frictionless: with drag
+  active, the throw's own launch velocity decayed to a fraction of its
+  original size within well under a second, while the pull itself (never
+  damped, since it's a continuously reapplied force, not a velocity) kept
+  re-accelerating the object toward the target -- so the dominant
+  direction of motion became "toward the target" almost immediately
+  regardless of the throw's aim, and once close, the inverse-square force
+  spiking against a too-small softening floor (0.05 m, tuned for the
+  ordinary n-body attraction system's much gentler typical strengths) made
+  the fixed-timestep integrator overshoot and bounce back and forth --
+  the reported "jitter".
+  - `TrajectoryEngine::integrate()`'s Impulse case now skips both
+    `damping` and `dragCoefficient` entirely while
+    `SoundObject::slingshotTargetId` is active, treating the pull as real,
+    (nearly) energy-conserving space flight -- matching what the preview
+    (`SlingGesture::simulateSlingshotPreview()`) already assumed and drew,
+    which is now actually true instead of an inaccurate simplification.
+  - The slingshot pull's own softening floor
+    (`TrajectoryEngine::computeAttractionForce()`) raised from 0.05m to
+    0.3m, giving the fixed-rate integrator enough margin at closest
+    approach to stay numerically stable without a hard force spike.
+  - `SlingGesture::slingshotGravityStrength` tuned down from 8.0 to 4.0 --
+    at typical throw speeds (a few m/s) and scene scale (~1m), 8.0 let the
+    pull dominate the throw's own velocity almost instantly regardless of
+    aim; 4.0 still allows a close/slow throw to be captured into a real
+    orbit (a legitimate outcome, not a bug) while leaving room for a
+    fast/wide throw to actually fly by.
+  - Verified with two hand-run scenarios via `TrajectoryEngine` directly
+    (not just the preview math): a fast, wide throw now swings past the
+    target and continues on a new course (a real flyby); a slow, close
+    throw settles into a stable, periodic bound orbit (closest/farthest
+    approach oscillating between fixed bounds indefinitely, not decaying
+    or diverging) -- neither collapses onto the target.
+  - `Tools/verify_orbit` gained a regression test isolating the root
+    cause: an object with heavy `damping`/`dragCoefficient` loses most of
+    its speed on an ordinary throw but keeps it (frictionless) once a
+    slingshot pull is active, even when the pull's actual force is
+    negligible (target placed far away) -- 32/32 checks passing.
+  - Verified headlessly (the two scenarios above, plus the full
+    `Tools/verify_*` suite and a standalone app launch/stability check);
+    still not verified by ear/eye in a real DAW session.
 - **Grain click/discontinuity bug, reported as happening with `pitchJitter`.**
   Investigated both suggested hypotheses rather than assuming either was
   correct:

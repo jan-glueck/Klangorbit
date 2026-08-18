@@ -69,7 +69,16 @@ namespace SlingGesture
     // speed vs. this fixed strength vs. the target's own real Mass, which
     // the user can already dial in via the parameter panel) rather than
     // something this constant tries to guarantee on its own.
-    constexpr float slingshotGravityStrength = 8.0f;
+    //
+    // Tuned down from an initial 8.0: at typical throw speeds (a few m/s,
+    // see throwVelocityScale) and scene scale (objects a meter or so
+    // apart), 8.0 made the pull dominate the throw's own velocity almost
+    // immediately, so it looked like the object flew straight at the
+    // target instead of swinging past or curving into a real orbit. 4.0
+    // still lets a close/slow throw get captured (a valid, real outcome --
+    // see TrajectoryEngine::integrate()'s frictionless handling of this
+    // pull) while leaving room for a fast/wide throw to actually flyby.
+    constexpr float slingshotGravityStrength = 4.0f;
 
     // "Zugvektor" per the design spec: anchor minus release point. Points
     // in the launch direction (opposite of the drag itself); its length is
@@ -143,13 +152,17 @@ namespace SlingGesture
     // gravityLikeConstant, and softening floor
     // TrajectoryEngine::computeAttractionForce() uses for
     // SoundObject::slingshotTargetId, integrated forward with simple
-    // (symplectic) Euler steps at a small fixed dt.
+    // (symplectic) Euler steps at a small fixed dt. Deliberately no
+    // damping/dragCoefficient here either -- genuinely matching
+    // TrajectoryEngine::integrate()'s Impulse case now that it, too, skips
+    // both while a slingshot pull is active (see its own comment), not
+    // just a simplification like the Free Throw preview's.
     //
     // The target is treated as fixed at targetPos for the whole preview
     // horizon rather than also simulating ITS motion -- a deliberate
     // simplification for a short (couple-of-seconds) look-ahead, in the
     // same spirit as the Free Throw preview's own documented
-    // simplifications (no globalField/damping curvature there either).
+    // simplifications (no globalField curvature there either).
     // strength == 0 (no target selected, see cycleSlingReference above)
     // degrades this to a perfectly straight line, i.e. the same preview
     // Free Throw already draws.
@@ -165,7 +178,7 @@ namespace SlingGesture
         Vec3 vel = initialVelocity;
         points.push_back (pos);
 
-        constexpr float softening = 0.05f; // matches computeAttractionForce()'s own softening floor for this pull
+        constexpr float softening = 0.3f; // keep in sync with TrajectoryEngine::computeAttractionForce()'s softening floor for this pull
         const float safeMass = std::max (thrownMass, 1.0e-3f);
 
         for (int i = 0; i < numSteps; ++i)

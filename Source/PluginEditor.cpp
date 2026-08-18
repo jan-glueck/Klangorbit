@@ -402,7 +402,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
                              (float) m, 48, juce::Colours::darkgrey, 1.0f);
 
     const auto& sceneSettings = audioProcessor.getTrajectoryEngine().getSceneSettings();
-    if (sceneSettings.roomSize > 0.0f)
+    if (sceneSettings.roomSize > 0.0f && sceneSettings.showRoomBoundary)
         drawShadedBoundarySphere (g, camera, centre, viewportHeight, sceneSettings.roomSize, juce::Colours::darkred);
 
     {

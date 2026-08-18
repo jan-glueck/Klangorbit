@@ -49,6 +49,7 @@ defaults for everything new.
   "scene": {
     "roomSize": 5.0,                  // meters, radius of the spherical boundary; <= 0 = no boundary
     "boundaryBehavior": "reflect",    // reflect | wrap | absorb
+    "showRoomBoundary": true,         // purely visual -- the boundary still applies physically even when hidden
     "globalField": [0.0, 0.0, 0.0],   // constant force/mass (like wind/gravity), only affects impulse/attracted
     "timeScale": 1.0,                 // fast-forward (>1) / slow-motion (<1) for the whole simulation
 

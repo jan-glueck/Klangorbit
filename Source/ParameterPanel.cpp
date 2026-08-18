@@ -180,6 +180,13 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*boundaryRow);
     addToLayout (*boundaryRow, ComboRowComponent::preferredHeight, Category::Scene);
 
+    // Purely visual -- the boundary keeps applying physically even while
+    // hidden, see SceneSettings::showRoomBoundary.
+    showRoomBoundaryRow = std::make_unique<ToggleRowComponent> ("Show Boundary");
+    showRoomBoundaryRow->onToggled = [this] (bool v) { if (sceneSettings != nullptr) sceneSettings->showRoomBoundary = v; };
+    content.addAndMakeVisible (*showRoomBoundaryRow);
+    addToLayout (*showRoomBoundaryRow, ToggleRowComponent::preferredHeight, Category::Scene);
+
     globalFieldRow = std::make_unique<Vec3RowComponent> ("Global Field (Wind/Gravity)", -20.0, 20.0, 0.01);
     globalFieldRow->onValueChanged = [this] (Vec3 v) { if (sceneSettings != nullptr) sceneSettings->globalField = v; };
     content.addAndMakeVisible (*globalFieldRow);
@@ -195,20 +202,10 @@ ParameterPanel::ParameterPanel()
     addSceneVec3Row ("Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1, Category::Acoustics);
 
     // --- Object -------------------------------------------------------------
-    // Own mute always wins over solo; if any object is soloed, every
-    // non-soloed object goes silent (classic non-exclusive DAW solo) --
-    // see SoundObject::muted/soloed and PluginProcessor::processBlock().
-    // Applies to this object's GrainCloud too, not just its own signal.
-    mutedRow = std::make_unique<ToggleRowComponent> ("Muted");
-    mutedRow->onToggled = [this] (bool v) { if (editedObject != nullptr) editedObject->muted = v; };
-    content.addAndMakeVisible (*mutedRow);
-    addToLayout (*mutedRow, ToggleRowComponent::preferredHeight, Category::Object);
-
-    soloedRow = std::make_unique<ToggleRowComponent> ("Soloed");
-    soloedRow->onToggled = [this] (bool v) { if (editedObject != nullptr) editedObject->soloed = v; };
-    content.addAndMakeVisible (*soloedRow);
-    addToLayout (*soloedRow, ToggleRowComponent::preferredHeight, Category::Object);
-
+    // Mute/Solo (SoundObject::muted/soloed) are deliberately NOT exposed
+    // here -- they live exclusively as buttons on each row of the object
+    // list sidebar (Source/ObjectListPanel.h), one control surface per
+    // feature rather than duplicating it in two places.
     modeRow = std::make_unique<ComboRowComponent> ("Mode");
     modeRow->combo.addItem ("Static", 1);
     modeRow->combo.addItem ("Manual", 2);
@@ -545,6 +542,7 @@ void ParameterPanel::refreshFromModel()
             b.row->setValueQuiet (sceneSettings->*b.member);
 
         boundaryRow->combo.setSelectedItemIndex ((int) sceneSettings->boundaryBehavior, juce::dontSendNotification);
+        showRoomBoundaryRow->setValueQuiet (sceneSettings->showRoomBoundary);
         globalFieldRow->setValueQuiet (sceneSettings->globalField);
     }
 
@@ -555,9 +553,6 @@ void ParameterPanel::refreshFromModel()
         b.row->setValueQuiet (editedObject->*b.member);
     for (auto& b : objectVec3Rows)
         b.row->setValueQuiet (editedObject->*b.member);
-
-    mutedRow->setValueQuiet (editedObject->muted);
-    soloedRow->setValueQuiet (editedObject->soloed);
 
     modeRow->combo.setSelectedItemIndex ((int) editedObject->mode, juce::dontSendNotification);
     orbitRefRow->combo.setSelectedItemIndex (editedObject->orbitReferenceObjectId + 1, juce::dontSendNotification);

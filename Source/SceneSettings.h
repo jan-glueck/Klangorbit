@@ -21,6 +21,10 @@ struct SceneSettings
 
     float roomSize = 5.0f; // meters, radius of the sphere; <= 0 = no boundary
     BoundaryBehavior boundaryBehavior = BoundaryBehavior::Reflect;
+    // Purely a rendering toggle -- the boundary still applies physically
+    // (reflect/wrap/absorb) even while hidden; only PluginEditor::paint()'s
+    // drawShadedBoundarySphere() call is skipped when false.
+    bool showRoomBoundary = true;
 
     // Constant force/mass (like wind/gravity), only affects objects in
     // Impulse/Attracted (the force-integrated modes) -- Orbit is defined

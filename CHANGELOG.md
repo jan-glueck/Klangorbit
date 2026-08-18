@@ -394,8 +394,27 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     presets actually shift the average sampled depth in the expected
     direction relative to `Uniform` (measured over 300 grains: recent
     ~1.31s / uniform ~1.97s / old ~2.58s for a configured [0, 4]s range).
+- **Room boundary visibility toggle** (`SceneSettings::showRoomBoundary`,
+  "Show Boundary" in the Scene category). Purely cosmetic -- the boundary
+  keeps applying physically (`reflect`/`wrap`/`absorb`) while hidden, only
+  `PluginEditor::paint()`'s `drawShadedBoundarySphere()` call is skipped.
+  Default `true` (unchanged appearance for existing presets/behavior).
 
 ### Changed
+- **Solo/Mute controls moved to the object-list sidebar, removed from the
+  parameter panel.** Each row in `Source/ObjectListPanel.h/.cpp` now has
+  its own Mute/Solo buttons next to the select button, writing directly
+  into the corresponding `SoundObject::muted`/`soloed` -- the underlying
+  fields, ramping, and audio-thread logic (`MuteSoloLogic.h`) are
+  unchanged from `feature/solo-mute-objects`, only the control surface
+  moved. The parameter panel's Object category no longer has "Muted"/
+  "Soloed" checkbox rows, to avoid the same two fields being editable
+  from two different places in the GUI. This also resolves the
+  previously-open follow-up ("hook Solo/Mute into the object-list
+  sidebar") from the earlier entry above -- it's the sidebar now, not a
+  second copy in the parameter panel.
+- Object-list sidebar width raised 160 -> 190px to fit the new Mute/Solo
+  buttons alongside each row's label without crowding it.
 - **Room boundary now renders as a shaded, translucent sphere** instead
   of a flat wireframe outline (`PluginEditor::drawShadedBoundarySphere()`).
   Still no 3D mesh/lighting model (no OpenGL, see "3D camera view") --
@@ -500,20 +519,43 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 - GrainCloud grains skip `PropagationProcessor` entirely -- no per-grain
   Doppler shift, propagation delay, air absorption, or directivity, only
   `AmbisonicsEncoder`'s spatial encoding and distance gain. A deliberate
-  performance trade-off (see Added, above), not a bug.
+  performance trade-off (see Added, above), not a bug. The optional
+  per-grain Doppler approximation (`GrainCloudSettings::dopplerEnabled`,
+  see above) is a deliberately cheap partial exception to this, not a
+  full propagation pass.
 - Grain window shape is Hann only; no other envelope shapes yet.
 - `maxConcurrentGrains` is enforced per cloud and globally, but the
   global budget is currently a first-come-first-served allocation across
   clouds each control-rate tick, not prioritized by e.g. object gain or
   distance to the listener.
-- The 3D camera's drag/zoom direction sign conventions are untested by
-  hand (no interactive GUI testing available in this environment) -- the
-  underlying projection math is verified (`Tools/verify_camera`), but the
-  drag/scroll polarity itself is a reasonable guess that may feel
-  inverted; each is a one-line sign flip in `PluginEditor` if so.
+- `maxConcurrentGrainsGlobal = 128` is a rough operation-count estimate
+  (see the "Grain density and duration raised" entry above), not a
+  measurement on real audio hardware -- not available in this
+  environment. The CPU-load percentage in the toolbar
+  (`SpatialAudioPOCProcessor::getEstimatedCpuLoad()`) exists specifically
+  so this can be checked under real load; it has not been checked here.
+- Interactive/visual feel across the GUI is largely unverified by hand
+  (no way to drive a running JUCE GUI or take a real screenshot of it in
+  this environment -- screen-capture tooling here only ever captures the
+  agent's own chat window, not the actual screen the app opens on).
+  Concretely unverified: the 3D camera's drag/zoom direction sign
+  conventions (the underlying projection math is verified via
+  `Tools/verify_camera`, only the polarity itself is a guess -- each is a
+  one-line sign flip in `PluginEditor` if it feels inverted), the shaded
+  boundary sphere's actual on-screen appearance (gradient/transparency
+  tuning), the object-list sidebar's row layout including its Mute/Solo
+  buttons, all new parameter-panel slider ranges/step sizes, and the
+  audible result of every new audio feature (grain Doppler, Solo/Mute
+  fades, grain read-depth range) -- all of these are only verified
+  mathematically/numerically (`Tools/verify_*`), never by ear or by eye.
 - Object dragging is still constrained to the ground plane (z=0), now via
   a camera ray cast rather than a fixed formula, but still no direct way
   to drag an object's height with the mouse.
+- Building only the `SpatialAudioPOC_Standalone` target does NOT update
+  the VST3 copy in the system plugin folder -- that requires building
+  the separate `SpatialAudioPOC_VST3` target (`COPY_PLUGIN_AFTER_BUILD`
+  only fires for that target). A DAW loading an old VST3 build will not
+  reflect recent source changes even though the standalone app does.
 
 ## [0.1.0] - POC skeleton
 ### Added

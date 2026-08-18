@@ -180,10 +180,9 @@ private:
     std::vector<GrainIntBinding> grainIntRows;
 
     juce::Label objectHeaderLabel;
-    std::unique_ptr<ToggleRowComponent> mutedRow;
-    std::unique_ptr<ToggleRowComponent> soloedRow;
     std::unique_ptr<ComboRowComponent> modeRow;
     std::unique_ptr<ComboRowComponent> boundaryRow;
+    std::unique_ptr<ToggleRowComponent> showRoomBoundaryRow;
     std::unique_ptr<Vec3RowComponent> globalFieldRow; // SceneSettings::globalField, not a SoundObject field -> its own binding
     std::unique_ptr<ComboRowComponent> orbitRefRow;
     std::unique_ptr<ComboRowComponent> directivityRow;

@@ -11,25 +11,48 @@ ObjectListPanel::ObjectListPanel()
     addAndMakeVisible (viewport);
 }
 
-void ObjectListPanel::refresh (TrajectoryEngine& engine)
+void ObjectListPanel::refresh (TrajectoryEngine& engineIn)
 {
+    engine = &engineIn;
     rows.clear();
     rowContainer.removeAllChildren();
 
-    for (int i = 0; i < engine.getNumObjects(); ++i)
+    for (int i = 0; i < engineIn.getNumObjects(); ++i)
     {
-        if (engine.getObject (i).inputChannel < 0)
+        if (engineIn.getObject (i).inputChannel < 0)
             continue; // inactive slot -- not listed, matching what's visible/clickable in the scene view
 
         Row row;
         row.objectIndex = i;
-        row.button = std::make_unique<juce::TextButton> ("Object " + juce::String (i));
-        row.button->onClick = [this, i]
+
+        row.selectButton = std::make_unique<juce::TextButton> ("Object " + juce::String (i));
+        row.selectButton->onClick = [this, i]
         {
             if (onObjectSelected != nullptr)
                 onObjectSelected (i);
         };
-        rowContainer.addAndMakeVisible (*row.button);
+        rowContainer.addAndMakeVisible (*row.selectButton);
+
+        row.muteButton = std::make_unique<juce::TextButton> ("M");
+        row.muteButton->onClick = [this, i]
+        {
+            if (engine == nullptr) return;
+            auto& obj = engine->getObject (i);
+            obj.muted = ! obj.muted;
+            updateRowColours();
+        };
+        rowContainer.addAndMakeVisible (*row.muteButton);
+
+        row.soloButton = std::make_unique<juce::TextButton> ("S");
+        row.soloButton->onClick = [this, i]
+        {
+            if (engine == nullptr) return;
+            auto& obj = engine->getObject (i);
+            obj.soloed = ! obj.soloed;
+            updateRowColours();
+        };
+        rowContainer.addAndMakeVisible (*row.soloButton);
+
         rows.push_back (std::move (row));
     }
 
@@ -48,10 +71,21 @@ void ObjectListPanel::updateRowColours()
     for (auto& row : rows)
     {
         const bool isSelected = (row.objectIndex == selectedIndex);
-        row.button->setColour (juce::TextButton::buttonColourId,
-                                isSelected ? juce::Colours::darkslateblue : juce::Colours::darkgrey);
-        row.button->setColour (juce::TextButton::textColourOffId,
-                                isSelected ? juce::Colours::white : juce::Colours::lightgrey);
+        row.selectButton->setColour (juce::TextButton::buttonColourId,
+                                      isSelected ? juce::Colours::darkslateblue : juce::Colours::darkgrey);
+        row.selectButton->setColour (juce::TextButton::textColourOffId,
+                                      isSelected ? juce::Colours::white : juce::Colours::lightgrey);
+
+        if (engine != nullptr)
+        {
+            const auto& obj = engine->getObject (row.objectIndex);
+            row.muteButton->setColour (juce::TextButton::buttonColourId,
+                                        obj.muted ? juce::Colours::orangered : juce::Colours::darkgrey);
+            row.soloButton->setColour (juce::TextButton::buttonColourId,
+                                        obj.soloed ? juce::Colours::gold : juce::Colours::darkgrey);
+            row.soloButton->setColour (juce::TextButton::textColourOffId,
+                                        obj.soloed ? juce::Colours::black : juce::Colours::lightgrey);
+        }
     }
 }
 
@@ -63,10 +97,19 @@ void ObjectListPanel::resized()
 
     rowContainer.setSize (viewport.getWidth(), juce::jmax (1, (int) rows.size() * rowHeight));
 
+    constexpr int gap = 2;
     int y = 0;
     for (auto& row : rows)
     {
-        row.button->setBounds (0, y, rowContainer.getWidth(), rowHeight - 2);
+        auto rowBounds = juce::Rectangle<int> (0, y, rowContainer.getWidth(), rowHeight - 2);
+        auto soloBounds = rowBounds.removeFromRight (toggleButtonWidth);
+        rowBounds.removeFromRight (gap);
+        auto muteBounds = rowBounds.removeFromRight (toggleButtonWidth);
+        rowBounds.removeFromRight (gap);
+
+        row.selectButton->setBounds (rowBounds);
+        row.muteButton->setBounds (muteBounds);
+        row.soloButton->setBounds (soloBounds);
         y += rowHeight;
     }
 }

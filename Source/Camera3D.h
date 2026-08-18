@@ -70,6 +70,25 @@ public:
     // silhouette exists in that case.
     bool projectSphereSilhouetteRadius (float sphereRadius, float viewportHeightPixels, float& outScreenRadius) const;
 
+    // Result of computeSphereHighlight() below.
+    struct SphereHighlight
+    {
+        float x = 0.0f, y = 0.0f; // screen-space offset from the viewport center, pixels -- same convention as Projection
+        float intensity = 0.0f;    // 0..1, how directly the highlight point faces this camera (1 = head-on)
+    };
+
+    // Where a specular highlight would appear on an origin-centered sphere
+    // of the given radius, lit by a fixed, distant WORLD-SPACE light
+    // direction (lightDir, must be a unit vector) -- deliberately NOT a
+    // direction relative to the camera, so that as the camera orbits (see
+    // rotate() above), the highlight moves across the sphere's surface
+    // exactly like a real directional light would, instead of staying
+    // glued to a fixed screen-space offset regardless of view angle (see
+    // PluginEditor::drawShadedBoundarySphere(), the only caller). Returns
+    // false (nothing to draw) if the highlight point is on the hemisphere
+    // facing away from this camera, or behind the near clip plane.
+    bool computeSphereHighlight (Vec3 lightDir, float sphereRadius, float viewportHeightPixels, SphereHighlight& out) const;
+
     // Casts a ray from the camera through the given screen-space offset
     // (from the viewport center, pixels -- the inverse of project()'s x/y)
     // and returns where it crosses the world's z=0 ground plane. Used to

@@ -110,6 +110,69 @@ static void testRenderGrainBlock()
         std::printf ("       rate=1.0 measured ~%.0f Hz, rate=2.0 measured ~%.0f Hz (source ~1000 Hz)\n", freqNormal, freqFast);
         check (freqFast > freqNormal * 1.5f, "renderGrainBlock: doubling playbackRate roughly doubles the read frequency");
     }
+
+    // --- Tail-discontinuity / pitchJitter click investigation ----------
+    // Reported bug: pitchJitter (random per-grain playbackRate) produces
+    // audible clicks. Two hypotheses were given to check:
+    //  (1) non-interpolated (integer) ring-buffer read position -- ALREADY
+    //      correctly implemented as linear interpolation (see
+    //      GrainRenderer.h's idx0/idx1/frac blend), confirmed by the wrap
+    //      and pitch-ratio tests above already passing cleanly.
+    //  (2) envelope not reliably reaching exactly 0 at the grain's end --
+    //      THIS was a real, but rate-INDEPENDENT bug: the Hann window's
+    //      last rendered sample fell short of a true 0 by an amount that
+    //      grows as grainLengthSamples shrinks (short grains), then jumped
+    //      to a hard 0.0 on the next call -- a real discontinuity,
+    //      unrelated to playbackRate itself (grainLengthSamples is fixed
+    //      in OUTPUT samples regardless of pitch). Fixed in
+    //      GrainRenderer.h by using (grainLengthSamples - 1) as the
+    //      envelope's denominator, so the last sample's t reaches exactly
+    //      1.0 (envelope exactly 0.0) by construction.
+    {
+        // A SHORT grain is where the original bug was largest (residual
+        // envelope ~10% of peak at grainLength=100) -- exactly the kind of
+        // grain a high grainRate/short grainDuration setup produces.
+        const int shortGrainLength = 100;
+        bool allRatesCloseToZero = true;
+        float worstResidual = 0.0f;
+
+        // Covers the full playbackRate range pitchJitter can actually
+        // produce (see GrainLimits::maxPitchJitterPlaybackRate and the
+        // 0.1 floor in GrainCloud::spawnGrain()) -- explicitly including
+        // both extremes, not just rate=1.0, per the bug report's request
+        // to re-check with extreme values, not just moderate ones.
+        for (float rate : { 0.1f, 0.5f, 1.0f, 1.5f, 2.0f })
+        {
+            std::vector<float> out ((size_t) shortGrainLength);
+            int samplesPlayed = 0;
+            renderGrainBlock (ring.data(), ringSize, 0, rate, shortGrainLength, samplesPlayed, out.data(), shortGrainLength);
+
+            const float lastEnvelopeMagnitude = std::abs (out.back());
+            worstResidual = juce::jmax (worstResidual, lastEnvelopeMagnitude);
+            if (lastEnvelopeMagnitude > 0.02f) // near-silent, not necessarily bit-exact 0 (source signal has its own amplitude)
+                allRatesCloseToZero = false;
+        }
+        std::printf ("       worst |last sample| across rates 0.1..2.0 (grainLength=%d): %.5f\n", shortGrainLength, worstResidual);
+        check (allRatesCloseToZero, "renderGrainBlock: short-grain tail reaches near-silence for every playbackRate 0.1..2.0, not just rate=1.0");
+    }
+    {
+        // Direct measurement of the actual discontinuity at the
+        // tail-to-silence transition (the specific jump that produces an
+        // audible click), for the same short grain and rate range.
+        const int shortGrainLength = 100;
+        float worstJump = 0.0f;
+
+        for (float rate : { 0.1f, 0.5f, 1.0f, 1.5f, 2.0f })
+        {
+            std::vector<float> out (shortGrainLength + 1);
+            int samplesPlayed = 0;
+            renderGrainBlock (ring.data(), ringSize, 0, rate, shortGrainLength, samplesPlayed, out.data(), (int) out.size());
+            const float jump = std::abs (out[(size_t) shortGrainLength] - out[(size_t) shortGrainLength - 1]);
+            worstJump = juce::jmax (worstJump, jump);
+        }
+        std::printf ("       worst tail-to-silence jump across rates 0.1..2.0: %.5f\n", worstJump);
+        check (worstJump < 0.02f, "renderGrainBlock: tail-to-silence transition has no audible discontinuity for any playbackRate 0.1..2.0");
+    }
 }
 
 // ============================================================== GrainCloud

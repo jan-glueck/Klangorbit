@@ -343,6 +343,9 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         objVar->setProperty ("orbitEccentricity", (double) obj.orbitEccentricity);
         objVar->setProperty ("orbitOrientation", (double) obj.orbitOrientation);
         objVar->setProperty ("orbitDecay", (double) obj.orbitDecay);
+        objVar->setProperty ("orbitRadiusBaseline", (double) obj.orbitRadiusBaseline);
+        objVar->setProperty ("orbitRadiusReversionRate", (double) obj.orbitRadiusReversionRate);
+        objVar->setProperty ("orbitRadiusNoiseAmplitude", (double) obj.orbitRadiusNoiseAmplitude);
         objVar->setProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
         // Acoustic propagation (optional, see SoundObject.h)
@@ -454,6 +457,9 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         obj.orbitEccentricity     = (float) element.getProperty ("orbitEccentricity", (double) obj.orbitEccentricity);
         obj.orbitOrientation      = (float) element.getProperty ("orbitOrientation", (double) obj.orbitOrientation);
         obj.orbitDecay            = (float) element.getProperty ("orbitDecay", (double) obj.orbitDecay);
+        obj.orbitRadiusBaseline         = (float) element.getProperty ("orbitRadiusBaseline", (double) obj.orbitRadiusBaseline);
+        obj.orbitRadiusReversionRate    = (float) element.getProperty ("orbitRadiusReversionRate", (double) obj.orbitRadiusReversionRate);
+        obj.orbitRadiusNoiseAmplitude   = (float) element.getProperty ("orbitRadiusNoiseAmplitude", (double) obj.orbitRadiusNoiseAmplitude);
         obj.orbitReferenceObjectId = (int) element.getProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
         // Acoustic propagation (optional, default from SoundObject{})

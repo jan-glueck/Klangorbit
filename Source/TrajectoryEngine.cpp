@@ -1,5 +1,23 @@
 #include "TrajectoryEngine.h"
 #include "OrbitMath.h"
+#include <cmath>
+
+namespace
+{
+    constexpr float kMinGaussianInput = 1.0e-6f; // avoids log(0) in the Box-Muller transform below
+}
+
+float TrajectoryEngine::nextGaussian()
+{
+    // Box-Muller transform: two independent uniform(0,1) samples ->
+    // one standard-normal sample. Only one of the two values the
+    // transform produces is used per call -- simple over maximally
+    // efficient, and this is control-rate (~90 Hz per object), not an
+    // audio-rate hot path.
+    const float u1 = juce::jmax (kMinGaussianInput, orbitNoiseRandom.nextFloat());
+    const float u2 = orbitNoiseRandom.nextFloat();
+    return std::sqrt (-2.0f * std::log (u1)) * std::cos (juce::MathConstants<float>::twoPi * u2);
+}
 
 TrajectoryEngine::TrajectoryEngine (int maxObjects, int grainPoolSizePerCloud)
 {
@@ -212,6 +230,18 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
 
             if (obj.orbitDecay != 0.0f)
                 obj.orbitRadius = juce::jmax (0.05f, obj.orbitRadius + obj.orbitDecay * fdt);
+
+            // Ornstein-Uhlenbeck mean-reverting radius: wanders around
+            // orbitRadiusBaseline instead of drifting away permanently
+            // like orbitDecay. Both default to 0 (disabled), so this is a
+            // no-op unless explicitly configured. See SoundObject.h for
+            // the field docs and the exact update formula.
+            if (obj.orbitRadiusReversionRate != 0.0f || obj.orbitRadiusNoiseAmplitude != 0.0f)
+            {
+                const float reversion = obj.orbitRadiusReversionRate * (obj.orbitRadiusBaseline - obj.orbitRadius) * fdt;
+                const float noise = obj.orbitRadiusNoiseAmplitude * std::sqrt (fdt) * nextGaussian();
+                obj.orbitRadius = juce::jlimit (0.05f, 1000.0f, obj.orbitRadius + reversion + noise);
+            }
 
             Vec3 center = obj.orbitCenter;
             if (juce::isPositiveAndBelow (obj.orbitReferenceObjectId, (int) objects.size())

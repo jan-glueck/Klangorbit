@@ -100,9 +100,16 @@ private:
     void integrate (SoundObject& obj, double dt);
     void applyBoundary (SoundObject& obj);
     Vec3 computeAttractionForce (const SoundObject& obj) const;
+    // Box-Muller standard-normal sample, for the Ornstein-Uhlenbeck
+    // orbit-radius noise term (see integrate()'s Orbit case). Self-owned
+    // (not passed in like GrainCloud's rng) -- nothing else needs to
+    // coordinate a shared budget/seed with this one, unlike the grain
+    // spawn-budget sharing in PluginEditor.
+    float nextGaussian();
 
     std::vector<SoundObject> objects;
     SceneSettings sceneSettings;
+    juce::Random orbitNoiseRandom;
 
     // unique_ptr, not a plain vector<GrainCloud>: GrainCloud holds a
     // juce::CriticalSection (for its own audio-thread snapshot), which is

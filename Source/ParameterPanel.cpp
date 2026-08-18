@@ -232,6 +232,9 @@ ParameterPanel::ParameterPanel()
     addObjectVec3Row ("Orbit Plane Normal", &SoundObject::orbitPlaneNormal, -1.0, 1.0, 0.01, Category::Orbit);
     addObjectFloatRow ("Orbit Eccentricity", &SoundObject::orbitEccentricity, 0.0, 0.95, 0.01, Category::Orbit);
     addObjectFloatRow ("Orbit Decay (m/s)", &SoundObject::orbitDecay, -2.0, 2.0, 0.01, Category::Orbit);
+    addObjectFloatRow ("Radius Baseline (mean-reverting)", &SoundObject::orbitRadiusBaseline, 0.05, 10.0, 0.01, Category::Orbit);
+    addObjectFloatRow ("Radius Reversion Rate", &SoundObject::orbitRadiusReversionRate, 0.0, 5.0, 0.01, Category::Orbit);
+    addObjectFloatRow ("Radius Noise Amplitude", &SoundObject::orbitRadiusNoiseAmplitude, 0.0, 5.0, 0.01, Category::Orbit);
 
     orbitRefRow = std::make_unique<ComboRowComponent> ("Orbit Reference Object");
     orbitRefRow->onSelected = [this] (int index)

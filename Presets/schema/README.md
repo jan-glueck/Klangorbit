@@ -92,7 +92,10 @@ defaults for everything new.
       "orbitPlaneNormal": [0.0, 0.0, 1.0], // default = previous x/y plane
       "orbitEccentricity": 0.0,       // 0 = circle, <1 = ellipse (simplified approximation, not a real Kepler orbit)
       "orbitOrientation": 0.0,        // radians, rotation of the ellipse's major axis within the orbit plane; irrelevant when orbitEccentricity is 0
-      "orbitDecay": 0.0,              // m/s, radius change over time
+      "orbitDecay": 0.0,              // m/s, one-directional radius drift over time
+      "orbitRadiusBaseline": 1.0,             // target value the mean-reverting radius wanders around (see below)
+      "orbitRadiusReversionRate": 0.0,        // 0 = disabled; how strongly the radius is pulled back toward the baseline
+      "orbitRadiusNoiseAmplitude": 0.0,       // 0 = disabled; random perturbation strength (Ornstein-Uhlenbeck process, m/sqrt(s))
       "orbitReferenceObjectId": -1,   // -1 = orbitCenter (fixed point), otherwise the id of another object
 
       // Acoustic propagation (Doppler, directivity -- see PropagationProcessor)

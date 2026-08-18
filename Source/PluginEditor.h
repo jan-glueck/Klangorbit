@@ -5,6 +5,7 @@
 #include "SlingGesture.h"
 #include "Camera3D.h"
 #include "ObjectListPanel.h"
+#include "SciFiLookAndFeel.h"
 #include <deque>
 #include <vector>
 
@@ -105,6 +106,13 @@ private:
     int findObjectNear (juce::Point<float> screenPos) const;
     bool isNearAnyGrain (juce::Point<float> screenPos) const;
 
+    // Declared first (and so destroyed last, per C++ member-destruction
+    // order) so it always outlives every child component that might still
+    // be looking it up while being torn down. Applied to `this` in the
+    // constructor via setLookAndFeel(); see SciFiLookAndFeel's class
+    // comment for the overall design.
+    SciFiLookAndFeel lookAndFeel;
+
     // Not "processor" -- that name is already taken (as the base-class
     // reference to juce::AudioProcessor) in AudioProcessorEditor.
     SpatialAudioPOCProcessor& audioProcessor;
@@ -154,9 +162,9 @@ private:
     // one global spawn budget across all clouds each tick.
     juce::Random grainRandom;
 
-    static constexpr int toolbarHeight = 64; // two rows of 32px
-    static constexpr int parameterPanelWidth = 340;
-    static constexpr int objectListWidth = 190; // wide enough for "Object N" + its Mute/Solo buttons, see ObjectListPanel
+    static constexpr int toolbarHeight = 76; // two even 38px rows
+    static constexpr int parameterPanelWidth = 360;
+    static constexpr int objectListWidth = 208; // wide enough for "Object N" + its Mute/Solo buttons, see ObjectListPanel
     juce::Rectangle<int> viewArea;
 
     // Sidebar list of active objects, clickable to select -- see

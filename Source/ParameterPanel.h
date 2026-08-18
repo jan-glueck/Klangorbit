@@ -20,7 +20,7 @@ public:
     void resized() override;
     void setValueQuiet (float v);
 
-    static constexpr int preferredHeight = 36;
+    static constexpr int preferredHeight = 42;
 
     juce::Label label;
     juce::Slider slider;
@@ -36,7 +36,7 @@ public:
     void resized() override;
     void setValueQuiet (Vec3 v);
 
-    static constexpr int preferredHeight = 16 + 3 * 20;
+    static constexpr int preferredHeight = 18 + 3 * 22;
 
     juce::Label label, xLabel, yLabel, zLabel;
     juce::Slider xSlider, ySlider, zSlider;
@@ -55,7 +55,7 @@ public:
 
     void resized() override;
 
-    static constexpr int preferredHeight = 38;
+    static constexpr int preferredHeight = 44;
 
     juce::Label label;
     juce::ComboBox combo;
@@ -71,7 +71,7 @@ public:
     void resized() override;
     void setValueQuiet (bool v);
 
-    static constexpr int preferredHeight = 24;
+    static constexpr int preferredHeight = 28;
 
     juce::ToggleButton toggle;
     std::function<void (bool)> onToggled;
@@ -120,6 +120,7 @@ public:
     void refreshFromModel();
 
     void resized() override;
+    void paint (juce::Graphics&) override;
 
 private:
     FloatRowComponent& addSceneFloatRow (const juce::String& name, float SceneSettings::* member,

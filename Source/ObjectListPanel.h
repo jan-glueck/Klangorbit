@@ -62,8 +62,11 @@ public:
     std::function<void (int)> onObjectSelected;
 
 private:
-    static constexpr int rowHeight = 28;
-    static constexpr int toggleButtonWidth = 22;
+    static constexpr int headerHeight = 34;
+    static constexpr int rowHeight = 34;
+    static constexpr int rowGap = 4;
+    static constexpr int toggleButtonWidth = 26;
+    static constexpr int sidePadding = 8;
 
     struct Row
     {

@@ -72,6 +72,7 @@ target_sources(SpatialAudioPOC
         Source/GrainCloud.cpp
         Source/Camera3D.cpp
         Source/ObjectListPanel.cpp
+        Source/SciFiLookAndFeel.cpp
 )
 
 target_link_libraries(SpatialAudioPOC

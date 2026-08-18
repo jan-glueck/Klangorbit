@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 #include "PresetManager.h"
 #include "OrbitMath.h"
+#include "UiTheme.h"
 #include <algorithm>
 #include <cmath>
 
@@ -10,11 +11,19 @@ namespace
     // number of objects without needing a fixed-size palette table (works
     // regardless of SAPOC_MAX_LIVE_INPUTS). Consistent per object index --
     // object 0 is always this same hue, not reassigned based on selection
-    // order.
+    // order. Deliberately restricted to a blue -> violet -> magenta band
+    // rather than the full hue wheel, so every object colour stays within
+    // the same "sci-fi HUD" family as the rest of the theme -- this also
+    // keeps the whole band clear of both red/amber (Mute/Solo, see
+    // UiColours::mute()/solo()) AND UiColours::accent()'s own cyan
+    // (~0.47 hue) at the low end, which the selection ring is drawn in
+    // (see paint()) -- an object landing on that exact hue would make its
+    // own selection ring nearly invisible against its fill.
     juce::Colour objectColour (int index)
     {
-        const float hue = std::fmod (0.12f + (float) index * 0.61803398875f, 1.0f);
-        return juce::Colour::fromHSV (hue, 0.65f, 0.95f, 1.0f);
+        const float frac = std::fmod ((float) index * 0.61803398875f, 1.0f);
+        const float hue = 0.58f + frac * (0.95f - 0.58f);
+        return juce::Colour::fromHSV (hue, 0.75f, 0.95f, 1.0f);
     }
 
     juce::Colour paleGrainColour (juce::Colour base)
@@ -192,6 +201,8 @@ namespace
 SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
     : juce::AudioProcessorEditor (&p), audioProcessor (p)
 {
+    setLookAndFeel (&lookAndFeel);
+
     objectTrails.resize ((size_t) audioProcessor.getTrajectoryEngine().getNumObjects());
 
     addAndMakeVisible (loadPresetButton);
@@ -212,13 +223,13 @@ SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
     removeObjectButton.onClick = [this] { removeObjectClicked(); };
 
     presetStatusLabel.setText (currentPresetName, juce::dontSendNotification);
-    presetStatusLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    presetStatusLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
     presetStatusLabel.setJustificationType (juce::Justification::centredLeft);
 
-    objectCountLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    objectCountLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
     objectCountLabel.setJustificationType (juce::Justification::centredLeft);
 
-    cpuLoadLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    cpuLoadLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
     cpuLoadLabel.setJustificationType (juce::Justification::centredLeft);
 
     parameterPanel.setSceneSettings (&audioProcessor.getTrajectoryEngine().getSceneSettings());
@@ -235,6 +246,7 @@ SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
 SpatialAudioPOCEditor::~SpatialAudioPOCEditor()
 {
     stopTimer();
+    setLookAndFeel (nullptr); // detach before lookAndFeel itself is torn down, see its member comment in PluginEditor.h
 }
 
 void SpatialAudioPOCEditor::timerCallback()
@@ -283,8 +295,8 @@ void SpatialAudioPOCEditor::timerCallback()
     const float cpuLoad = audioProcessor.getEstimatedCpuLoad();
     cpuLoadLabel.setText ("CPU: " + juce::String (cpuLoad * 100.0f, 1) + "%", juce::dontSendNotification);
     cpuLoadLabel.setColour (juce::Label::textColourId,
-                             cpuLoad >= 1.0f ? juce::Colours::red
-                                              : (cpuLoad >= 0.7f ? juce::Colours::orange : juce::Colours::lightgrey));
+                             cpuLoad >= 1.0f ? UiColours::mute()
+                                              : (cpuLoad >= 0.7f ? UiColours::solo() : UiColours::textSecondary()));
 
     repaint();
 }
@@ -375,7 +387,18 @@ bool SpatialAudioPOCEditor::isNearAnyGrain (juce::Point<float> screenPos) const
 
 void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colours::black);
+    g.fillAll (UiColours::bgDeep());
+
+    // Toolbar gets its own slightly lighter panel background + a hairline
+    // bottom border, so it reads as a distinct header bar rather than
+    // floating loose over the (otherwise pitch-black) 3D viewport.
+    {
+        const juce::Rectangle<int> toolbarArea (0, 0, getWidth(), toolbarHeight);
+        g.setColour (UiColours::bgPanel());
+        g.fillRect (toolbarArea);
+        g.setColour (UiColours::border());
+        g.fillRect (toolbarArea.withTop (toolbarArea.getBottom() - 1));
+    }
 
     // The 3D scene must never draw outside viewArea -- see the class
     // comment on the toolbar/panel layout.
@@ -389,18 +412,18 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
     // --- Background: ground reference grid, room-boundary wireframe sphere, origin/front marker ---
     for (int m = 1; m <= 3; ++m)
         drawWireframeCircle (g, camera, centre, viewportHeight, { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f },
-                             (float) m, 48, juce::Colours::darkgrey, 1.0f);
+                             (float) m, 48, UiColours::gridLine(), 1.0f);
 
     const auto& sceneSettings = audioProcessor.getTrajectoryEngine().getSceneSettings();
     if (sceneSettings.roomSize > 0.0f && sceneSettings.showRoomBoundary)
-        drawShadedBoundarySphere (g, camera, centre, viewportHeight, sceneSettings.roomSize, juce::Colours::darkred);
+        drawShadedBoundarySphere (g, camera, centre, viewportHeight, sceneSettings.roomSize, UiColours::accent());
 
     {
         const auto originProj = camera.project ({ 0.0f, 0.0f, 0.0f }, viewportHeight);
         if (originProj.visible)
         {
             const auto originScreen = centre + juce::Point<float> (originProj.x, originProj.y);
-            g.setColour (juce::Colours::white);
+            g.setColour (UiColours::textPrimary());
             g.drawLine (originScreen.x - 6.0f, originScreen.y, originScreen.x + 6.0f, originScreen.y);
             g.drawLine (originScreen.x, originScreen.y - 6.0f, originScreen.x, originScreen.y + 6.0f);
         }
@@ -409,7 +432,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
         if (frontProj.visible)
         {
             const auto frontScreen = centre + juce::Point<float> (frontProj.x, frontProj.y);
-            g.setColour (juce::Colours::white.withAlpha (0.8f));
+            g.setColour (UiColours::textSecondary());
             g.drawText ("Front", (int) frontScreen.x - 25, (int) frontScreen.y - 18, 50, 16, juce::Justification::centred);
         }
     }
@@ -515,7 +538,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 
             if (i == selectedObjectIndex)
             {
-                g.setColour (juce::Colours::white.withAlpha (distAlpha));
+                g.setColour (UiColours::accent().withAlpha (distAlpha));
                 g.drawEllipse (screenPos.x - radius * 1.4f, screenPos.y - radius * 1.4f, radius * 2.8f, radius * 2.8f, 2.0f);
 
                 if (isActivelyDragged)
@@ -523,13 +546,13 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
                     // A clearly stronger highlight than plain selection --
                     // an extra, softer outer ring while the object is
                     // actually being manipulated, not just selected.
-                    g.setColour (juce::Colours::white.withAlpha (0.35f * distAlpha));
+                    g.setColour (UiColours::accent().withAlpha (0.35f * distAlpha));
                     g.drawEllipse (screenPos.x - radius * 2.0f, screenPos.y - radius * 2.0f, radius * 4.0f, radius * 4.0f, 3.0f);
                 }
             }
         }
 
-        g.setColour (juce::Colours::white.withAlpha (distAlpha));
+        g.setColour (UiColours::textSecondary().withAlpha (distAlpha));
         g.drawText (juce::String (i), (int) screenPos.x - 20, (int) (screenPos.y + radius + 2.0f), 40, 16, juce::Justification::centred);
     }
 
@@ -538,7 +561,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
     {
         const auto anchorScreen = worldToScreen (slingAnchorWorldPos);
         const bool isOrbit = slingWantsOrbit;
-        const auto slingLineColour = isOrbit ? juce::Colours::violet : juce::Colours::orange;
+        const auto slingLineColour = isOrbit ? juce::Colours::violet : UiColours::accent();
 
         g.setColour (slingLineColour);
         g.drawLine (anchorScreen.x, anchorScreen.y, slingCursorScreenPos.x, slingCursorScreenPos.y, 2.0f);
@@ -603,9 +626,9 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
                     juce::Path throwPath;
                     throwPath.startNewSubPath (anchorScreen);
                     throwPath.lineTo (endScreen);
-                    strokeDashedPath (g, throwPath, juce::Colours::orange.withAlpha (0.9f), 2.0f);
+                    strokeDashedPath (g, throwPath, UiColours::accent().withAlpha (0.9f), 2.0f);
 
-                    g.setColour (juce::Colours::orange);
+                    g.setColour (UiColours::accent());
                     g.fillEllipse (endScreen.x - 4.0f, endScreen.y - 4.0f, 8.0f, 8.0f);
                 }
             }
@@ -614,7 +637,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
         const auto label = isOrbit
             ? juce::String ("Orbit: ") + SlingGesture::orbitEccentricitySteps[(size_t) slingEccentricityStepIndex].label
             : juce::String ("Free Throw");
-        g.setColour (juce::Colours::white);
+        g.setColour (UiColours::textPrimary());
         g.drawText (label, (int) slingCursorScreenPos.x - 60, (int) slingCursorScreenPos.y + 12, 120, 16, juce::Justification::centred);
     }
 
@@ -630,11 +653,11 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
         // a value to be shrunk a little more on every single repaint.
         auto viewAreaBottom = viewArea;
         auto hintArea = viewAreaBottom.removeFromBottom (34).reduced (6, 2);
-        g.setColour (juce::Colours::white.withAlpha (0.55f));
+        g.setColour (UiColours::textPrimary().withAlpha (0.55f));
         g.setFont (12.5f);
         g.drawText ("Double-click object: Orbit    |    Shift+Drag object: Sling launch",
                     hintArea.removeFromTop (16), juce::Justification::centred);
-        g.setColour (juce::Colours::white.withAlpha (0.4f));
+        g.setColour (UiColours::textSecondary().withAlpha (0.85f));
         g.setFont (11.0f);
         g.drawText ("(while pulling: hold Ctrl = orbit shot, tap Alt = cycle shape)    |    Drag empty space: rotate view    |    Scroll: zoom",
                     hintArea, juce::Justification::centred);
@@ -646,18 +669,23 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
 void SpatialAudioPOCEditor::resized()
 {
     auto bounds = getLocalBounds();
-    auto toolbar = bounds.removeFromTop (toolbarHeight);
+    auto toolbar = bounds.removeFromTop (toolbarHeight).reduced (UiSpacing::m, 0);
 
-    auto row1 = toolbar.removeFromTop (32);
-    loadPresetButton.setBounds (row1.removeFromLeft (140).reduced (4));
-    savePresetButton.setBounds (row1.removeFromLeft (140).reduced (4));
-    presetStatusLabel.setBounds (row1.reduced (4));
+    auto row1 = toolbar.removeFromTop (38); // toolbarHeight (76) split into two even 38px rows
+    loadPresetButton.setBounds (row1.removeFromLeft (140).reduced (UiSpacing::xs));
+    row1.removeFromLeft (UiSpacing::s);
+    savePresetButton.setBounds (row1.removeFromLeft (140).reduced (UiSpacing::xs));
+    row1.removeFromLeft (UiSpacing::m);
+    presetStatusLabel.setBounds (row1.reduced (UiSpacing::xs));
 
     auto row2 = toolbar;
-    addObjectButton.setBounds (row2.removeFromLeft (100).reduced (4));
-    removeObjectButton.setBounds (row2.removeFromLeft (160).reduced (4));
-    objectCountLabel.setBounds (row2.removeFromLeft (120).reduced (4));
-    cpuLoadLabel.setBounds (row2.removeFromLeft (140).reduced (4));
+    addObjectButton.setBounds (row2.removeFromLeft (100).reduced (UiSpacing::xs));
+    row2.removeFromLeft (UiSpacing::s);
+    removeObjectButton.setBounds (row2.removeFromLeft (160).reduced (UiSpacing::xs));
+    row2.removeFromLeft (UiSpacing::m);
+    objectCountLabel.setBounds (row2.removeFromLeft (120).reduced (UiSpacing::xs));
+    row2.removeFromLeft (UiSpacing::m);
+    cpuLoadLabel.setBounds (row2.removeFromLeft (140).reduced (UiSpacing::xs));
 
     parameterPanel.setBounds (bounds.removeFromRight (parameterPanelWidth));
     objectListPanel.setBounds (bounds.removeFromLeft (objectListWidth));

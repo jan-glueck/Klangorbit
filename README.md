@@ -207,21 +207,22 @@ away from it is purely additive.
   for any camera angle or zoom
   (`Camera3D::projectSphereSilhouetteRadius()`, geometrically exact, not
   an approximation). A radial gradient (transparent center -> semi-opaque
-  rim) plus a specular highlight reads as a translucent shell that
-  clearly marks the boundary without hiding objects/grains inside it. The
-  highlight is lit from a fixed WORLD-space direction, not a fixed screen
-  offset (`Camera3D::computeSphereHighlight()`) -- it moves across the
-  sphere's surface as you rotate the view, exactly like a real
-  directional light would, rather than staying glued to one corner
-  regardless of orientation; it fades out smoothly and disappears
-  entirely once its point on the sphere rotates onto the far side, facing
-  away from the camera. A flat ground grid (1m/2m/3m circles) and a small
-  "Front" marker/label at
+  rim) reads as a translucent shell that clearly marks the boundary
+  without hiding objects/grains inside it -- deliberately no specular
+  highlight (an earlier version had one, lit from a fixed world-space
+  direction; removed again, it didn't read well visually). A flat ground
+  grid (1m/2m/3m circles) and a small "Front" marker/label at
   the origin remain as orientation aids. Purely cosmetic
   `SceneSettings::showRoomBoundary` toggle (Scene category, "Show
   Boundary") hides the sphere without disabling the boundary itself --
   `reflect`/`wrap`/`absorb` keep applying while it's hidden, only the
   drawing is skipped.
+- **Gesture reminder**, a small always-on text overlay at the bottom of
+  the scene view: "Double-click object: Orbit | Shift+Drag object: Sling
+  launch" plus a dimmer second line for the Ctrl/Alt modifiers and the
+  camera-rotate/zoom gestures. Both Orbit and Sling launch are pure
+  mouse+modifier-key gestures with no button or menu entry anywhere else
+  in the GUI, so without this there is no way to discover them at all.
 - **Orbit-path preview.** An object currently in `Mode::Orbit` draws its
   full ellipse, not just the current point, sampled via the same formula
   `TrajectoryEngine` itself uses to move it (`Source/OrbitMath.h`, factored

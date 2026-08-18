@@ -106,33 +106,6 @@ bool Camera3D::projectSphereSilhouetteRadius (float sphereRadius, float viewport
     return true;
 }
 
-bool Camera3D::computeSphereHighlight (Vec3 lightDir, float sphereRadius, float viewportHeightPixels, SphereHighlight& out) const
-{
-    // Point on the sphere's surface nearest the light -- since the sphere
-    // is centered at the origin, that's simply the light direction scaled
-    // by the radius, and the outward surface normal there is lightDir
-    // itself (already unit length).
-    const Vec3 highlightWorldPos = lightDir * sphereRadius;
-
-    // Only "lit" while that point is on the hemisphere actually facing
-    // this camera -- otherwise it is on the far side of the sphere and
-    // would incorrectly appear to shine through the near side if drawn.
-    const Vec3 towardCamera = position - highlightWorldPos;
-    const float towardCameraLen = towardCamera.length();
-    const float facing = towardCameraLen > 1.0e-6f ? lightDir.dot (towardCamera / towardCameraLen) : 0.0f;
-    if (facing <= 0.0f)
-        return false;
-
-    const auto proj = project (highlightWorldPos, viewportHeightPixels);
-    if (! proj.visible)
-        return false;
-
-    out.x = proj.x;
-    out.y = proj.y;
-    out.intensity = std::min (1.0f, facing);
-    return true;
-}
-
 bool Camera3D::screenToGroundPlane (float screenX, float screenY, float viewportHeightPixels, Vec3& outWorldPos) const
 {
     // Inverse of project(): a point at camera-space depth d projects to

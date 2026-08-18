@@ -212,65 +212,6 @@ int main()
                "projectSphereSilhouetteRadius agrees with the independent linear estimate for a small sphere (small-angle cross-check)");
     }
 
-    // --- computeSphereHighlight (boundary sphere specular highlight) ---
-    {
-        // Light pointing straight at the default camera's own direction
-        // (position, normalized) must be maximally "facing" -- intensity
-        // at (or extremely near) its ceiling of 1.0.
-        Camera3D cam; // default: position = (0,0,distance)
-        const Vec3 lightDir = { 0.0f, 0.0f, 1.0f }; // same direction as the default camera position
-        Camera3D::SphereHighlight hl;
-        const bool ok = cam.computeSphereHighlight (lightDir, 2.0f, viewportHeight, hl);
-        check (ok, "computeSphereHighlight succeeds when the light points straight at the camera");
-        check (approxEqual (hl.intensity, 1.0f, 0.01f),
-               "computeSphereHighlight: light direction == camera direction gives full (~1.0) intensity");
-    }
-    {
-        // Light pointing straight away from the default camera (toward
-        // the far side of the sphere) must report nothing to draw.
-        Camera3D cam;
-        const Vec3 lightDir = { 0.0f, 0.0f, -1.0f };
-        Camera3D::SphereHighlight hl;
-        const bool ok = cam.computeSphereHighlight (lightDir, 2.0f, viewportHeight, hl);
-        check (! ok, "computeSphereHighlight reports nothing to draw when the light is on the far side of the sphere");
-    }
-    {
-        // The core of this feature: a FIXED world-space light direction
-        // must move on screen as the camera orbits -- it must NOT stay at
-        // a fixed screen offset regardless of view angle (that was the
-        // previous, purely cosmetic behavior this replaces).
-        const Vec3 lightDir = { 0.3f, 0.3f, 0.9f };
-        const float len = std::sqrt (lightDir.x * lightDir.x + lightDir.y * lightDir.y + lightDir.z * lightDir.z);
-        const Vec3 unitLightDir = lightDir / len;
-
-        Camera3D camA;
-        Camera3D::SphereHighlight hlA;
-        const bool okA = camA.computeSphereHighlight (unitLightDir, 2.0f, viewportHeight, hlA);
-
-        Camera3D camB;
-        camB.rotate (1.2f, 0.0f); // azimuth-only rotation, same distance/elevation
-        Camera3D::SphereHighlight hlB;
-        const bool okB = camB.computeSphereHighlight (unitLightDir, 2.0f, viewportHeight, hlB);
-
-        check (okA && okB, "computeSphereHighlight test setup: highlight visible before and after rotating the camera");
-        check (! approxEqual (hlA.x, hlB.x, 0.5f) || ! approxEqual (hlA.y, hlB.y, 0.5f),
-               "computeSphereHighlight: a world-space-fixed light moves on screen when the camera rotates (not glued to a fixed offset)");
-    }
-    {
-        // Rotating the camera to directly face the light direction itself
-        // (azimuth=0, elevation=0 -> position=(distance,0,0), looking
-        // toward -X) should bring it almost straight at the highlight
-        // point for lightDir=(1,0,0) -- intensity should climb back up
-        // close to 1.0, not stay low forever as the camera keeps orbiting.
-        const Vec3 lightDir = { 1.0f, 0.0f, 0.0f };
-        Camera3D cam; // default: azimuth=pi, elevation=halfPi
-        cam.rotate (-juce::MathConstants<float>::pi, -juce::MathConstants<float>::halfPi); // -> azimuth=0, elevation=0
-        Camera3D::SphereHighlight hl;
-        const bool ok = cam.computeSphereHighlight (lightDir, 2.0f, viewportHeight, hl);
-        check (ok && hl.intensity > 0.95f,
-               "computeSphereHighlight: rotating the camera to directly face the light direction restores near-full intensity");
-    }
-
     std::printf ("\n%s (%d failures)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -399,6 +399,14 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   keeps applying physically (`reflect`/`wrap`/`absorb`) while hidden, only
   `PluginEditor::paint()`'s `drawShadedBoundarySphere()` call is skipped.
   Default `true` (unchanged appearance for existing presets/behavior).
+- **On-screen reminder of the Orbit and Sling-launch gestures**, drawn at
+  the bottom of the scene view every frame. Both are pure mouse+modifier-key
+  gestures (double-click; Shift+drag, with Ctrl/Alt held while pulling)
+  with no other UI affordance -- no button, no menu entry -- so previously
+  a first-time user had no way to discover them at all. Two lines: the
+  gesture names themselves (brighter), and the Ctrl/Alt modifiers plus the
+  two other scene-view mouse gestures (camera rotate, zoom) underneath
+  (dimmer, secondary). Purely a static text overlay, not interactive.
 
 ### Changed
 - **Solo/Mute controls moved to the object-list sidebar, removed from the
@@ -415,30 +423,6 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   second copy in the parameter panel.
 - Object-list sidebar width raised 160 -> 190px to fit the new Mute/Solo
   buttons alongside each row's label without crowding it.
-- **Boundary sphere's specular highlight now lit from a fixed world-space
-  direction instead of a fixed screen offset.** Previously the highlight
-  was drawn at a constant screen-space position (upper-left of the
-  sphere) regardless of camera orientation -- rotating the view left the
-  highlight looking glued in place while everything else (including the
-  sphere itself) rotated correctly, which read as flat/fake rather than
-  a real lit sphere. New `Camera3D::computeSphereHighlight()`: given a
-  fixed unit light direction in world space (not attached to the
-  camera), returns the screen position of the point on the sphere
-  nearest that light, projected through the same camera as everything
-  else, plus an intensity in `[0, 1]` based on how directly that point
-  faces the camera (computed from the dot product of the light
-  direction with the direction from that point to the camera position --
-  both already-available `Vec3`/`Camera3D` primitives, no new dependency).
-  Returns false (nothing to draw) once the point rotates onto the far
-  hemisphere, instead of an abrupt cutoff right at the boundary the
-  intensity fades smoothly toward it. `PluginEditor::drawShadedBoundarySphere()`
-  now calls this instead of using a fixed `viewportCentre`-relative
-  offset. `Tools/verify_camera` gained 5 checks: full intensity when the
-  light direction matches the camera's own direction, no highlight when
-  the light is on the far side, that a fixed world-space light actually
-  moves on screen as the camera rotates (the actual bug being fixed),
-  and that rotating back to face the light restores near-full intensity
-  (33/33 checks passing).
 - **Room boundary now renders as a shaded, translucent sphere** instead
   of a flat wireframe outline (`PluginEditor::drawShadedBoundarySphere()`).
   Still no 3D mesh/lighting model (no OpenGL, see "3D camera view") --
@@ -450,9 +434,15 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   silhouette is a true circle centered on the viewport middle for any
   camera angle/zoom (a general off-axis sphere would project to an
   ellipse under perspective; this one never needs to). A radial gradient
-  (transparent center -> semi-opaque rim) plus a small offset highlight
-  gives a "translucent shell" look that keeps objects/grains inside fully
-  visible while still reading clearly as a spatial boundary.
+  (transparent center -> semi-opaque rim) gives a "translucent shell"
+  look that keeps objects/grains inside fully visible while still
+  reading clearly as a spatial boundary. Two specular-highlight attempts
+  (first a fixed screen-space offset, then reworked to project a fixed
+  world-space light direction through the camera via
+  `Camera3D::computeSphereHighlight()` so it would move correctly as the
+  view rotates -- see prior revisions of this file) were both tried and
+  ultimately removed again: neither read well visually, and the gradient
+  alone is enough to suggest a sphere without one.
   `Tools/verify_camera` gained checks for the new method: succeeds/fails
   correctly (no silhouette when the camera is at/inside the sphere),
   larger spheres project larger, and the exact tangent-based geometry

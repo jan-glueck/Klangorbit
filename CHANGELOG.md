@@ -227,6 +227,36 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     `GrainCloud` (e.g. in `AttractRepelSiblings` mode) -- grains already
     move and render independently of their parent object, and the sling
     preview only ever describes the parent object's own upcoming motion.
+- **Grain density and duration raised**, plus a CPU-load display and a
+  ring-buffer fix that were both needed to do so safely.
+  - `maxConcurrentGrainsGlobal` (the system-wide simultaneous-grain cap)
+    raised from 32 to 128. Assessment: a rough operation-count estimate
+    (order-3 Ambisonics encode = 16 channels, block-rate spherical-harmonic
+    coefficients + a cheap per-sample ramp, no per-sample trig) suggests
+    128 concurrent grains stays comfortably real-time-safe on any
+    reasonably modern CPU -- but this is *not* a measurement on real
+    hardware (not available in this environment), so instead of raising
+    the limit uncommented, a real, measured CPU-load indicator was added:
+    the toolbar now shows the smoothed fraction of each audio block's
+    actual time budget spent in `processBlock()`
+    (`SpatialAudioPOCProcessor::getEstimatedCpuLoad()`), turning
+    amber/red as it approaches/exceeds 100%, so the user can verify this
+    for themselves rather than trusting the estimate.
+  - `grainDuration`'s upper bound raised 2.0s -> 5.0s; `grainRate`'s upper
+    bound raised 200/sec -> 500/sec (`Source/Grain.h`'s new `GrainLimits`
+    namespace).
+  - Ring buffer sizing fixed to actually cover the resulting worst case:
+    a grain can look back into its ring buffer by up to
+    `positionJitterInBuffer` (already 1.5s), then read forward through up
+    to `grainDuration` seconds of output time, consuming up to 2x that
+    much SOURCE material if pitched up via `pitchJitter` -- at the new
+    5.0s duration that's a required reach of 1.5 + 5.0*2.0 = 11.5s, far
+    beyond the previous fixed 2.0s buffer. `GrainLimits` is now the single
+    source of truth both `ParameterPanel`'s slider ranges and
+    `PluginProcessor`'s buffer allocation read from, so they can't
+    silently drift out of sync again, backed by a `static_assert` that
+    fails the build if the buffer formula ever stops covering the
+    required reach.
 
 ### Changed
 - `Camera3D::maxDistance` raised from 30 to 150 meters -- generous enough

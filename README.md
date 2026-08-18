@@ -359,10 +359,22 @@ purely random.
   per-grain Doppler/delay/air-absorption/directivity pass would be too
   expensive with dozens of concurrent grains.
 - **Global spawn budget.** `maxConcurrentGrains` caps each cloud
-  individually; a further system-wide cap
-  (`SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal`, currently 32) is
-  shared across all clouds each control-rate tick, since every active grain
-  costs a full Ambisonics encoding pass regardless of cloud.
+  individually (up to 128); a further system-wide cap
+  (`SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal`, currently 128,
+  raised from an initial 32) is shared across all clouds each control-rate
+  tick, since every active grain costs a full Ambisonics encoding pass
+  regardless of cloud. `grainDuration` (up to 5s) and `grainRate` (up to
+  500/sec) were extended alongside it. 128 is a rough operation-count
+  estimate for real-time safety, not a number profiled on real hardware in
+  this environment -- the toolbar's **CPU meter** (top of the editor, next
+  to the object count) shows the actual measured fraction of each audio
+  block's time budget being used, turning amber/red if it gets close to or
+  exceeds 100%, so you can judge for yourself on your own machine rather
+  than trusting the estimate. The per-object grain ring buffer was resized
+  to match the new duration/rate/jitter ranges (see `Source/Grain.h`'s
+  `GrainLimits` -- the single source of truth both the UI and the buffer
+  allocation read from, specifically so they can't silently drift out of
+  sync with each other again).
 - **GUI:** active grains render as small dots around their parent object in
   the scene view, in a paler variant of the parent's color, fading out
   with age (and now also with camera distance -- see "3D camera view"

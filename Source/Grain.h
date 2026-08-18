@@ -38,6 +38,35 @@ enum class GrainJitterTarget
 };
 
 /**
+    Central limits shared by the UI (ParameterPanel's slider ranges) and
+    the audio-side ring buffer allocation (PluginProcessor) -- kept in one
+    place so the buffer can't silently become too small again if a range
+    changes without the other being reconsidered. This is a real,
+    concrete risk here: a grain can need to look back into its parent's
+    ring buffer by up to positionJitterInBuffer, then read forward through
+    up to grainDuration seconds of output time -- consuming up to
+    maxPitchJitterPlaybackRate times that much SOURCE material if pitched
+    up. Both ends of that reach must fit within the buffer.
+*/
+namespace GrainLimits
+{
+    constexpr float maxGrainDuration = 5.0f;             // seconds, ParameterPanel's upper slider bound
+    constexpr float maxGrainRate = 500.0f;                // grains/sec, ParameterPanel's upper slider bound
+    constexpr float maxPositionJitterInBuffer = 1.5f;    // seconds, ParameterPanel's upper slider bound
+
+    // See GrainCloud::spawnGrain(): playbackRate = 1 + pitchJitter*(-1..1),
+    // clamped to a minimum of 0.1; pitchJitter's own max is 1.0, so the
+    // resulting rate range is [0.1, 2.0]. 2.0 is the relevant bound here
+    // (it's the direction that consumes MORE source material per second
+    // of output).
+    constexpr float maxPitchJitterPlaybackRate = 2.0f;
+
+    // Longest possible look-back a single grain can ever need, given the
+    // limits above -- the ring buffer must be at least this long.
+    constexpr float requiredRingBufferSeconds = maxPositionJitterInBuffer + maxGrainDuration * maxPitchJitterPlaybackRate;
+}
+
+/**
     Cloud-wide parameters: one set applies to the whole cloud (all grains
     spawned by it), not per grain -- see ParameterPanel, there is no
     per-grain UI.

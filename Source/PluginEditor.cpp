@@ -168,6 +168,7 @@ SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
     addAndMakeVisible (addObjectButton);
     addAndMakeVisible (removeObjectButton);
     addAndMakeVisible (objectCountLabel);
+    addAndMakeVisible (cpuLoadLabel);
     addAndMakeVisible (parameterPanel);
 
     loadPresetButton.onClick = [this] { loadPresetClicked(); };
@@ -181,6 +182,9 @@ SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
 
     objectCountLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     objectCountLabel.setJustificationType (juce::Justification::centredLeft);
+
+    cpuLoadLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    cpuLoadLabel.setJustificationType (juce::Justification::centredLeft);
 
     parameterPanel.setSceneSettings (&audioProcessor.getTrajectoryEngine().getSceneSettings());
     parameterPanel.refreshFromModel(); // show scene defaults (roomSize etc.) right away
@@ -232,6 +236,20 @@ void SpatialAudioPOCEditor::timerCallback()
     }
 
     updateTrails();
+
+    // See SpatialAudioPOCProcessor::getEstimatedCpuLoad()'s comment for
+    // why this exists: maxConcurrentGrainsGlobal (128) is a rough
+    // estimate, not a hardware-profiled number, so this surfaces the
+    // actual measured load instead of asking the user to trust the
+    // estimate. Color-coded as a simple, cheap warning rather than a
+    // precise meter -- green/grey under normal load, amber approaching
+    // the block deadline, red at or past it (audible dropouts likely).
+    const float cpuLoad = audioProcessor.getEstimatedCpuLoad();
+    cpuLoadLabel.setText ("CPU: " + juce::String (cpuLoad * 100.0f, 1) + "%", juce::dontSendNotification);
+    cpuLoadLabel.setColour (juce::Label::textColourId,
+                             cpuLoad >= 1.0f ? juce::Colours::red
+                                              : (cpuLoad >= 0.7f ? juce::Colours::orange : juce::Colours::lightgrey));
+
     repaint();
 }
 
@@ -590,6 +608,7 @@ void SpatialAudioPOCEditor::resized()
     addObjectButton.setBounds (row2.removeFromLeft (100).reduced (4));
     removeObjectButton.setBounds (row2.removeFromLeft (160).reduced (4));
     objectCountLabel.setBounds (row2.removeFromLeft (120).reduced (4));
+    cpuLoadLabel.setBounds (row2.removeFromLeft (140).reduced (4));
 
     parameterPanel.setBounds (bounds.removeFromRight (parameterPanelWidth));
     viewArea = bounds;

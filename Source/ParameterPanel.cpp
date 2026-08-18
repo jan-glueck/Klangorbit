@@ -266,11 +266,15 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*grainEnabledRow);
     addToLayout (*grainEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
 
-    addGrainFloatRow ("Grain Rate (grains/sec)", &GrainCloudSettings::grainRate, 0.1, 200.0, 0.1, Category::GrainCloud);
-    addGrainFloatRow ("Grain Duration (s)", &GrainCloudSettings::grainDuration, 0.01, 2.0, 0.01, Category::GrainCloud);
+    // Ranges for grainRate/grainDuration/positionJitterInBuffer are tied to
+    // GrainLimits (Grain.h), the same constants the ring buffer is sized
+    // from -- see there for why these three can't be extended
+    // independently of the buffer without risking silent misbehavior.
+    addGrainFloatRow ("Grain Rate (grains/sec)", &GrainCloudSettings::grainRate, 0.1, GrainLimits::maxGrainRate, 0.1, Category::GrainCloud);
+    addGrainFloatRow ("Grain Duration (s)", &GrainCloudSettings::grainDuration, 0.01, GrainLimits::maxGrainDuration, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Pitch Jitter", &GrainCloudSettings::pitchJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Position Jitter In Buffer (s)", &GrainCloudSettings::positionJitterInBuffer, 0.0, 1.5, 0.01, Category::GrainCloud);
-    addGrainIntRow ("Max Concurrent Grains (this cloud)", &GrainCloudSettings::maxConcurrentGrains, 1.0, 32.0, Category::GrainCloud);
+    addGrainFloatRow ("Position Jitter In Buffer (s)", &GrainCloudSettings::positionJitterInBuffer, 0.0, GrainLimits::maxPositionJitterInBuffer, 0.01, Category::GrainCloud);
+    addGrainIntRow ("Max Concurrent Grains (this cloud)", &GrainCloudSettings::maxConcurrentGrains, 1.0, 128.0, Category::GrainCloud);
 
     grainWindowShapeRow = std::make_unique<ComboRowComponent> ("Window Shape");
     grainWindowShapeRow->combo.addItem ("Hann", 1);

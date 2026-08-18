@@ -97,6 +97,8 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 {
     juce::ScopedNoDenormals noDenormals;
 
+    const auto blockStartTicks = juce::Time::getHighResolutionTicks();
+
     const int numSamples = buffer.getNumSamples();
     const int numInCh    = juce::jmin (numLiveInputs, buffer.getNumChannels());
 
@@ -236,6 +238,21 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                                   obj.gain, buffer, state.previousChannelGains);
         }
     }
+
+    // Real, measured CPU-load estimate -- see maxConcurrentGrainsGlobal's
+    // comment in the header for why this exists (128 concurrent grains is
+    // a rough estimate, not a profiled number; this lets the user check
+    // for themselves instead of trusting the estimate blindly). Smoothed
+    // (exponential moving average) so the UI reading doesn't flicker
+    // block-to-block.
+    const auto blockEndTicks = juce::Time::getHighResolutionTicks();
+    const double elapsedSeconds = juce::Time::highResolutionTicksToSeconds (blockEndTicks - blockStartTicks);
+    const double blockDurationSeconds = (double) numSamples / juce::jmax (1.0, currentSampleRate);
+    const float instantLoad = (float) (elapsedSeconds / blockDurationSeconds);
+
+    constexpr float smoothing = 0.9f;
+    const float previousLoad = processBlockLoadFraction.load (std::memory_order_relaxed);
+    processBlockLoadFraction.store (previousLoad * smoothing + instantLoad * (1.0f - smoothing), std::memory_order_relaxed);
 }
 
 juce::AudioProcessorEditor* SpatialAudioPOCProcessor::createEditor()

@@ -66,7 +66,25 @@ public:
     // this bounds worst-case CPU independent of how many clouds/objects
     // are granulating. Enforced by the editor's timer via
     // GrainCloud::update()'s globalGrainBudget parameter.
-    static constexpr int maxConcurrentGrainsGlobal = 32;
+    //
+    // Raised from 32 to 128: a rough operation-count estimate (order-3
+    // Ambisonics encode = 16 channels, block-rate spherical-harmonic
+    // coefficients + a cheap per-sample ramp, no per-sample trig) suggests
+    // 128 concurrent grains stays comfortably real-time-safe on any
+    // reasonably modern CPU -- but that is a back-of-envelope estimate,
+    // not a measurement on real hardware (not available in this
+    // environment). getEstimatedCpuLoad() below exists specifically so
+    // the user can verify this on their own machine instead of trusting
+    // the estimate blindly.
+    static constexpr int maxConcurrentGrainsGlobal = 128;
+
+    // Smoothed fraction of each block's available real-time budget
+    // actually spent inside processBlock() (measured wall-clock time /
+    // block duration; >1 means it isn't keeping up). Written every block
+    // from the audio thread, read from the message thread (editor's
+    // timer) for the CPU-load display -- see the maxConcurrentGrainsGlobal
+    // comment above for why this exists now specifically.
+    float getEstimatedCpuLoad() const { return processBlockLoadFraction.load (std::memory_order_relaxed); }
 
 private:
     // BusesProperties is a protected nested type of juce::AudioProcessor --
@@ -78,7 +96,16 @@ private:
     // Each cloud's pool is sized to the full global cap since, in the
     // worst case, a single cloud could legitimately use all of it.
     static constexpr int grainPoolSizePerCloud = maxConcurrentGrainsGlobal;
-    static constexpr float grainRingBufferSeconds = 2.0f;
+    // Sized from GrainLimits (Grain.h) -- the same constants ParameterPanel
+    // uses for its slider ranges -- plus a safety margin, so this can never
+    // silently become too small again if either range changes without the
+    // other being reconsidered (see GrainLimits::requiredRingBufferSeconds
+    // for the worst-case-lookback derivation).
+    static constexpr float grainRingBufferSeconds = GrainLimits::requiredRingBufferSeconds + 1.0f;
+    static_assert (grainRingBufferSeconds > GrainLimits::requiredRingBufferSeconds,
+                   "grainRingBufferSeconds must exceed GrainLimits::requiredRingBufferSeconds -- "
+                   "otherwise a grain at the extremes of the allowed duration/rate/jitter ranges "
+                   "could read past what the ring buffer actually holds.");
 
     TrajectoryEngine trajectoryEngine { numLiveInputs, grainPoolSizePerCloud };
     AmbisonicsEncoder encoder;
@@ -125,6 +152,9 @@ private:
     juce::AudioBuffer<float> grainScratch;
 
     double currentSampleRate = 48000.0;
+
+    // See getEstimatedCpuLoad() above.
+    std::atomic<float> processBlockLoadFraction { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpatialAudioPOCProcessor)
 };

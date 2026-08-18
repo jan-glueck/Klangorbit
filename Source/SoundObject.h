@@ -107,7 +107,36 @@ struct SoundObject
     // existed (major axis along the plane's default reference direction).
     float orbitOrientation = 0.0f;
     // Radius change per second while in Orbit mode, 0 = stable orbit.
+    // Deterministic, one-directional drift -- kept as-is (unchanged
+    // behavior) alongside the mean-reverting alternative below; combining
+    // both is possible (the drift keeps pulling, the reversion keeps
+    // resisting) but not a typical use case.
     float orbitDecay = 0.0f;
+    // --- Mean-reverting orbit radius (Ornstein-Uhlenbeck process) --------
+    // Alternative to orbitDecay for a "living, breathing" orbit that
+    // wanders around a baseline without ever drifting away permanently --
+    // unlike orbitDecay, which only ever moves in one direction.
+    // 0 for both orbitRadiusReversionRate and orbitRadiusNoiseAmplitude
+    // (the default) disables this entirely, so existing behavior/presets
+    // are unaffected. See TrajectoryEngine::integrate()'s Orbit case for
+    // the actual discrete-time update.
+    //
+    //   radius(t+dt) = radius(t)
+    //                  + reversionRate * (baseline - radius(t)) * dt
+    //                  + noiseAmplitude * sqrt(dt) * gaussianRandom()
+    //
+    // Target value the radius wanders around and keeps returning to.
+    float orbitRadiusBaseline = 1.0f;
+    // How strongly/quickly the radius is pulled back toward the baseline
+    // -- 0 = no pull (a pure, unbounded random walk if noiseAmplitude is
+    // also nonzero); higher = a "tighter tether" that snaps back faster
+    // and wanders less far before reversion dominates.
+    float orbitRadiusReversionRate = 0.0f;
+    // Strength of the random perturbation applied per update, in
+    // meters/sqrt(second) (standard Wiener-process scaling, hence the
+    // sqrt(dt) in the update above -- keeps the noise's statistical
+    // properties independent of the actual update rate).
+    float orbitRadiusNoiseAmplitude = 0.0f;
     // -1 = orbitCenter is a fixed point (previous behavior). Otherwise the
     // id of another SoundObject to orbit around (e.g. moon-around-planet
     // hierarchies).

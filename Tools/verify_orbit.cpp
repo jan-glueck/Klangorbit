@@ -156,6 +156,92 @@ int main()
                "computeOrbitOrientation() of a pull vector along +y is pi/2 rad");
     }
 
+    // --- Mean-reverting orbit radius (Ornstein-Uhlenbeck process) ---
+    {
+        // Default (reversionRate=0, noiseAmplitude=0): must be a complete
+        // no-op, i.e. orbitDecay-free existing behavior/presets are
+        // unaffected -- radius stays exactly what startOrbit() set.
+        TrajectoryEngine engine (1);
+        engine.activateObject (0);
+        engine.startOrbit (0, center, 3.0f, 1.0f);
+        for (int i = 0; i < 200; ++i)
+            engine.update (0.01);
+        check (approxEqual (engine.getObject (0).orbitRadius, 3.0f, 1.0e-4f),
+               "orbitRadiusReversionRate=0 and orbitRadiusNoiseAmplitude=0 leave orbitRadius completely unaffected");
+    }
+    {
+        // Pure deterministic reversion (noiseAmplitude=0): radius must
+        // move monotonically toward the baseline, not away from it or in
+        // circles -- confirms the sign of the reversion term.
+        TrajectoryEngine engine (1);
+        engine.activateObject (0);
+        engine.startOrbit (0, center, 5.0f, 1.0f); // start far from the baseline below
+        engine.getObject (0).orbitRadiusBaseline = 1.0f;
+        engine.getObject (0).orbitRadiusReversionRate = 5.0f; // strong enough to visibly converge within the test's short window
+
+        float previousDistance = std::abs (engine.getObject (0).orbitRadius - 1.0f);
+        bool alwaysCloserOrEqual = true;
+        for (int i = 0; i < 50; ++i)
+        {
+            engine.update (0.01);
+            const float distance = std::abs (engine.getObject (0).orbitRadius - 1.0f);
+            if (distance > previousDistance + 1.0e-5f)
+                alwaysCloserOrEqual = false;
+            previousDistance = distance;
+        }
+        check (alwaysCloserOrEqual, "pure reversion (no noise) moves orbitRadius monotonically toward orbitRadiusBaseline");
+        check (previousDistance < 0.5f, "pure reversion gets orbitRadius close to orbitRadiusBaseline within 0.5s");
+    }
+    {
+        // Noise-only (reversionRate=0): radius must actually move (not
+        // stuck), and must respect the hard clamp even with a large
+        // amplitude -- never negative, never past the sanity ceiling.
+        TrajectoryEngine engine (1);
+        engine.activateObject (0);
+        engine.startOrbit (0, center, 1.0f, 1.0f);
+        engine.getObject (0).orbitRadiusNoiseAmplitude = 50.0f; // deliberately large
+
+        const float startRadius = engine.getObject (0).orbitRadius;
+        bool everMoved = false;
+        bool stayedInBounds = true;
+        for (int i = 0; i < 500; ++i)
+        {
+            engine.update (0.01);
+            const float r = engine.getObject (0).orbitRadius;
+            if (std::abs (r - startRadius) > 1.0e-3f) everMoved = true;
+            if (r < 0.05f - 1.0e-4f || r > 1000.0f + 1.0e-4f) stayedInBounds = false;
+        }
+        check (everMoved, "noise-only (no reversion) actually perturbs orbitRadius over time");
+        check (stayedInBounds, "orbitRadius stays within its hard clamp [0.05, 1000] even with a large noise amplitude");
+    }
+    {
+        // Combined reversion + noise: unlike orbitDecay (one-directional,
+        // unbounded drift), this must stay statistically BOUNDED around
+        // the baseline over a long run, not wander off permanently.
+        // Theoretical OU stationary std-dev = noiseAmplitude/sqrt(2*rate);
+        // checked against a generous multiple to avoid a flaky test while
+        // still catching a grossly wrong implementation (inverted sign,
+        // missing sqrt(dt) scaling, etc).
+        TrajectoryEngine engine (1);
+        engine.activateObject (0);
+        engine.startOrbit (0, center, 2.0f, 1.0f);
+        engine.getObject (0).orbitRadiusBaseline = 2.0f;
+        engine.getObject (0).orbitRadiusReversionRate = 1.5f;
+        engine.getObject (0).orbitRadiusNoiseAmplitude = 0.3f;
+
+        const float theoreticalStdDev = 0.3f / std::sqrt (2.0f * 1.5f);
+        float maxDeviation = 0.0f;
+        constexpr int numSteps = 20000;
+        for (int i = 0; i < numSteps; ++i)
+        {
+            engine.update (0.01);
+            if (i > numSteps / 4) // discard the initial transient before judging the stationary distribution
+                maxDeviation = juce::jmax (maxDeviation, std::abs (engine.getObject (0).orbitRadius - 2.0f));
+        }
+        check (maxDeviation < theoreticalStdDev * 8.0f,
+               "combined reversion+noise stays statistically bounded near the baseline over a long run (not an unbounded drift)");
+    }
+
     std::printf ("\n%s (%d failures)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

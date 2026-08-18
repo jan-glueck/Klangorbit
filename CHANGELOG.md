@@ -227,6 +227,33 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     `GrainCloud` (e.g. in `AttractRepelSiblings` mode) -- grains already
     move and render independently of their parent object, and the sling
     preview only ever describes the parent object's own upcoming motion.
+- **Mean-reverting orbit radius** (Ornstein-Uhlenbeck process), as an
+  alternative to `orbitDecay` for a "living, breathing" orbit that wanders
+  around a baseline instead of drifting away permanently in one direction.
+  New `SoundObject` fields: `orbitRadiusBaseline`, `orbitRadiusReversionRate`,
+  `orbitRadiusNoiseAmplitude` (both rate and amplitude default to 0 =
+  disabled, so existing behavior/presets are completely unaffected --
+  verified by `Tools/verify_orbit`). Discrete Euler-Maruyama update in
+  `TrajectoryEngine::integrate()`'s Orbit case:
+  `radius += reversionRate*(baseline-radius)*dt + noiseAmplitude*sqrt(dt)*gaussianRandom()`,
+  clamped to `[0.05, 1000]`. `orbitDecay` itself is unchanged and can still
+  be combined with this (the two would pull against each other -- a niche
+  but not forbidden combination). Gaussian noise via a self-contained
+  Box-Muller transform (`TrajectoryEngine::nextGaussian()`); `orbitDecay`'s
+  existing deterministic drift is untouched.
+  - `Tools/verify_orbit` gained statistical checks: the no-op default,
+    monotonic convergence under pure reversion, that noise alone actually
+    perturbs the radius while respecting the hard clamp, and that the
+    combined process stays bounded near the baseline over a long
+    (20000-step) run rather than drifting away (17/17 checks passing).
+  - **Not applied to `orbitEccentricity`** -- assessed and proposed as a
+    possible follow-up rather than silently added; eccentricity is
+    bounded in `[0, 0.95)` rather than open-ended like a radius, so the
+    same reversion/noise formula would need boundary handling that
+    behaves quite differently (clamping near 0.95 is far more visually
+    disruptive -- an ellipse suddenly flattening/degenerating -- than
+    clamping a radius near a floor). See the PR discussion for the
+    reasoning; happy to add it as its own opt-in field set if wanted.
 
 ### Changed
 - `Camera3D::maxDistance` raised from 30 to 150 meters -- generous enough

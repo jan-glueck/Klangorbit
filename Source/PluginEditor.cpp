@@ -212,6 +212,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     addAndMakeVisible (removeObjectButton);
     addAndMakeVisible (objectCountLabel);
     addAndMakeVisible (cpuLoadLabel);
+    addAndMakeVisible (helpButton);
     addAndMakeVisible (objectListPanel);
     addAndMakeVisible (parameterPanel);
 
@@ -221,6 +222,8 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     savePresetButton.onClick = [this] { savePresetClicked(); };
     addObjectButton.onClick = [this] { addObjectClicked(); };
     removeObjectButton.onClick = [this] { removeObjectClicked(); };
+    helpButton.onClick = [this] { showHelpClicked(); };
+    helpButton.setTooltip ("Help -- every feature and parameter explained");
 
     presetStatusLabel.setText (currentPresetName, juce::dontSendNotification);
     presetStatusLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
@@ -241,6 +244,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     setWantsKeyboardFocus (true);
     lastTimerMs = juce::Time::getMillisecondCounter();
     startTimerHz (90); // control rate for the TrajectoryEngine
+
 }
 
 KlangorbitEditor::~KlangorbitEditor()
@@ -734,6 +738,7 @@ void KlangorbitEditor::resized()
     auto toolbar = bounds.removeFromTop (toolbarHeight).reduced (UiSpacing::m, 0);
 
     auto row1 = toolbar.removeFromTop (38); // toolbarHeight (76) split into two even 38px rows
+    helpButton.setBounds (row1.removeFromRight (32).reduced (UiSpacing::xs));
     loadPresetButton.setBounds (row1.removeFromLeft (140).reduced (UiSpacing::xs));
     row1.removeFromLeft (UiSpacing::s);
     savePresetButton.setBounds (row1.removeFromLeft (140).reduced (UiSpacing::xs));
@@ -752,6 +757,15 @@ void KlangorbitEditor::resized()
     parameterPanel.setBounds (bounds.removeFromRight (parameterPanelWidth));
     objectListPanel.setBounds (bounds.removeFromLeft (objectListWidth));
     viewArea = bounds;
+}
+
+void KlangorbitEditor::showHelpClicked()
+{
+    if (helpWindow == nullptr)
+        helpWindow = std::make_unique<HelpWindow>(); // constructor already makes it visible
+
+    helpWindow->setVisible (true); // in case a previous close just hid it
+    helpWindow->toFront (true);
 }
 
 void KlangorbitEditor::showPresetError (const juce::String& title, const juce::String& message)

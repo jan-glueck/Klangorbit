@@ -6,7 +6,9 @@
 #include "Camera3D.h"
 #include "ObjectListPanel.h"
 #include "SciFiLookAndFeel.h"
+#include "HelpWindow.h"
 #include <deque>
+#include <memory>
 #include <vector>
 
 /**
@@ -46,7 +48,11 @@
       objects too small, fast, or far away to reliably click directly.
       Selection made either way stays in sync between the list and the
       scene view's highlight.
-    - Toolbar at the top: load/save preset (PresetManager), add/remove object
+    - Toolbar at the top: load/save preset (PresetManager), add/remove
+      object, "?" opens a scrollable reference of every feature/parameter
+      (see HelpWindow.h/HelpContent.h) in its own OS-level window -- works
+      the same whether Klangorbit is the Standalone app or hosted as a
+      VST3 with no spare screen space of its own
     - Panel on the right: all parameters of the selected object + scene-wide
       parameters (room boundary, global field, time scale), see ParameterPanel
     - Grain clouds (see GrainCloud/Grain): small dots in a paler variant of
@@ -84,6 +90,7 @@ private:
     void loadPresetClicked();
     void savePresetClicked();
     void showPresetError (const juce::String& title, const juce::String& message);
+    void showHelpClicked(); // lazily creates helpWindow, or re-shows/refronts it if already open
 
     void addObjectClicked();
     void removeObjectClicked();
@@ -204,6 +211,12 @@ private:
     juce::Label presetStatusLabel;
     juce::String currentPresetName { "(no preset loaded)" };
     std::unique_ptr<juce::FileChooser> fileChooser;
+
+    // Opens/reuses helpWindow (see HelpWindow.h) -- a single lazily-created
+    // instance, kept alive (just hidden, not destroyed) across closes so
+    // reopening is instant. Declared here, not created until first clicked.
+    juce::TextButton helpButton { "?" };
+    std::unique_ptr<HelpWindow> helpWindow;
 
     juce::TextButton addObjectButton { "+ Object" };
     juce::TextButton removeObjectButton { "- Remove Object" };

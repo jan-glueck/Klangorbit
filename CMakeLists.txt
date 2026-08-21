@@ -84,6 +84,7 @@ target_sources(Klangorbit
         Source/Camera3D.cpp
         Source/ObjectListPanel.cpp
         Source/SciFiLookAndFeel.cpp
+        Source/HelpWindow.cpp
 )
 
 target_link_libraries(Klangorbit

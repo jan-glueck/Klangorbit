@@ -101,7 +101,7 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     propagation pass per grain would be disproportionately expensive.
   - Global spawn budget: `maxConcurrentGrains` caps each cloud
     individually, and a further system-wide cap
-    (`SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal = 32`) is
+    (`KlangorbitProcessor::maxConcurrentGrainsGlobal = 32`) is
     shared across all clouds, since every active grain costs a full
     Ambisonics encoding pass.
   - GUI: active grains render as small dots in the 2D editor, orbiting/
@@ -166,7 +166,7 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   - Interaction: drag on empty space (no object/grain under the cursor --
     object and sling gestures always take priority when something is
     actually hit) orbits the camera; mouse wheel zooms
-    (`SpatialAudioPOCEditor::mouseDrag()`/`mouseWheelMove()`). Dragging an
+    (`KlangorbitEditor::mouseDrag()`/`mouseWheelMove()`). Dragging an
     object now works via a camera ray cast onto the world's ground plane
     (`Camera3D::screenToGroundPlane()`) instead of a fixed inverse-
     projection formula, so it keeps following the cursor correctly at any
@@ -266,7 +266,7 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     the limit uncommented, a real, measured CPU-load indicator was added:
     the toolbar now shows the smoothed fraction of each audio block's
     actual time budget spent in `processBlock()`
-    (`SpatialAudioPOCProcessor::getEstimatedCpuLoad()`), turning
+    (`KlangorbitProcessor::getEstimatedCpuLoad()`), turning
     amber/red as it approaches/exceeds 100%, so the user can verify this
     for themselves rather than trusting the estimate.
   - `grainDuration`'s upper bound raised 2.0s -> 5.0s; `grainRate`'s upper
@@ -474,7 +474,7 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     fine to do now (still pre-release, no real users/presets depend on
     the old identity) but would NOT be a safe change to make later after
     any real release.
-  - Added an explicit `BUNDLE_ID "com.janglueck.spatialaudiopoc"`: JUCE's
+  - Added an explicit `BUNDLE_ID "com.janglueck.klangorbit"`: JUCE's
     own default bundle ID is derived from `COMPANY_NAME`, which now
     contains a space and would otherwise produce an invalid (space-
     containing) bundle identifier -- caught immediately via a CMake
@@ -551,6 +551,33 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
+- **Renamed the product from "Spatial Audio POC" to "Klangorbit"** --
+  applied consistently everywhere it's visible or referenced: the plugin
+  name shown in a DAW's plugin list/browser (`PRODUCT_NAME`,
+  `KlangorbitProcessor::getName()`), the CMake project/target names
+  (`Klangorbit`, `Klangorbit_VST3`, `Klangorbit_Standalone`), the C++
+  class names (`SpatialAudioPOCProcessor`/`SpatialAudioPOCEditor` ->
+  `KlangorbitProcessor`/`KlangorbitEditor`), the bundle identifier
+  (`com.janglueck.spatialaudiopoc` -> `com.janglueck.klangorbit`), the
+  4-char plugin code (`Sapc` -> `Klor`; `PLUGIN_MANUFACTURER_CODE` stays
+  `Jgck`, that one identifies the developer, not the product), and every
+  mention across `README.md`/`CHANGELOG.md`/`PROJECT_BRIEF.md`. The
+  repository folder on disk was deliberately left as-is (a filesystem
+  rename is a separate, riskier operation with no code-correctness
+  benefit -- nothing reads the checkout folder's own name).
+  - The bundle ID change means this is, as far as a DAW is concerned, a
+    different plugin from the one previously installed under the old
+    name/ID -- it will show up alongside (not replacing) any old
+    `Spatial Audio POC.vst3` a host had already scanned. The old bundle
+    at `/Library/Audio/Plug-Ins/VST3/Spatial Audio POC.vst3` was removed
+    as part of this change (see build verification below) so a rescan
+    only finds the new one.
+  - Verified via a clean rebuild of both targets (zero renamed-symbol
+    leftovers -- confirmed no remaining `SpatialAudioPOC`/`Spatial Audio
+    POC` occurrences anywhere in the tracked source tree), the full
+    `Tools/verify_*` suite (untouched by this rename, all still passing),
+    and the standalone app launching and staying stable under the new
+    name.
 - **Solo/Mute controls moved to the object-list sidebar, removed from the
   parameter panel.** Each row in `Source/ObjectListPanel.h/.cpp` now has
   its own Mute/Solo buttons next to the select button, writing directly
@@ -795,7 +822,7 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   (see the "Grain density and duration raised" entry above), not a
   measurement on real audio hardware -- not available in this
   environment. The CPU-load percentage in the toolbar
-  (`SpatialAudioPOCProcessor::getEstimatedCpuLoad()`) exists specifically
+  (`KlangorbitProcessor::getEstimatedCpuLoad()`) exists specifically
   so this can be checked under real load; it has not been checked here.
 - Interactive/visual feel across the GUI is largely unverified by hand
   (no way to drive a running JUCE GUI or take a real screenshot of it in
@@ -819,9 +846,9 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 - Object dragging is still constrained to the ground plane (z=0), now via
   a camera ray cast rather than a fixed formula, but still no direct way
   to drag an object's height with the mouse.
-- Building only the `SpatialAudioPOC_Standalone` target does NOT update
+- Building only the `Klangorbit_Standalone` target does NOT update
   the VST3 copy in the system plugin folder -- that requires building
-  the separate `SpatialAudioPOC_VST3` target (`COPY_PLUGIN_AFTER_BUILD`
+  the separate `Klangorbit_VST3` target (`COPY_PLUGIN_AFTER_BUILD`
   only fires for that target). A DAW loading an old VST3 build will not
   reflect recent source changes even though the standalone app does.
 - The sling gesture's new slingshot-targeting shortcut (Tab, see Added

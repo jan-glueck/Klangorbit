@@ -61,12 +61,12 @@
     (not from mouseDrag), so a key press registers immediately even if the
     mouse isn't currently moving.
 */
-class SpatialAudioPOCEditor : public juce::AudioProcessorEditor,
+class KlangorbitEditor : public juce::AudioProcessorEditor,
                                private juce::Timer
 {
 public:
-    explicit SpatialAudioPOCEditor (SpatialAudioPOCProcessor&);
-    ~SpatialAudioPOCEditor() override;
+    explicit KlangorbitEditor (KlangorbitProcessor&);
+    ~KlangorbitEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -128,7 +128,7 @@ private:
 
     // Not "processor" -- that name is already taken (as the base-class
     // reference to juce::AudioProcessor) in AudioProcessorEditor.
-    SpatialAudioPOCProcessor& audioProcessor;
+    KlangorbitProcessor& audioProcessor;
 
     Camera3D camera;
 
@@ -209,7 +209,7 @@ private:
     juce::TextButton removeObjectButton { "- Remove Object" };
     juce::Label objectCountLabel;
 
-    // Read from SpatialAudioPOCProcessor::getEstimatedCpuLoad() each timer
+    // Read from KlangorbitProcessor::getEstimatedCpuLoad() each timer
     // tick -- see its comment for why this exists (maxConcurrentGrainsGlobal
     // was raised to 128 on a rough estimate, not a hardware profile; this
     // lets the user check the actual measured load for themselves).

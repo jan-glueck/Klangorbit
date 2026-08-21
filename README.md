@@ -1,4 +1,4 @@
-# Spatial Audio POC
+# Klangorbit
 
 Object-based Ambisonics encoder with a trajectory/physics engine.
 No decoding -- output is raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible),
@@ -56,8 +56,8 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . --config Release
 ```
 
-Result: `SpatialAudioPOC.vst3` and the standalone app in the build directory
-(`SpatialAudioPOC_artefacts/`). The VST3 is also automatically copied to the
+Result: `Klangorbit.vst3` and the standalone app in the build directory
+(`Klangorbit_artefacts/`). The VST3 is also automatically copied to the
 system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
 
 App/plugin icon and vendor name: `Assets/AppIcon.png` (1024x1024, source
@@ -500,7 +500,7 @@ purely random.
   grain-cloud sound.
 - **Global spawn budget.** `maxConcurrentGrains` caps each cloud
   individually (up to 128); a further system-wide cap
-  (`SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal`, currently 128,
+  (`KlangorbitProcessor::maxConcurrentGrainsGlobal`, currently 128,
   raised from an initial 32) is shared across all clouds each control-rate
   tick, since every active grain costs a full Ambisonics encoding pass
   regardless of cloud. `grainDuration` (up to 5s) and `grainRate` (up to
@@ -566,7 +566,7 @@ than styled ad hoc per widget:
 ## Project structure
 
 ```
-SpatialAudioPOC/
+Klangorbit/
   CMakeLists.txt
   CHANGELOG.md          <- code versioning (SemVer)
   Assets/

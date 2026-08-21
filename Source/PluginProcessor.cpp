@@ -17,14 +17,14 @@ namespace
     }
 }
 
-SpatialAudioPOCProcessor::BusesProperties SpatialAudioPOCProcessor::makeBusLayout()
+KlangorbitProcessor::BusesProperties KlangorbitProcessor::makeBusLayout()
 {
     return BusesProperties()
         .withInput  ("Live Inputs", juce::AudioChannelSet::discreteChannels (SAPOC_MAX_LIVE_INPUTS), true)
         .withOutput ("Ambisonics", juce::AudioChannelSet::discreteChannels ((SAPOC_DEFAULT_AMBI_ORDER + 1) * (SAPOC_DEFAULT_AMBI_ORDER + 1)), true);
 }
 
-SpatialAudioPOCProcessor::SpatialAudioPOCProcessor()
+KlangorbitProcessor::KlangorbitProcessor()
     : juce::AudioProcessor (makeBusLayout())
 {
     encoder.setOrder (SAPOC_DEFAULT_AMBI_ORDER);
@@ -48,9 +48,9 @@ SpatialAudioPOCProcessor::SpatialAudioPOCProcessor()
         wh.store (0, std::memory_order_relaxed);
 }
 
-SpatialAudioPOCProcessor::~SpatialAudioPOCProcessor() = default;
+KlangorbitProcessor::~KlangorbitProcessor() = default;
 
-void SpatialAudioPOCProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
     encoder.prepare (sampleRate, samplesPerBlock);
@@ -89,16 +89,16 @@ void SpatialAudioPOCProcessor::prepareToPlay (double sampleRate, int samplesPerB
     grainScratch.setSize (1, samplesPerBlock);
 }
 
-void SpatialAudioPOCProcessor::releaseResources() {}
+void KlangorbitProcessor::releaseResources() {}
 
-bool SpatialAudioPOCProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     // For the POC: fixed layouts as defined in makeBusLayout().
     return layouts.getMainInputChannelSet()  == juce::AudioChannelSet::discreteChannels (numLiveInputs)
         && layouts.getMainOutputChannelSet() == juce::AudioChannelSet::discreteChannels (encoder.getNumChannels());
 }
 
-void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -324,15 +324,15 @@ void SpatialAudioPOCProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     processBlockLoadFraction.store (previousLoad * smoothing + instantLoad * (1.0f - smoothing), std::memory_order_relaxed);
 }
 
-juce::AudioProcessorEditor* SpatialAudioPOCProcessor::createEditor()
+juce::AudioProcessorEditor* KlangorbitProcessor::createEditor()
 {
-    return new SpatialAudioPOCEditor (*this);
+    return new KlangorbitEditor (*this);
 }
 
-void SpatialAudioPOCProcessor::getStateInformation (juce::MemoryBlock&) { /* TODO: save object/trajectory presets */ }
-void SpatialAudioPOCProcessor::setStateInformation (const void*, int)   { /* TODO */ }
+void KlangorbitProcessor::getStateInformation (juce::MemoryBlock&) { /* TODO: save object/trajectory presets */ }
+void KlangorbitProcessor::setStateInformation (const void*, int)   { /* TODO */ }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new SpatialAudioPOCProcessor();
+    return new KlangorbitProcessor();
 }

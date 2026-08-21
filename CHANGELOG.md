@@ -7,6 +7,30 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **English user documentation + an in-app Help window.**
+  `Docs/UserGuide.md`: a full standalone manual (scene view/camera
+  controls, object list, all five motion modes, the sling launch
+  gesture's three modes, every parameter-panel category and field,
+  grain clouds, presets, keyboard shortcuts, tips for use with Reaper +
+  SPARTA/IEM). A "?" button in the toolbar (top-right of the preset
+  row) opens `HelpWindow` -- a real, separate OS-level window (not a
+  panel docked in the editor) showing a condensed copy of the same
+  material (`Source/HelpContent.h`) in a scrollable, read-only,
+  monospaced text view, styled to match the app's dark theme. A
+  separate top-level window rather than an in-editor overlay
+  specifically so it works identically whether Klangorbit is the
+  Standalone app or hosted as a VST3, where the editor itself has no
+  spare screen space of its own for a large reference document.
+  `HelpWindow` is created lazily on first click and then just
+  shown/hidden (never destroyed) on repeat opens, so reopening is
+  instant. Verified with a temporary auto-open-on-launch (removed
+  before commit) confirming the window renders correctly -- readable
+  text, correct dark styling, working scrollbar -- since this
+  environment has no accessibility permission to script a real button
+  click; the button itself is wired the same way every other toolbar
+  button already is (`onClick` -> a named handler), which is
+  exercised by every other manual launch/rebuild check already, so a
+  real click was low-risk to leave unverified for this one addition.
 - PresetManager: load/save scenes in the preset JSON format
   (schemaVersion 1), two buttons in the editor toolbar. Unknown
   schemaVersion or broken JSON is rejected with an error message.

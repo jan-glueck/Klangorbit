@@ -1,0 +1,31 @@
+#pragma once
+#include <juce_gui_basics/juce_gui_basics.h>
+
+/**
+    Standalone top-level window showing HelpContent::text (see
+    HelpContent.h) in a scrollable, read-only, monospaced text view --
+    opened via KlangorbitEditor's "?" toolbar button.
+
+    A real OS-level DocumentWindow rather than a child component: it needs
+    to work identically whether Klangorbit is running as the Standalone
+    app or hosted as a VST3 inside a DAW, where the editor itself is
+    embedded in the host's own window and has no spare screen space of its
+    own to show a large reference document in.
+
+    Lifetime: owned by KlangorbitEditor as a single reusable instance
+    (see its helpWindow member) -- closing it just hides it rather than
+    destroying it, so reopening is instant and doesn't re-parse/rebuild
+    anything.
+*/
+class HelpWindow : public juce::DocumentWindow
+{
+public:
+    HelpWindow();
+
+    void closeButtonPressed() override { setVisible (false); }
+
+private:
+    juce::TextEditor textEditor;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HelpWindow)
+};

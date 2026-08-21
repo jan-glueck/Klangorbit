@@ -1,4 +1,4 @@
-# Projekt-Briefing: Spatial Audio POC
+# Projekt-Briefing: Klangorbit
 
 ## Idee
 

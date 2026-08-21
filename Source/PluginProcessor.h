@@ -21,11 +21,11 @@
     No decoding here -- output is emitted as raw B-format and processed
     further in a DAW/with external tools (SPARTA, IEM Suite).
 */
-class SpatialAudioPOCProcessor : public juce::AudioProcessor
+class KlangorbitProcessor : public juce::AudioProcessor
 {
 public:
-    SpatialAudioPOCProcessor();
-    ~SpatialAudioPOCProcessor() override;
+    KlangorbitProcessor();
+    ~KlangorbitProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -35,7 +35,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Spatial Audio POC"; }
+    const juce::String getName() const override { return "Klangorbit"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
@@ -167,5 +167,5 @@ private:
     // See getEstimatedCpuLoad() above.
     std::atomic<float> processBlockLoadFraction { 0.0f };
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpatialAudioPOCProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KlangorbitProcessor)
 };

@@ -198,7 +198,7 @@ namespace
     };
 }
 
-SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
+KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     : juce::AudioProcessorEditor (&p), audioProcessor (p)
 {
     setLookAndFeel (&lookAndFeel);
@@ -243,13 +243,13 @@ SpatialAudioPOCEditor::SpatialAudioPOCEditor (SpatialAudioPOCProcessor& p)
     startTimerHz (90); // control rate for the TrajectoryEngine
 }
 
-SpatialAudioPOCEditor::~SpatialAudioPOCEditor()
+KlangorbitEditor::~KlangorbitEditor()
 {
     stopTimer();
     setLookAndFeel (nullptr); // detach before lookAndFeel itself is torn down, see its member comment in PluginEditor.h
 }
 
-void SpatialAudioPOCEditor::timerCallback()
+void KlangorbitEditor::timerCallback()
 {
     const auto now = juce::Time::getMillisecondCounter();
     const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastTimerMs) / 1000.0); // clamp against outliers
@@ -265,10 +265,10 @@ void SpatialAudioPOCEditor::timerCallback()
     // GrainCloud: control-rate update, same loop/rate as TrajectoryEngine
     // above. A single global spawn budget is shared across all clouds so
     // the total number of simultaneously active grains never exceeds
-    // SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal, no matter how
+    // KlangorbitProcessor::maxConcurrentGrainsGlobal, no matter how
     // many objects are granulating at once -- each active grain costs a
     // full Ambisonics encode pass in PluginProcessor::processBlock.
-    int globalGrainBudget = SpatialAudioPOCProcessor::maxConcurrentGrainsGlobal;
+    int globalGrainBudget = KlangorbitProcessor::maxConcurrentGrainsGlobal;
     for (int i = 0; i < engine.getNumGrainClouds(); ++i)
         globalGrainBudget -= engine.getGrainCloud (i).getNumActiveGrains();
 
@@ -285,7 +285,7 @@ void SpatialAudioPOCEditor::timerCallback()
 
     updateTrails();
 
-    // See SpatialAudioPOCProcessor::getEstimatedCpuLoad()'s comment for
+    // See KlangorbitProcessor::getEstimatedCpuLoad()'s comment for
     // why this exists: maxConcurrentGrainsGlobal (128) is a rough
     // estimate, not a hardware-profiled number, so this surfaces the
     // actual measured load instead of asking the user to trust the
@@ -301,7 +301,7 @@ void SpatialAudioPOCEditor::timerCallback()
     repaint();
 }
 
-void SpatialAudioPOCEditor::updateTrails()
+void KlangorbitEditor::updateTrails()
 {
     if (++trailCaptureCounter < trailCaptureDecimation)
         return;
@@ -325,20 +325,20 @@ void SpatialAudioPOCEditor::updateTrails()
     }
 }
 
-juce::Point<float> SpatialAudioPOCEditor::worldToScreen (Vec3 pos) const
+juce::Point<float> KlangorbitEditor::worldToScreen (Vec3 pos) const
 {
     const auto proj = camera.project (pos, (float) viewArea.getHeight());
     return viewArea.toFloat().getCentre() + juce::Point<float> (proj.x, proj.y);
 }
 
-bool SpatialAudioPOCEditor::screenToGroundWorld (juce::Point<float> screenPos, Vec3& outWorldPos) const
+bool KlangorbitEditor::screenToGroundWorld (juce::Point<float> screenPos, Vec3& outWorldPos) const
 {
     const auto centre = viewArea.toFloat().getCentre();
     return camera.screenToGroundPlane (screenPos.x - centre.x, screenPos.y - centre.y,
                                         (float) viewArea.getHeight(), outWorldPos);
 }
 
-int SpatialAudioPOCEditor::findObjectNear (juce::Point<float> screenPos) const
+int KlangorbitEditor::findObjectNear (juce::Point<float> screenPos) const
 {
     auto& engine = audioProcessor.getTrajectoryEngine();
     const auto centre = viewArea.toFloat().getCentre();
@@ -359,7 +359,7 @@ int SpatialAudioPOCEditor::findObjectNear (juce::Point<float> screenPos) const
     return -1;
 }
 
-bool SpatialAudioPOCEditor::isNearAnyGrain (juce::Point<float> screenPos) const
+bool KlangorbitEditor::isNearAnyGrain (juce::Point<float> screenPos) const
 {
     auto& engine = audioProcessor.getTrajectoryEngine();
     const auto centre = viewArea.toFloat().getCentre();
@@ -385,7 +385,7 @@ bool SpatialAudioPOCEditor::isNearAnyGrain (juce::Point<float> screenPos) const
     return false;
 }
 
-void SpatialAudioPOCEditor::paint (juce::Graphics& g)
+void KlangorbitEditor::paint (juce::Graphics& g)
 {
     g.fillAll (UiColours::bgDeep());
 
@@ -728,7 +728,7 @@ void SpatialAudioPOCEditor::paint (juce::Graphics& g)
     g.restoreState();
 }
 
-void SpatialAudioPOCEditor::resized()
+void KlangorbitEditor::resized()
 {
     auto bounds = getLocalBounds();
     auto toolbar = bounds.removeFromTop (toolbarHeight).reduced (UiSpacing::m, 0);
@@ -754,12 +754,12 @@ void SpatialAudioPOCEditor::resized()
     viewArea = bounds;
 }
 
-void SpatialAudioPOCEditor::showPresetError (const juce::String& title, const juce::String& message)
+void KlangorbitEditor::showPresetError (const juce::String& title, const juce::String& message)
 {
     juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, title, message);
 }
 
-void SpatialAudioPOCEditor::loadPresetClicked()
+void KlangorbitEditor::loadPresetClicked()
 {
     juce::File startDir (juce::File::getCurrentWorkingDirectory());
 #if defined (SAPOC_PRESETS_USER_DIR)
@@ -798,7 +798,7 @@ void SpatialAudioPOCEditor::loadPresetClicked()
         });
 }
 
-void SpatialAudioPOCEditor::savePresetClicked()
+void KlangorbitEditor::savePresetClicked()
 {
     juce::File startDir (juce::File::getCurrentWorkingDirectory());
 #if defined (SAPOC_PRESETS_USER_DIR)
@@ -836,7 +836,7 @@ void SpatialAudioPOCEditor::savePresetClicked()
         });
 }
 
-void SpatialAudioPOCEditor::addObjectClicked()
+void KlangorbitEditor::addObjectClicked()
 {
     auto& engine = audioProcessor.getTrajectoryEngine();
     const int idx = engine.findNextInactiveObject();
@@ -848,7 +848,7 @@ void SpatialAudioPOCEditor::addObjectClicked()
     selectObject (idx); // select it right away, convenient for immediate tweaking
 }
 
-void SpatialAudioPOCEditor::removeObjectClicked()
+void KlangorbitEditor::removeObjectClicked()
 {
     if (selectedObjectIndex < 0)
         return;
@@ -858,7 +858,7 @@ void SpatialAudioPOCEditor::removeObjectClicked()
     selectObject (-1);
 }
 
-void SpatialAudioPOCEditor::selectObject (int index)
+void KlangorbitEditor::selectObject (int index)
 {
     selectedObjectIndex = index;
     auto& engine = audioProcessor.getTrajectoryEngine();
@@ -883,7 +883,7 @@ void SpatialAudioPOCEditor::selectObject (int index)
     updateObjectUiState();
 }
 
-void SpatialAudioPOCEditor::updateObjectUiState()
+void KlangorbitEditor::updateObjectUiState()
 {
     auto& engine = audioProcessor.getTrajectoryEngine();
     const int active = engine.getNumActiveObjects();
@@ -894,7 +894,7 @@ void SpatialAudioPOCEditor::updateObjectUiState()
     removeObjectButton.setEnabled (selectedObjectIndex >= 0);
 }
 
-void SpatialAudioPOCEditor::startSling (int objectIndex)
+void KlangorbitEditor::startSling (int objectIndex)
 {
     auto& engine = audioProcessor.getTrajectoryEngine();
 
@@ -916,7 +916,7 @@ void SpatialAudioPOCEditor::startSling (int objectIndex)
     slingPrevAltDown = mods.isAltDown();
 }
 
-void SpatialAudioPOCEditor::cycleSlingReference()
+void KlangorbitEditor::cycleSlingReference()
 {
     if (! slingActive) return;
 
@@ -929,7 +929,7 @@ void SpatialAudioPOCEditor::cycleSlingReference()
     slingReferenceObjectId = SlingGesture::cycleSlingReference (slingReferenceObjectId, activeIds, slingObjectIndex);
 }
 
-void SpatialAudioPOCEditor::updateSlingModifiers()
+void KlangorbitEditor::updateSlingModifiers()
 {
     if (! slingActive) return;
 
@@ -961,7 +961,7 @@ void SpatialAudioPOCEditor::updateSlingModifiers()
     slingPrevAltDown = altDown;
 }
 
-void SpatialAudioPOCEditor::releaseSling()
+void KlangorbitEditor::releaseSling()
 {
     auto& engine = audioProcessor.getTrajectoryEngine();
 
@@ -1028,7 +1028,7 @@ void SpatialAudioPOCEditor::releaseSling()
     slingObjectIndex = -1;
 }
 
-void SpatialAudioPOCEditor::mouseDown (const juce::MouseEvent& e)
+void KlangorbitEditor::mouseDown (const juce::MouseEvent& e)
 {
     const int hit = findObjectNear (e.position);
 
@@ -1065,7 +1065,7 @@ void SpatialAudioPOCEditor::mouseDown (const juce::MouseEvent& e)
     }
 }
 
-void SpatialAudioPOCEditor::mouseDrag (const juce::MouseEvent& e)
+void KlangorbitEditor::mouseDrag (const juce::MouseEvent& e)
 {
     if (slingActive)
     {
@@ -1125,7 +1125,7 @@ void SpatialAudioPOCEditor::mouseDrag (const juce::MouseEvent& e)
     lastDragTimeMs = now;
 }
 
-void SpatialAudioPOCEditor::mouseUp (const juce::MouseEvent&)
+void KlangorbitEditor::mouseUp (const juce::MouseEvent&)
 {
     if (slingActive)
     {
@@ -1159,7 +1159,7 @@ void SpatialAudioPOCEditor::mouseUp (const juce::MouseEvent&)
     physicsDragActive = false;
 }
 
-void SpatialAudioPOCEditor::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
+void KlangorbitEditor::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
 {
     // Multiplicative zoom (scaled by the current distance) feels
     // proportional at any zoom level, unlike a fixed per-notch step, which
@@ -1169,7 +1169,7 @@ void SpatialAudioPOCEditor::mouseWheelMove (const juce::MouseEvent&, const juce:
     repaint();
 }
 
-bool SpatialAudioPOCEditor::keyPressed (const juce::KeyPress& key)
+bool KlangorbitEditor::keyPressed (const juce::KeyPress& key)
 {
     // Cycles the sling gesture's "slingshot" reference target (see
     // slingReferenceObjectId's comment in PluginEditor.h) -- only
@@ -1185,7 +1185,7 @@ bool SpatialAudioPOCEditor::keyPressed (const juce::KeyPress& key)
     return false;
 }
 
-void SpatialAudioPOCEditor::mouseDoubleClick (const juce::MouseEvent& e)
+void KlangorbitEditor::mouseDoubleClick (const juce::MouseEvent& e)
 {
     const int idx = findObjectNear (e.position);
     if (idx < 0) return;

@@ -462,14 +462,31 @@ purely random.
   depth beyond what's actually allocated.
 - **Single-shot grain model.** `grainDuration` is both the audio envelope
   length and the movement lifetime -- a grain is spawned, moves for that
-  duration while fading, and is done. `grainRate` ("Spawn Rate" in the
-  UI) controls how often new grains spawn, deliberately independent of
-  `grainDuration` at the scheduling level (`GrainCloud::update()`'s
-  spawn-interval timer only ever reads `grainRate`) -- the one place they
-  interact is `maxConcurrentGrains`: sustaining `grainRate * grainDuration`
-  overlapping grains needs that cap raised to match, or new spawns stall
-  once it's hit (see `Source/Grain.h`'s `GrainCloudSettings` class
-  comment for the full explanation).
+  duration while fading, and is done. `grainRate` ("Grain Rate (Spawn
+  Rate)" in the UI) controls how often new grains spawn, deliberately
+  independent of `grainDuration` at the scheduling level
+  (`GrainCloud::update()`'s spawn-interval timer only ever reads
+  `grainRate`).
+- **Voice stealing.** `maxConcurrentGrains` is a hard per-cloud ceiling on
+  simultaneously-alive grains (real CPU cost -- every active grain is a
+  full Ambisonics encode pass). Sustaining `grainRate * grainDuration`
+  overlapping grains needs that cap raised to match; once it's hit,
+  `GrainCloud::update()` no longer stalls the spawn schedule waiting for
+  an old grain to expire (that was the original design, and the reported
+  bug: raising `grainDuration` without also raising the cap audibly
+  throttled/stuttered the spawn rate). Instead it voice-steals: the
+  OLDEST active grain gets a short (10ms) forced fade-out
+  (`GrainCloud::beginVoiceSteal()`, reusing the exact same
+  guaranteed-exact-zero Hann envelope ending every grain's natural end
+  already relies on -- no new audio-thread code, just a shortened
+  `lifetimeSeconds`/`grainLengthSamples`) and its slot is reused as soon
+  as that fade completes. Trade-off: `grainRate`'s schedule is honored
+  continuously regardless of `grainDuration`, but individual grains can
+  end up shorter than configured once oversubscribed. See
+  `Source/Grain.h`'s `GrainCloudSettings` class comment for the full
+  explanation, and `Tools/verify_grain_cloud.cpp`'s
+  `testVoiceStealingKeepsSpawningContinuous`/
+  `testVoiceStealingShortensNotCorrupts`.
 - **Movement modes** (`Source/Grain.h`, `GrainMovementMode`): `RandomWalk`,
   `Bounce` (elastic reflection within `boundaryRadius` around the spawn
   position, `restitution`), `RadialExplosion` (`initialSpeed` +
@@ -478,7 +495,17 @@ purely random.
   `AttractRepelSiblings` (n-body force *within the same cloud only*,
   reusing `TrajectoryEngine::computeAttractionForce`'s softened
   inverse-square model; negative `attractionStrength` repels).
-  `jitterTarget`/`jitterRange` randomize one field per spawn.
+- **Per-parameter jitter.** Each of `grainRate`, `grainDuration`,
+  `boundaryRadius`, `initialSpeed`, and `orbitRadius` has its own
+  dedicated `*Jitter` field (0..1, fractional +/- randomization applied
+  at spawn time, same shape as the pre-existing `pitchJitter`) -- all
+  usable simultaneously, unlike the earlier single shared
+  `jitterTarget`/`jitterRange` pair (mutually exclusive, only one field
+  jitterable at a time), which these superseded. `grainRateJitter`
+  specifically randomizes the spawn *interval* itself (see
+  `GrainCloud::update()`), not a per-grain property. Old presets that
+  saved the legacy pair are migrated onto the matching new field on load
+  (`PresetManager::grainCloudSettingsFromVar()`), never written on save.
 - **Pool-based, not allocated.** `GrainCloud` (`Source/GrainCloud.h/.cpp`)
   manages a fixed-size pool per object -- grains are activated/deactivated,
   never allocated on the audio thread. One `GrainCloud` per `SoundObject`,
@@ -505,7 +532,9 @@ purely random.
   grains that adds up -- opt-in rather than silently changing existing
   grain-cloud sound.
 - **Global spawn budget.** `maxConcurrentGrains` caps each cloud
-  individually (up to 128); a further system-wide cap
+  individually (up to 128, default raised 8 -> 32 -- comfortably covers
+  common `grainRate * grainDuration` combinations without needing voice
+  stealing at all); a further system-wide cap
   (`KlangorbitProcessor::maxConcurrentGrainsGlobal`, currently 128,
   raised from an initial 32) is shared across all clouds each control-rate
   tick, since every active grain costs a full Ambisonics encoding pass

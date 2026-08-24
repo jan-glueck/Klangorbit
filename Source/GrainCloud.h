@@ -65,6 +65,17 @@ private:
     void updateGrain (Grain& g, float fdt, Vec3 parentPosition, Vec3 parentVelocity);
     Vec3 computeSiblingForce (const Grain& g) const;
 
+    // Voice stealing (see GrainCloudSettings's class comment): picks the
+    // oldest active, not-already-stolen-from grain to make room for a
+    // pending spawn once maxConcurrentGrains is reached. Returns -1 if
+    // every active grain is already mid-steal (or the pool is empty).
+    int findOldestStealableSlot() const;
+    // Shortens g's remaining life to a short forced fade-out instead of an
+    // abrupt cut, reusing the existing Hann-envelope-reaches-exact-zero
+    // guarantee every grain's natural ending already relies on -- no new
+    // audio-thread code needed, see its own comment in GrainCloud.cpp.
+    void beginVoiceSteal (Grain& g);
+
     GrainCloudSettings settings;
     std::vector<Grain> grains;
     double timeSinceLastSpawn = 0.0;

@@ -122,19 +122,12 @@ namespace
         return false;
     }
 
-    juce::String jitterTargetToString (GrainJitterTarget t)
-    {
-        switch (t)
-        {
-            case GrainJitterTarget::None:           return "none";
-            case GrainJitterTarget::InitialSpeed:    return "initialSpeed";
-            case GrainJitterTarget::Lifetime:        return "lifetime";
-            case GrainJitterTarget::BoundaryRadius:  return "boundaryRadius";
-            case GrainJitterTarget::OrbitRadius:     return "orbitRadius";
-        }
-        return "none";
-    }
-
+    // LEGACY: still needed to read old presets saved before dedicated
+    // per-parameter jitter fields existed (grainRateJitter,
+    // grainDurationJitter, initialSpeedJitter, boundaryRadiusJitter,
+    // orbitRadiusJitter) -- see grainCloudSettingsFromVar()'s migration of
+    // the old "jitterTarget"/"jitterRange" pair onto the matching new
+    // field. Never written by grainCloudSettingsToVar() anymore, only read.
     bool jitterTargetFromString (const juce::String& s, GrainJitterTarget& out)
     {
         if (s == "none")           { out = GrainJitterTarget::None;          return true; }
@@ -236,7 +229,9 @@ namespace
         obj->setProperty ("sourceMuted", s.sourceMuted);
         obj->setProperty ("dopplerEnabled", s.dopplerEnabled);
         obj->setProperty ("grainRate", (double) s.grainRate);
+        obj->setProperty ("grainRateJitter", (double) s.grainRateJitter);
         obj->setProperty ("grainDuration", (double) s.grainDuration);
+        obj->setProperty ("grainDurationJitter", (double) s.grainDurationJitter);
         obj->setProperty ("pitchJitter", (double) s.pitchJitter);
         obj->setProperty ("positionJitterInBuffer", (double) s.positionJitterInBuffer);
         obj->setProperty ("maxConcurrentGrains", s.maxConcurrentGrains);
@@ -244,14 +239,15 @@ namespace
         obj->setProperty ("movementMode", movementModeToString (s.movementMode));
         obj->setProperty ("randomWalkSpeed", (double) s.randomWalkSpeed);
         obj->setProperty ("boundaryRadius", (double) s.boundaryRadius);
+        obj->setProperty ("boundaryRadiusJitter", (double) s.boundaryRadiusJitter);
         obj->setProperty ("restitution", (double) s.restitution);
         obj->setProperty ("initialSpeed", (double) s.initialSpeed);
+        obj->setProperty ("initialSpeedJitter", (double) s.initialSpeedJitter);
         obj->setProperty ("acceleration", (double) s.acceleration);
         obj->setProperty ("orbitRadius", (double) s.orbitRadius);
+        obj->setProperty ("orbitRadiusJitter", (double) s.orbitRadiusJitter);
         obj->setProperty ("orbitAngularSpeed", (double) s.orbitAngularSpeed);
         obj->setProperty ("attractionStrength", (double) s.attractionStrength);
-        obj->setProperty ("jitterTarget", jitterTargetToString (s.jitterTarget));
-        obj->setProperty ("jitterRange", (double) s.jitterRange);
         obj->setProperty ("grainReadDepthRangeMin", (double) s.grainReadDepthRangeMin);
         obj->setProperty ("grainReadDepthRangeMax", (double) s.grainReadDepthRangeMax);
         obj->setProperty ("grainReadDepthDistribution", readDepthDistributionToString (s.grainReadDepthDistribution));
@@ -277,7 +273,9 @@ namespace
             out.dopplerEnabled = (bool) gcVar.getProperty ("dopplerEnabled", out.dopplerEnabled);
 
         out.grainRate               = (float) gcVar.getProperty ("grainRate", (double) out.grainRate);
+        out.grainRateJitter         = (float) gcVar.getProperty ("grainRateJitter", (double) out.grainRateJitter);
         out.grainDuration           = (float) gcVar.getProperty ("grainDuration", (double) out.grainDuration);
+        out.grainDurationJitter     = (float) gcVar.getProperty ("grainDurationJitter", (double) out.grainDurationJitter);
         out.pitchJitter             = (float) gcVar.getProperty ("pitchJitter", (double) out.pitchJitter);
         out.positionJitterInBuffer = (float) gcVar.getProperty ("positionJitterInBuffer", (double) out.positionJitterInBuffer);
         out.maxConcurrentGrains     = (int) gcVar.getProperty ("maxConcurrentGrains", out.maxConcurrentGrains);
@@ -297,20 +295,40 @@ namespace
 
         out.randomWalkSpeed     = (float) gcVar.getProperty ("randomWalkSpeed", (double) out.randomWalkSpeed);
         out.boundaryRadius      = (float) gcVar.getProperty ("boundaryRadius", (double) out.boundaryRadius);
+        out.boundaryRadiusJitter = (float) gcVar.getProperty ("boundaryRadiusJitter", (double) out.boundaryRadiusJitter);
         out.restitution          = (float) gcVar.getProperty ("restitution", (double) out.restitution);
         out.initialSpeed         = (float) gcVar.getProperty ("initialSpeed", (double) out.initialSpeed);
+        out.initialSpeedJitter   = (float) gcVar.getProperty ("initialSpeedJitter", (double) out.initialSpeedJitter);
         out.acceleration         = (float) gcVar.getProperty ("acceleration", (double) out.acceleration);
         out.orbitRadius          = (float) gcVar.getProperty ("orbitRadius", (double) out.orbitRadius);
+        out.orbitRadiusJitter    = (float) gcVar.getProperty ("orbitRadiusJitter", (double) out.orbitRadiusJitter);
         out.orbitAngularSpeed   = (float) gcVar.getProperty ("orbitAngularSpeed", (double) out.orbitAngularSpeed);
         out.attractionStrength  = (float) gcVar.getProperty ("attractionStrength", (double) out.attractionStrength);
 
+        // LEGACY: presets saved before dedicated per-parameter jitter
+        // fields existed used one shared "jitterTarget"/"jitterRange"
+        // pair (mutually exclusive -- only one field could be jittered at
+        // a time). Migrate onto whichever new field it targeted, so an
+        // old preset's jitter setting isn't silently lost. Never written
+        // by grainCloudSettingsToVar() anymore -- re-saving upgrades a
+        // preset to the new format automatically.
         if (gcVar.hasProperty ("jitterTarget"))
         {
             const auto s = gcVar.getProperty ("jitterTarget", juce::var()).toString();
-            if (! jitterTargetFromString (s, out.jitterTarget))
+            GrainJitterTarget legacyTarget;
+            if (! jitterTargetFromString (s, legacyTarget))
                 return juce::Result::fail ("'grainCloud.jitterTarget': unknown value '" + s + "'.");
+
+            const float legacyRange = (float) gcVar.getProperty ("jitterRange", 0.0);
+            switch (legacyTarget)
+            {
+                case GrainJitterTarget::None:           break;
+                case GrainJitterTarget::InitialSpeed:   out.initialSpeedJitter   = legacyRange; break;
+                case GrainJitterTarget::Lifetime:       out.grainDurationJitter  = legacyRange; break;
+                case GrainJitterTarget::BoundaryRadius: out.boundaryRadiusJitter = legacyRange; break;
+                case GrainJitterTarget::OrbitRadius:    out.orbitRadiusJitter    = legacyRange; break;
+            }
         }
-        out.jitterRange = (float) gcVar.getProperty ("jitterRange", (double) out.jitterRange);
 
         out.grainReadDepthRangeMin = (float) gcVar.getProperty ("grainReadDepthRangeMin", (double) out.grainReadDepthRangeMin);
         out.grainReadDepthRangeMax = (float) gcVar.getProperty ("grainReadDepthRangeMax", (double) out.grainReadDepthRangeMax);

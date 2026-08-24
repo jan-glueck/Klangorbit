@@ -7,6 +7,72 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Voice stealing for grain spawning + per-parameter grain jitter.**
+  Follow-up to the "grainRate/grainDuration independence" investigation
+  above: that entry concluded the scheduling was already correct, but
+  once `grainRate * grainDuration` genuinely exceeds
+  `maxConcurrentGrains` (a real, unavoidable CPU ceiling -- see the
+  earlier entry), the *original* design simply stalled new spawns until
+  an old grain's full `grainDuration` elapsed, which is audibly
+  stuttery for anyone deliberately using a long Duration at a high
+  Rate, not just an edge case. Fixed by design change, not a bug in the
+  old scheduling:
+  - `GrainCloud::update()` now voice-steals once `maxConcurrentGrains`
+    is hit: the OLDEST active grain gets a short (10ms) forced
+    fade-out (`GrainCloud::beginVoiceSteal()`) and its slot is reused
+    as soon as that completes, instead of waiting out the grain's full
+    remaining `grainDuration`. Reuses the exact same
+    guaranteed-exact-zero Hann envelope ending every grain's natural
+    end already relies on (the fix from the earlier grain-click bug in
+    this changelog) by simply shortening `lifetimeSeconds`/
+    `grainLengthSamples` -- no new audio-thread code, no discontinuity
+    risk. Trade-off, by design: `grainRate`'s spawn schedule is now
+    honored continuously regardless of `grainDuration`, but individual
+    grains can end up shorter than configured once oversubscribed
+    (confirmed acceptable -- the alternative, a hard guarantee that
+    every grain always plays its full configured length, cannot avoid
+    stalling spawns at some rate*duration combination, since some
+    concurrency ceiling is unavoidable for real-time CPU safety).
+    The shared, scene-wide `globalGrainBudget` (across every object's
+    cloud) is deliberately NOT covered by stealing -- only a cloud's
+    own `maxConcurrentGrains` is -- since stealing within one cloud
+    can't create more of that shared budget.
+  - `maxConcurrentGrains`'s default raised 8 -> 32, so common
+    `grainRate`/`grainDuration` combinations don't need voice stealing
+    at all in practice.
+  - **Per-parameter jitter**, replacing the old single, mutually-
+    exclusive `jitterTarget`/`jitterRange` pair (only one field could
+    be randomized at a time): five new dedicated `GrainCloudSettings`
+    fields -- `grainRateJitter`, `grainDurationJitter`,
+    `boundaryRadiusJitter`, `initialSpeedJitter`, `orbitRadiusJitter`
+    -- each shown directly under its own parameter in the Grains panel
+    (same `applyJitter()` +/- fractional shape as the pre-existing
+    `pitchJitter`), all usable simultaneously. `grainRateJitter`
+    specifically randomizes the spawn *interval* itself, recomputed
+    fresh for every spawn attempt, not a per-grain property.
+  - Preset compatibility: old presets that saved the legacy
+    `jitterTarget`/`jitterRange` pair are migrated onto the matching
+    new field on load (`PresetManager::grainCloudSettingsFromVar()`);
+    saving (`grainCloudSettingsToVar()`) only ever writes the new
+    fields from now on, so re-saving upgrades a preset automatically.
+    No schemaVersion bump -- purely additive/optional, same policy as
+    every other schemaVersion-2 `grainCloud` field.
+  - `Tools/verify_grain_cloud` gained four new tests:
+    `testVoiceStealingKeepsSpawningContinuous` (heavily oversubscribed
+    rate*duration vs. cap, confirms ~continuous spawn cadence instead
+    of stalling), `testVoiceStealingShortensNotCorrupts` (stolen
+    grains' `grainLengthSamples` always stays positive/bounded, and
+    measurably shorter than configured), `testGrainRateJitterVariesInterval`
+    (spawn-interval stddev goes from exactly 0 to clearly nonzero with
+    jitter on), and `testGrainDurationJitterVariesLifetime` (spawned
+    grains' lengths spread across a range instead of one fixed value).
+    One pre-existing test (`testRadialExplosionMovesOutward`) had to be
+    adjusted -- its `grainRate=1000`/`maxConcurrentGrains=1` setup
+    created a large same-call spawn backlog that voice stealing now
+    correctly (if unhelpfully for that specific test) resolves by
+    immediately stealing the grain it had just spawned; lowered to a
+    rate that produces exactly one spawn per test tick instead, which
+    is what the test actually needs to isolate.
 - **"Mute Original Audio" toggle in the Grains parameter category
   (`GrainCloudSettings::sourceMuted`).** Silences just an object's own
   dry/unGranulated signal while leaving its grains completely
@@ -610,11 +676,16 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
-- **"Grain Rate" renamed to "Spawn Rate" in the Grains parameter
-  category** (`README.md`, `Docs/UserGuide.md`, the in-app Help window)
-  -- reported as unclear/confusable with Grain Duration. The internal
-  field name (`GrainCloudSettings::grainRate`, the `grainRate` preset
-  JSON key) is deliberately unchanged, same reasoning as the "Grains"
+- **"Grain Rate" renamed to "Grain Rate (Spawn Rate)" in the Grains
+  parameter category** (`README.md`, `Docs/UserGuide.md`, the in-app
+  Help window) -- went through two iterations: first renamed outright
+  to "Spawn Rate" (reported as unclear/confusable with Grain Duration),
+  then revisited once the underlying scheduling was actually redesigned
+  (see voice stealing above) and settled on keeping "Grain Rate" as the
+  primary name with "(Spawn Rate)" alongside it, rather than dropping
+  the original name entirely. The internal field name
+  (`GrainCloudSettings::grainRate`, the `grainRate` preset JSON key) is
+  deliberately unchanged throughout, same reasoning as the "Grains"
   rename below.
 - **"Mute Original Audio" renamed to "Grains Only (Mute Original
   Audio)"** in the Grains parameter category, README, UserGuide, and

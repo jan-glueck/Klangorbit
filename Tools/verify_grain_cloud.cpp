@@ -258,6 +258,195 @@ static void testSpawnRateIndependentOfDuration()
     check (maxGeneration >= 2, "GrainCloud: spawn cadence keeps matching grainRate well past the initial fill -- a long grainDuration does not stall it over time");
 }
 
+// Deliberately oversubscribed (unlike testSpawnRateIndependentOfDuration
+// above, which stayed within maxConcurrentGrains): grainRate*grainDuration
+// (5*2=10) exceeds maxConcurrentGrains (4) by more than 2x -- exactly the
+// "high rate AND high duration" scenario reported as causing audible
+// spawn stalls before voice stealing existed. Counts actual spawn EVENTS
+// over time (via each pool slot's spawnGeneration, which climbs every
+// time that slot is reused -- by a fresh spawn or a steal) rather than
+// peak concurrent count, since the whole point is that new grains keep
+// starting continuously, not that more of them fit at once.
+static void testVoiceStealingKeepsSpawningContinuous()
+{
+    GrainCloud cloud (16);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 5.0f;
+    cloud.getSettings().grainDuration = 2.0f;
+    cloud.getSettings().maxConcurrentGrains = 4;
+
+    juce::Random rng (77);
+    int budget = 128;
+    cloud.setRingBufferContext (0, kSampleRate);
+
+    std::vector<int> lastGenPerSlot (16, 0);
+    int totalSpawnsObserved = 0;
+
+    const double dt = 1.0 / 90.0;
+    const int numTicks = (int) (4.0 * 90.0); // 4s -> ~20 spawns expected at rate=5
+    for (int tick = 0; tick < numTicks; ++tick)
+    {
+        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+
+        std::vector<GrainCloud::Snapshot> snap;
+        cloud.getSnapshot (snap);
+        for (size_t i = 0; i < snap.size(); ++i)
+        {
+            if (snap[i].spawnGeneration != lastGenPerSlot[i])
+            {
+                totalSpawnsObserved += (snap[i].spawnGeneration - lastGenPerSlot[i]);
+                lastGenPerSlot[i] = snap[i].spawnGeneration;
+            }
+        }
+    }
+
+    std::printf ("       total spawn events over 4s at rate=5Hz/duration=2s/cap=4 (needs 10 concurrent): %d (expected ~20)\n", totalSpawnsObserved);
+    check (totalSpawnsObserved >= 16, "GrainCloud: voice stealing keeps new grains spawning near the configured rate even when rate*duration exceeds maxConcurrentGrains");
+}
+
+// Same heavy oversubscription, checking the OTHER half of the trade-off:
+// stolen grains must end up genuinely shorter (proving stealing actually
+// happened) while never producing a corrupt/invalid grainLengthSamples --
+// no new envelope math is involved (see beginVoiceSteal()'s own comment),
+// so this only needs to check the length value stays sane, not re-verify
+// click-freeness (already covered by testRenderGrainBlock's exhaustive
+// per-playbackRate envelope-reaches-zero checks, which apply identically
+// regardless of how a grain's length was decided).
+static void testVoiceStealingShortensNotCorrupts()
+{
+    GrainCloud cloud (2);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 10.0f;
+    cloud.getSettings().grainDuration = 5.0f; // very long relative to the 2-slot cap
+    cloud.getSettings().maxConcurrentGrains = 2;
+
+    juce::Random rng (13);
+    int budget = 128;
+    cloud.setRingBufferContext (0, kSampleRate);
+
+    bool sawShortenedGrain = false;
+    bool allLengthsSane = true;
+
+    const double dt = 1.0 / 90.0;
+    for (int tick = 0; tick < (int) (2.0 * 90.0); ++tick)
+    {
+        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+
+        std::vector<GrainCloud::Snapshot> snap;
+        cloud.getSnapshot (snap);
+        for (auto& s : snap)
+        {
+            if (! s.active) continue;
+            if (s.grainLengthSamples <= 0 || s.grainLengthSamples > (int) (5.5 * kSampleRate))
+                allLengthsSane = false;
+            if (s.grainLengthSamples < (int) (4.9 * kSampleRate)) // meaningfully shorter than the configured 5s
+                sawShortenedGrain = true;
+        }
+    }
+
+    check (allLengthsSane, "GrainCloud: voice-stolen grains always keep a positive, bounded grainLengthSamples (no corruption)");
+    check (sawShortenedGrain, "GrainCloud: heavy oversubscription actually triggers voice stealing (some grains end up shorter than the configured Duration)");
+}
+
+static void testGrainRateJitterVariesInterval()
+{
+    auto collectSpawnTicks = [] (float rateJitter, int seed) -> std::vector<int>
+    {
+        GrainCloud cloud (32);
+        cloud.getSettings().enabled = true;
+        cloud.getSettings().grainRate = 10.0f;
+        cloud.getSettings().grainDuration = 0.05f; // short -- slots free up fast, no voice stealing needed here
+        cloud.getSettings().maxConcurrentGrains = 32;
+        cloud.getSettings().grainRateJitter = rateJitter;
+
+        juce::Random rng (seed);
+        int budget = 128;
+        cloud.setRingBufferContext (0, kSampleRate);
+
+        std::vector<int> lastGen (32, 0);
+        std::vector<int> spawnTicks;
+        const double dt = 1.0 / 500.0; // fine-grained, to resolve individual spawn timing precisely
+        for (int tick = 0; tick < 2500; ++tick) // 5s
+        {
+            cloud.update (dt, {}, {}, budget, rng);
+            std::vector<GrainCloud::Snapshot> snap;
+            cloud.getSnapshot (snap);
+            for (size_t i = 0; i < snap.size(); ++i)
+            {
+                if (snap[i].spawnGeneration != lastGen[i])
+                {
+                    lastGen[i] = snap[i].spawnGeneration;
+                    spawnTicks.push_back (tick);
+                }
+            }
+        }
+        return spawnTicks;
+    };
+
+    auto stddevOfDiffs = [] (const std::vector<int>& ticks) -> double
+    {
+        if (ticks.size() < 3) return 0.0;
+        std::vector<double> diffs;
+        for (size_t i = 1; i < ticks.size(); ++i)
+            diffs.push_back ((double) (ticks[i] - ticks[i - 1]));
+        double mean = 0.0;
+        for (double d : diffs) mean += d;
+        mean /= (double) diffs.size();
+        double var = 0.0;
+        for (double d : diffs) var += (d - mean) * (d - mean);
+        var /= (double) diffs.size();
+        return std::sqrt (var);
+    };
+
+    const auto regular  = collectSpawnTicks (0.0f, 501);
+    const auto jittered = collectSpawnTicks (0.5f, 502);
+
+    const double regularStd  = stddevOfDiffs (regular);
+    const double jitteredStd = stddevOfDiffs (jittered);
+
+    std::printf ("       inter-spawn interval stddev (ticks): grainRateJitter=0 -> %.3f, grainRateJitter=0.5 -> %.3f\n", regularStd, jitteredStd);
+    check (regularStd < 1.0, "GrainCloud: grainRateJitter=0 produces perfectly regular spawn intervals");
+    check (jitteredStd > regularStd, "GrainCloud: grainRateJitter randomizes the spawn interval away from perfectly regular");
+}
+
+static void testGrainDurationJitterVariesLifetime()
+{
+    GrainCloud cloud (64);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 200.0f; // spawn plenty fast, want many distinct grains to sample
+    cloud.getSettings().grainDuration = 1.0f;
+    cloud.getSettings().grainDurationJitter = 0.5f;
+    cloud.getSettings().maxConcurrentGrains = 64;
+
+    juce::Random rng (901);
+    int budget = 128;
+    cloud.setRingBufferContext (0, kSampleRate);
+
+    std::vector<int> lastGen (64, 0);
+    std::vector<int> observedLengths;
+    const double dt = 1.0 / 90.0;
+    for (int tick = 0; tick < 90; ++tick) // ~1s, plenty of spawns at rate=200
+    {
+        cloud.update (dt, {}, {}, budget, rng);
+        std::vector<GrainCloud::Snapshot> snap;
+        cloud.getSnapshot (snap);
+        for (size_t i = 0; i < snap.size(); ++i)
+        {
+            if (snap[i].active && snap[i].spawnGeneration != lastGen[i])
+            {
+                lastGen[i] = snap[i].spawnGeneration;
+                observedLengths.push_back (snap[i].grainLengthSamples);
+            }
+        }
+    }
+
+    check (observedLengths.size() > 10, "GrainCloud: grainDurationJitter test setup actually spawned multiple grains");
+    int minLen = observedLengths.front(), maxLen = observedLengths.front();
+    for (int l : observedLengths) { minLen = juce::jmin (minLen, l); maxLen = juce::jmax (maxLen, l); }
+    std::printf ("       grainLengthSamples range with grainDurationJitter=0.5 (base 1s @ %.0fHz): [%d, %d]\n", kSampleRate, minLen, maxLen);
+    check (maxLen > minLen, "GrainCloud: grainDurationJitter produces varying grain lengths across spawns, not one fixed value");
+}
+
 static void testGlobalBudgetSharedAcrossClouds()
 {
     GrainCloud cloudA (32), cloudB (32);
@@ -364,7 +553,16 @@ static void testRadialExplosionMovesOutward()
 {
     GrainCloud cloud (4);
     cloud.getSettings().enabled = true;
-    cloud.getSettings().grainRate = 1000.0f; // spawn (near-)immediately, not after a full 1/grainRate wait
+    // Exactly matches the first update() call's dt below (0.02s), so that
+    // call's backlog is exactly one spawn interval -- spawns exactly once
+    // with zero backlog left over. A much higher rate (as this test used
+    // before voice stealing existed) would queue many more spawns than
+    // maxConcurrentGrains=1 allows within that same call, and the newly
+    // spawned grain would immediately become the OLDEST active grain for
+    // the next queued spawn to steal from -- correct voice-stealing
+    // behavior for genuine oversubscription, but not what this test
+    // means to exercise (RadialExplosion's outward movement over time).
+    cloud.getSettings().grainRate = 50.0f;
     cloud.getSettings().grainDuration = 1.0f;
     cloud.getSettings().movementMode = GrainMovementMode::RadialExplosion;
     cloud.getSettings().initialSpeed = 3.0f;
@@ -376,7 +574,7 @@ static void testRadialExplosionMovesOutward()
     const Vec3 parentPos { 0.0f, 0.0f, 0.0f };
 
     cloud.setRingBufferContext (0, kSampleRate);
-    cloud.update (0.02, parentPos, {}, budget, rng); // spawns the one grain
+    cloud.update (0.02, parentPos, {}, budget, rng); // spawns the one grain, no leftover backlog to steal it
     cloud.getSettings().enabled = false; // stop further spawning so no replacement grain confuses the reading
 
     std::vector<GrainCloud::Snapshot> snapEarly;
@@ -652,6 +850,10 @@ int main()
     testRenderGrainBlock();
     testSpawnRateAndCaps();
     testSpawnRateIndependentOfDuration();
+    testVoiceStealingKeepsSpawningContinuous();
+    testVoiceStealingShortensNotCorrupts();
+    testGrainRateJitterVariesInterval();
+    testGrainDurationJitterVariesLifetime();
     testGlobalBudgetSharedAcrossClouds();
     testLifetimeExpiry();
     testBounceStaysWithinBoundary();

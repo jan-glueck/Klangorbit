@@ -100,19 +100,58 @@ Vec3 GrainCloud::computeSiblingForce (const Grain& g) const
     return force;
 }
 
+namespace
+{
+    // Short enough to feel instant/inaudible as a timing delay (well under
+    // a spawn interval at any reasonable Spawn Rate), long enough for the
+    // existing Hann envelope to taper smoothly to its guaranteed-exact
+    // zero ending (see the grain-click fix this project already made --
+    // GrainRenderer.h's envelope reaches exactly 0 at grainLengthSamples-1
+    // regardless of how short that length is).
+    constexpr float voiceStealReleaseSeconds = 0.01f;
+}
+
+int GrainCloud::findOldestStealableSlot() const
+{
+    int best = -1;
+    float oldestAge = -1.0f;
+    for (int i = 0; i < (int) grains.size(); ++i)
+    {
+        auto& g = grains[(size_t) i];
+        if (! g.active || g.beingStolen) continue;
+        if (g.age > oldestAge) { oldestAge = g.age; best = i; }
+    }
+    return best;
+}
+
+void GrainCloud::beginVoiceSteal (Grain& g)
+{
+    g.beingStolen = true;
+    const float shortenedLifetime = g.age + voiceStealReleaseSeconds;
+    if (shortenedLifetime < g.lifetimeSeconds)
+    {
+        g.lifetimeSeconds = shortenedLifetime;
+        g.grainLengthSamples = juce::jmax (1, (int) (shortenedLifetime * ringBufferSampleRate));
+    }
+    // else: this grain was already going to end within voiceStealReleaseSeconds
+    // anyway (near its natural end) -- no need to shorten it further, just
+    // let it finish and free its slot on schedule.
+}
+
 void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, double sampleRate, juce::Random& rng)
 {
     auto& g = grains[(size_t) slot];
 
     g.active = true;
+    g.beingStolen = false; // this slot is starting fresh, not winding down from a steal anymore
     g.age = 0.0f;
     ++g.spawnGeneration;
     g.position = parentPosition;
     g.velocity = {};
 
     float lifetime = settings.grainDuration;
-    if (settings.jitterTarget == GrainJitterTarget::Lifetime)
-        lifetime = applyJitter (lifetime, settings.jitterRange, rng);
+    if (settings.grainDurationJitter > 0.0f)
+        lifetime = applyJitter (lifetime, settings.grainDurationJitter, rng);
     g.lifetimeSeconds = juce::jmax (0.001f, lifetime);
 
     switch (settings.movementMode)
@@ -125,8 +164,8 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
         {
             g.boundaryCenter = parentPosition;
             float radius = settings.boundaryRadius;
-            if (settings.jitterTarget == GrainJitterTarget::BoundaryRadius)
-                radius = applyJitter (radius, settings.jitterRange, rng);
+            if (settings.boundaryRadiusJitter > 0.0f)
+                radius = applyJitter (radius, settings.boundaryRadiusJitter, rng);
             g.currentBoundaryRadius = juce::jmax (0.01f, radius);
             g.velocity = randomUnitVector (rng) * settings.randomWalkSpeed; // reused as initial bounce speed
             break;
@@ -136,8 +175,8 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
         {
             g.explosionDirection = randomUnitVector (rng);
             float speed = settings.initialSpeed;
-            if (settings.jitterTarget == GrainJitterTarget::InitialSpeed)
-                speed = applyJitter (speed, settings.jitterRange, rng);
+            if (settings.initialSpeedJitter > 0.0f)
+                speed = applyJitter (speed, settings.initialSpeedJitter, rng);
             g.velocity = g.explosionDirection * speed;
             g.currentAcceleration = settings.acceleration;
             break;
@@ -147,8 +186,8 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
         {
             g.orbitPhase = rng.nextFloat() * juce::MathConstants<float>::twoPi;
             float radius = settings.orbitRadius;
-            if (settings.jitterTarget == GrainJitterTarget::OrbitRadius)
-                radius = applyJitter (radius, settings.jitterRange, rng);
+            if (settings.orbitRadiusJitter > 0.0f)
+                radius = applyJitter (radius, settings.orbitRadiusJitter, rng);
             g.currentOrbitRadius = juce::jmax (0.01f, radius);
             g.position = parentPosition + Vec3 { std::cos (g.orbitPhase), std::sin (g.orbitPhase), 0.0f } * g.currentOrbitRadius;
             break;
@@ -288,43 +327,71 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
     if (settings.enabled && settings.grainRate > 0.0f)
     {
         timeSinceLastSpawn += dtSeconds;
+
         // grainRate alone determines this interval -- grainDuration never
         // enters this calculation, so the two are independent by design
-        // (see GrainCloudSettings's own class comment).
-        const double spawnInterval = 1.0 / (double) settings.grainRate;
+        // (see GrainCloudSettings's own class comment). Recomputed fresh
+        // each time below so grainRateJitter (if any) gives each spawn
+        // its own randomized interval, not one fixed jittered value
+        // reused for the whole cloud.
+        auto nextSpawnInterval = [this, &rng]
+        {
+            double interval = 1.0 / (double) settings.grainRate;
+            if (settings.grainRateJitter > 0.0f)
+                interval = (double) applyJitter ((float) interval, settings.grainRateJitter, rng);
+            return juce::jmax (1.0e-4, interval); // floor against jitter pushing it to ~0
+        };
+
+        double spawnInterval = nextSpawnInterval();
 
         while (timeSinceLastSpawn >= spawnInterval)
         {
-            if (globalGrainBudget <= 0 || getNumActiveGrains() >= settings.maxConcurrentGrains)
+            if (globalGrainBudget <= 0)
             {
-                // The one place grainDuration indirectly affects the
-                // EFFECTIVE spawn rate: a long-lived grain occupies a pool
-                // slot until it expires, so if grainRate*grainDuration
-                // exceeds maxConcurrentGrains, new spawns stall here until
-                // an old grain's grainDuration elapses -- see
-                // GrainCloudSettings's own comment for the full picture.
+                // The shared, scene-wide CPU ceiling (see PluginProcessor)
+                // -- unlike maxConcurrentGrains below, this can't be
+                // worked around by stealing from this cloud's OWN grains,
+                // since it's a limit across every object's cloud combined.
                 timeSinceLastSpawn = spawnInterval; // cap backlog, avoid a burst once capacity frees up
                 break;
             }
 
             int slot = -1;
-            for (int i = 0; i < (int) grains.size(); ++i)
+            if (getNumActiveGrains() < settings.maxConcurrentGrains)
             {
-                if (! grains[(size_t) i].active)
+                for (int i = 0; i < (int) grains.size(); ++i)
                 {
-                    slot = i;
-                    break;
+                    if (! grains[(size_t) i].active)
+                    {
+                        slot = i;
+                        break;
+                    }
                 }
             }
+
             if (slot < 0)
             {
-                timeSinceLastSpawn = spawnInterval; // pool exhausted, same backlog cap as above
+                // At this cloud's own maxConcurrentGrains cap (the common
+                // case once grainRate*grainDuration exceeds it), or
+                // (defensively) no free pool slot for some other reason --
+                // voice-steal the oldest active grain instead of stalling
+                // the spawn schedule (see GrainCloudSettings's own
+                // comment). The actual new spawn happens on a later call
+                // to update(), once the stolen grain's short forced
+                // fade-out (beginVoiceSteal()) actually frees its slot --
+                // timeSinceLastSpawn keeps the backlog pending for that.
+                const int stealFrom = findOldestStealableSlot();
+                if (stealFrom >= 0)
+                    beginVoiceSteal (grains[(size_t) stealFrom]);
+
+                timeSinceLastSpawn = spawnInterval; // cap backlog, same reasoning as the budget case above
                 break;
             }
 
             spawnGrain (slot, parentPosition, ringBufferWriteHeadSample, ringBufferSampleRate, rng);
             --globalGrainBudget;
             timeSinceLastSpawn -= spawnInterval;
+            spawnInterval = nextSpawnInterval();
         }
     }
     else

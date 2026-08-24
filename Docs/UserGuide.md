@@ -250,14 +250,18 @@ trajectory. Turn it on with **Enabled**.
   entirely, grains included), this lets you isolate and listen to only
   the grains on their own, independent of the underlying sound they're
   generated from.
-- **Spawn Rate / Grain Duration** -- two independent controls, easy to
-  mix up but not the same thing: Spawn Rate (grains/sec) is how often
-  a *new* grain starts; Grain Duration (s) is how long *each* grain
-  plays (also its movement lifetime) once it has started. Raising
-  Duration does not, by itself, slow down Spawn Rate -- a high rate and
-  a long duration together mean MORE overlapping grains at once, not
-  fewer new ones. Grains audibly overlap into a denser, more continuous
-  texture whenever `Spawn Rate x Grain Duration > 1`.
+- **Grain Rate (Spawn Rate) / Grain Duration** -- two independent
+  controls, easy to mix up but not the same thing: Grain Rate
+  (grains/sec) is how often a *new* grain starts; Grain Duration (s) is
+  how long *each* grain plays (also its movement lifetime) once it has
+  started. Raising Duration does not, by itself, slow down Grain Rate --
+  a high rate and a long duration together mean MORE overlapping grains
+  at once, not fewer new ones. Grains audibly overlap into a denser,
+  more continuous texture whenever `Grain Rate x Grain Duration > 1`.
+  Each has its own **Jitter** slider directly below it (0..1, random +/-
+  variation per spawn) -- Grain Rate Jitter varies the spacing between
+  spawns instead of a perfectly metronomic beat; Grain Duration Jitter
+  varies each grain's own length.
 - **Pitch Jitter** -- random per-grain playback-rate deviation.
 - **Position Jitter In Buffer / Read Depth Min / Max / Distribution** --
   control how far back into the object's recent audio each grain reads
@@ -265,24 +269,29 @@ trajectory. Turn it on with **Enabled**.
   biased deep (older).
 - **Max Concurrent Grains** -- a hard cap on how many of this object's
   grains may be alive simultaneously (there's also a global cap shared
-  by all objects' clouds, so total CPU cost stays bounded either way).
-  The one place Spawn Rate and Grain Duration genuinely interact: if
-  `Spawn Rate x Grain Duration` exceeds this cap, new grains stop
-  spawning on schedule until an existing one's Duration finishes and
-  frees up a slot -- so a long Duration can only look like it's
-  throttling the Spawn Rate when this cap is too low for the two
-  combined. Raise this alongside Duration if you want denser overlap.
-- **Movement Mode** -- how each grain moves during its short life:
+  by all objects' clouds, so total CPU cost stays bounded either way;
+  default raised to 32, comfortably covering common Rate/Duration
+  combinations). If `Grain Rate x Grain Duration` exceeds this cap,
+  Klangorbit doesn't stall new spawns waiting for room -- it fades out
+  the OLDEST currently-playing grain a little early (a quick, click-free
+  10ms fade) and reuses its slot immediately, so new grains keep
+  starting exactly on schedule. The trade-off: under heavy overlap, some
+  individual grains end up a bit shorter than the Duration you set,
+  rather than new grains simply failing to start on time.
+- **Movement Mode** -- how each grain moves during its short life, each
+  with its own **Jitter** slider directly below the relevant parameter
+  (0..1, random +/- variation per spawn, all independently usable at
+  once):
   - *Random Walk* -- smoothed random drift.
   - *Bounce* -- elastic reflection inside a small sphere around its
-    spawn point.
-  - *Radial Explosion* -- flies outward from the parent at spawn time.
-  - *Orbit Around Parent* -- circles the parent's current position.
+    spawn point (**Boundary Radius Jitter** varies that sphere's size).
+  - *Radial Explosion* -- flies outward from the parent at spawn time
+    (**Initial Speed Jitter** varies the launch speed).
+  - *Orbit Around Parent* -- circles the parent's current position
+    (**Orbit Radius Jitter** varies the orbit's size).
   - *Attract/Repel Siblings* -- grains in the same cloud pull or push
     each other (gravity-like, same force law as section 8, scoped to
     just that cloud).
-- **Jitter Target / Jitter Range** -- randomizes one movement parameter
-  (relevant to the current Movement Mode) per spawned grain.
 - **Doppler** (grains) -- optional, separate per-grain Doppler
   shift based on each grain's own velocity; when on, it's still scaled
   by the parent object's own Doppler Factor above.

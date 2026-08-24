@@ -35,12 +35,13 @@ enum class GrainReadDepthDistribution
 };
 
 /**
-    Which single movement-related field gets +/- jitterRange randomization
-    per spawned grain, on top of the always-present audio-side pitchJitter/
-    positionJitterInBuffer (those are separate, named fields -- this is a
-    generic one-of-several mechanism for the movement parameters, since
-    unlike the audio fields there isn't one obvious jitter target for
-    movement).
+    LEGACY ONLY -- superseded by dedicated per-parameter jitter fields on
+    GrainCloudSettings (grainRateJitter, grainDurationJitter,
+    initialSpeedJitter, boundaryRadiusJitter, orbitRadiusJitter), which can
+    all be used at once instead of this single mutually-exclusive choice.
+    Kept only so PresetManager can still read old presets that saved a
+    "jitterTarget"/"jitterRange" pair and migrate them onto the matching
+    new field -- see PresetManager.cpp's grainCloudSettingsFromVar().
 */
 enum class GrainJitterTarget
 {
@@ -108,16 +109,20 @@ namespace GrainLimits
     not a side effect).
 
     The one place these two DO interact: maxConcurrentGrains below is a
-    hard ceiling on how many of this cloud's grains may be alive at once.
-    Sustaining grainRate * grainDuration overlapping grains needs
-    maxConcurrentGrains to be at least that large -- once the ceiling is
-    hit, GrainCloud::update() stops honoring grainRate's spawn interval
-    until an existing grain's grainDuration elapses and frees a slot, so
-    raising grainDuration alone (without also raising maxConcurrentGrains
-    to match) throttles the EFFECTIVE spawn rate below the configured
-    grainRate. This is a deliberate CPU/pool-size safety cap, not a bug --
-    but it's the only real coupling between the two, so it's called out
-    here explicitly.
+    hard ceiling on how many of this cloud's grains may be alive at once
+    (a real CPU cost limit -- every active grain is a full Ambisonics
+    encode pass, see PluginProcessor). Sustaining grainRate * grainDuration
+    overlapping grains needs maxConcurrentGrains to be at least that
+    large. Earlier versions of this cloud simply stopped spawning once the
+    ceiling was hit, waiting for an existing grain's grainDuration to
+    elapse -- audibly throttling/stuttering the spawn rate whenever
+    grainRate * grainDuration exceeded the cap. GrainCloud::update() now
+    instead does voice stealing: the OLDEST active grain is given a short
+    (10ms) forced fade-out and its slot reused immediately, so grainRate's
+    spawn schedule is honored continuously regardless of grainDuration --
+    the trade-off is that individual grains can end up shorter than
+    configured once oversubscribed, rather than new grains simply not
+    starting on time. See GrainCloud::beginVoiceSteal().
 */
 struct GrainCloudSettings
 {
@@ -133,11 +138,26 @@ struct GrainCloudSettings
     bool sourceMuted = false;
 
     // --- Audio side ------------------------------------------------------
-    float grainRate = 10.0f;                  // "Spawn Rate" in the UI; grains/sec spawned while enabled, independent of grainDuration -- see this struct's own comment
+    float grainRate = 10.0f;                  // "Grain Rate (Spawn Rate)" in the UI; grains/sec spawned while enabled, independent of grainDuration -- see this struct's own comment
+    // 0..1, fractional +/- randomization applied to the spawn INTERVAL
+    // each time a grain is about to spawn (see GrainCloud::update()) --
+    // humanizes the cadence away from a perfectly metronomic beat. Same
+    // applyJitter() shape as pitchJitter below, just applied to timing
+    // instead of playback rate.
+    float grainRateJitter = 0.0f;
     float grainDuration = 0.15f;              // seconds; also the grain's movement lifetime
+    // 0..1, fractional +/- randomization applied to grainDuration at
+    // spawn time (this grain's own lifetime only, doesn't affect any
+    // other already-active grain).
+    float grainDurationJitter = 0.0f;
     float pitchJitter = 0.0f;                 // 0..1, max random +/- playback-rate deviation per grain
     float positionJitterInBuffer = 0.05f;     // seconds, random look-back offset into the ring buffer per grain
-    int maxConcurrentGrains = 8;              // per-cloud local cap (on top of the global cap, see PluginProcessor); must be >= grainRate*grainDuration to avoid throttling the spawn rate, see this struct's own comment
+    // Per-cloud local cap (on top of the global cap, see PluginProcessor).
+    // Raised from an initial default of 8 -- comfortably covers common
+    // grainRate*grainDuration combinations without needing voice stealing
+    // (see this struct's own comment) at all; still far under the global
+    // cap (128) shared across every object's cloud.
+    int maxConcurrentGrains = 32;
     GrainWindowShape windowShape = GrainWindowShape::Hann;
     // Per-grain Doppler pitch shift, based on each grain's own velocity
     // relative to the listener at the origin -- separate from and default
@@ -168,18 +188,18 @@ struct GrainCloudSettings
     float randomWalkSpeed = 1.0f;             // m/s, RandomWalk
 
     float boundaryRadius = 1.0f;              // m, Bounce -- sphere around the grain's spawn position
+    float boundaryRadiusJitter = 0.0f;        // 0..1, +/- randomization of boundaryRadius at spawn time (Bounce)
     float restitution = 0.6f;                 // Bounce, 0..1
 
     float initialSpeed = 2.0f;                // m/s, RadialExplosion
+    float initialSpeedJitter = 0.0f;          // 0..1, +/- randomization of initialSpeed at spawn time (RadialExplosion)
     float acceleration = 0.0f;                // m/s^2 along the explosion direction, RadialExplosion
 
     float orbitRadius = 0.5f;                 // m, OrbitAroundParent
+    float orbitRadiusJitter = 0.0f;           // 0..1, +/- randomization of orbitRadius at spawn time (OrbitAroundParent)
     float orbitAngularSpeed = 2.0f;           // rad/s, OrbitAroundParent
 
     float attractionStrength = 1.0f;          // AttractRepelSiblings, negative = repel
-
-    GrainJitterTarget jitterTarget = GrainJitterTarget::None;
-    float jitterRange = 0.0f;                 // 0..1, fractional +/- deviation applied to jitterTarget at spawn
 };
 
 /**
@@ -191,6 +211,14 @@ struct GrainCloudSettings
 struct Grain
 {
     bool active = false;
+    // Set by GrainCloud::beginVoiceSteal() when this grain's slot has been
+    // claimed by a pending spawn while the cloud was at
+    // GrainCloudSettings::maxConcurrentGrains -- lifetimeSeconds/
+    // grainLengthSamples below have already been shortened to fade out
+    // quickly. Prevents this same grain from being picked as a steal
+    // target a second time while it's already winding down; cleared again
+    // in spawnGrain() once this slot is actually reused.
+    bool beingStolen = false;
     float age = 0.0f;             // seconds since spawn
     float lifetimeSeconds = 0.0f; // grainDuration at spawn time, +/- jitter if targeted
     // Bumped every time this pool slot is (re)spawned, so the audio thread

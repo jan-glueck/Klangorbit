@@ -192,30 +192,36 @@ that object's live input. Turn on with Enabled.
                                   they're generated from. Independent of
                                   the object list's Mute (which silences
                                   both source and grains together).
-  Spawn Rate / Grain Duration    two INDEPENDENT controls: Spawn Rate is
-                                  how often a NEW grain starts, Duration
+  Grain Rate (Spawn Rate) /      two INDEPENDENT controls: Grain Rate is
+   Grain Duration                 how often a NEW grain starts, Duration
                                   is how long EACH one then plays. Raising
-                                  Duration does not slow down Spawn Rate --
+                                  Duration does not slow down Grain Rate --
                                   both together just means more grains
                                   overlapping at once (audible whenever
-                                  Spawn Rate x Duration > 1). See Max
-                                  Concurrent Grains below for the one
-                                  real interaction between the two.
+                                  Grain Rate x Duration > 1). Each has its
+                                  own Jitter slider right below it.
   Pitch Jitter                   random per-grain playback-rate deviation
   Position Jitter / Read Depth   how far back into recent audio a grain
    Min/Max/Distribution           reads from, and the depth distribution
   Max Concurrent Grains          hard cap on simultaneously alive grains
                                   (there's also a global cap across all
-                                  objects). If Spawn Rate x Duration
-                                  exceeds this, new grains stall until an
-                                  old one's Duration finishes -- raise
-                                  this alongside Duration for denser
-                                  overlap, or a long Duration can look
-                                  like it's throttling the Spawn Rate.
+                                  objects; default 32). If Grain Rate x
+                                  Duration exceeds this, new grains don't
+                                  stall -- the OLDEST active grain gets a
+                                  quick (10ms) fade-out and its slot is
+                                  reused immediately, so new grains keep
+                                  starting on schedule. Trade-off: some
+                                  grains may then end up shorter than
+                                  the configured Duration.
   Movement Mode                  Random Walk / Bounce / Radial Explosion /
                                   Orbit Around Parent / Attract-Repel
-                                  Siblings (gravity within the cloud only)
-  Jitter Target / Range          randomizes one movement parameter per grain
+                                  Siblings (gravity within the cloud only).
+                                  Bounce, Radial Explosion, and Orbit
+                                  Around Parent each have their own
+                                  Jitter slider under their size/speed
+                                  parameter (Boundary Radius, Initial
+                                  Speed, Orbit Radius) -- all usable at
+                                  once, not mutually exclusive.
   Doppler (grains)                optional per-grain Doppler, still scaled
                                   by the parent object's own Doppler Factor
 

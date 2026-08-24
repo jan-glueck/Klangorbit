@@ -309,8 +309,10 @@ ParameterPanel::ParameterPanel()
     // GrainLimits (Grain.h), the same constants the ring buffer is sized
     // from -- see there for why these three can't be extended
     // independently of the buffer without risking silent misbehavior.
-    addGrainFloatRow ("Spawn Rate (grains/sec)", &GrainCloudSettings::grainRate, 0.1, GrainLimits::maxGrainRate, 0.1, Category::GrainCloud);
+    addGrainFloatRow ("Grain Rate (Spawn Rate) (grains/sec)", &GrainCloudSettings::grainRate, 0.1, GrainLimits::maxGrainRate, 0.1, Category::GrainCloud);
+    addGrainFloatRow ("Grain Rate Jitter", &GrainCloudSettings::grainRateJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Grain Duration (s)", &GrainCloudSettings::grainDuration, 0.01, GrainLimits::maxGrainDuration, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Grain Duration Jitter", &GrainCloudSettings::grainDurationJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Pitch Jitter", &GrainCloudSettings::pitchJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Position Jitter In Buffer (s)", &GrainCloudSettings::positionJitterInBuffer, 0.0, GrainLimits::maxPositionJitterInBuffer, 0.01, Category::GrainCloud);
 
@@ -362,28 +364,15 @@ ParameterPanel::ParameterPanel()
 
     addGrainFloatRow ("Random Walk Speed (m/s)", &GrainCloudSettings::randomWalkSpeed, 0.0, 10.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Boundary Radius (m, Bounce)", &GrainCloudSettings::boundaryRadius, 0.05, 5.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Boundary Radius Jitter (Bounce)", &GrainCloudSettings::boundaryRadiusJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Restitution (Bounce)", &GrainCloudSettings::restitution, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Initial Speed (m/s, Explosion)", &GrainCloudSettings::initialSpeed, 0.0, 20.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Initial Speed Jitter (Explosion)", &GrainCloudSettings::initialSpeedJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Acceleration (m/s^2, Explosion)", &GrainCloudSettings::acceleration, -20.0, 20.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Orbit Radius (m, OrbitAroundParent)", &GrainCloudSettings::orbitRadius, 0.05, 5.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Orbit Radius Jitter (OrbitAroundParent)", &GrainCloudSettings::orbitRadiusJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Orbit Angular Speed (rad/s)", &GrainCloudSettings::orbitAngularSpeed, -10.0, 10.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Attraction Strength (Siblings)", &GrainCloudSettings::attractionStrength, -10.0, 10.0, 0.01, Category::GrainCloud);
-
-    grainJitterTargetRow = std::make_unique<ComboRowComponent> ("Jitter Target");
-    grainJitterTargetRow->combo.addItem ("None", 1);
-    grainJitterTargetRow->combo.addItem ("Initial Speed", 2);
-    grainJitterTargetRow->combo.addItem ("Lifetime", 3);
-    grainJitterTargetRow->combo.addItem ("Boundary Radius", 4);
-    grainJitterTargetRow->combo.addItem ("Orbit Radius", 5);
-    grainJitterTargetRow->onSelected = [this] (int index)
-    {
-        if (editedGrainCloud != nullptr)
-            editedGrainCloud->jitterTarget = (GrainJitterTarget) index;
-    };
-    content.addAndMakeVisible (*grainJitterTargetRow);
-    addToLayout (*grainJitterTargetRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
-
-    addGrainFloatRow ("Jitter Range", &GrainCloudSettings::jitterRange, 0.0, 1.0, 0.01, Category::GrainCloud);
 
     updateCategoryButtonsEnabled();
     selectCategory (Category::Scene);
@@ -589,7 +578,6 @@ void ParameterPanel::refreshFromModel()
 
     grainWindowShapeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->windowShape, juce::dontSendNotification);
     grainMovementModeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->movementMode, juce::dontSendNotification);
-    grainJitterTargetRow->combo.setSelectedItemIndex ((int) editedGrainCloud->jitterTarget, juce::dontSendNotification);
     grainReadDepthDistributionRow->combo.setSelectedItemIndex ((int) editedGrainCloud->grainReadDepthDistribution, juce::dontSendNotification);
 }
 

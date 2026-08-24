@@ -120,26 +120,35 @@ defaults for everything new.
       // pitch ratio instead).
       "grainCloud": {
         "enabled": false,
+        "sourceMuted": false,          // mutes just this object's own dry signal, leaving its grains untouched ("Grains Only" in the UI) -- independent of the object's own muted/soloed
         "dopplerEnabled": false,       // per-grain Doppler pitch shift, off by default (see above); uses this object's own dopplerFactor to scale strength
-        "grainRate": 10.0,             // grains/sec, spawn rate while enabled
+        "grainRate": 10.0,             // grains/sec, spawn rate while enabled ("Grain Rate (Spawn Rate)" in the UI) -- independent of grainDuration at the scheduling level, see Source/Grain.h::GrainCloudSettings
+        "grainRateJitter": 0.0,        // 0..1, random +/- variation of the spawn INTERVAL per spawn (not a per-grain property)
         "grainDuration": 0.15,         // seconds, both the audio envelope length AND the movement lifetime (single-shot grain model)
+        "grainDurationJitter": 0.0,    // 0..1, random +/- variation of grainDuration per spawned grain
         "pitchJitter": 0.0,            // 0..1, random per-grain playback-rate variation
         "positionJitterInBuffer": 0.05,// 0..1 fraction of the ring buffer, randomizes the read start position
-        "maxConcurrentGrains": 8,      // per-cloud cap; the effective cap is also limited by a global budget shared across all clouds (see Source/PluginProcessor.h::maxConcurrentGrainsGlobal)
+        "maxConcurrentGrains": 32,     // per-cloud cap; the effective cap is also limited by a global budget shared across all clouds (see Source/PluginProcessor.h::maxConcurrentGrainsGlobal). If grainRate*grainDuration exceeds this, the OLDEST active grain is voice-stolen (quick fade-out, slot reused) rather than stalling new spawns -- see GrainCloud::beginVoiceSteal()
         "windowShape": "hann",         // grain envelope shape; hann is currently the only option
         "movementMode": "randomWalk",  // randomWalk | bounce | radialExplosion | orbitAroundParent | attractRepelSiblings
 
         "randomWalkSpeed": 1.0,        // m/s, used by randomWalk
         "boundaryRadius": 1.0,         // meters, used by bounce (elastic reflection around the spawn position)
+        "boundaryRadiusJitter": 0.0,   // 0..1, random +/- variation of boundaryRadius per spawned grain (bounce)
         "restitution": 0.6,            // 0..1, elasticity for bounce
         "initialSpeed": 2.0,           // m/s, used by radialExplosion
+        "initialSpeedJitter": 0.0,     // 0..1, random +/- variation of initialSpeed per spawned grain (radialExplosion)
         "acceleration": 0.0,           // m/s^2, used by radialExplosion (outward)
         "orbitRadius": 0.5,            // meters, used by orbitAroundParent
+        "orbitRadiusJitter": 0.0,      // 0..1, random +/- variation of orbitRadius per spawned grain (orbitAroundParent)
         "orbitAngularSpeed": 2.0,      // rad/s, used by orbitAroundParent
         "attractionStrength": 1.0,     // used by attractRepelSiblings; negative = repulsive, n-body only within this cloud (see TrajectoryEngine::computeAttractionForce)
 
-        "jitterTarget": "none",        // none | initialSpeed | lifetime | boundaryRadius | orbitRadius -- which field randomRange applies to
-        "jitterRange": 0.0,            // +/- range applied to jitterTarget, in that field's own unit
+        // "jitterTarget"/"jitterRange" (a single shared, mutually-exclusive
+        // pair) are LEGACY -- superseded by the dedicated *Jitter fields
+        // above, which can all be used simultaneously. Still read (and
+        // migrated onto the matching field above) when loading an older
+        // preset that has them, but never written when saving.
 
         // How far into the ring buffer's past a grain's start point may be
         // drawn from, in seconds -- independent of and additive with

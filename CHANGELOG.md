@@ -7,6 +7,41 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **"Mute Original Audio" toggle in the Grains parameter category
+  (`GrainCloudSettings::sourceMuted`).** Silences just an object's own
+  dry/unGranulated signal while leaving its grains completely
+  untouched, so the grains can be heard in isolation -- independent of
+  the object list's existing Mute button, which silences an object's
+  source AND its grains together (see `MuteSoloLogic.h`; that logic is
+  intentionally unchanged and still governs both signals when used).
+  - `PluginProcessor::processBlock()`'s main-object rendering pass
+    (the object's own dry audio) gained its own smoothed mute ramp
+    (`sourceMuteRampGain`, same click-free ramping treatment and
+    `muteRampSeconds` as the existing Mute/Solo ramp), read from
+    `GrainCloudSettings::sourceMuted` and multiplied into that pass's
+    final gain alongside the existing ramp. The separate grain-
+    rendering pass (a different loop over the same objects) is
+    deliberately left untouched -- it never reads this new field, only
+    the existing `muted`/`soloed`, so grains keep playing regardless.
+    Two independent ramps rather than one shared ramp specifically
+    because the existing `muteRampGain` is also read by that grain loop
+    and must stay unaffected by this new, source-only mute.
+  - Persisted in presets (`grainCloud.sourceMuted`, optional/additive
+    like every other schemaVersion-2 `grainCloud` field -- no schema
+    bump needed); reset to `false` like the rest of `GrainCloudSettings`
+    when an object is deactivated/reused.
+  - Verified: zero-warning rebuild, the full `Tools/verify_*` suite
+    (untouched by this change, still passing), a manual roundtrip
+    check (`sceneToVar`/`loadFromVar`) confirming the new field
+    survives a save/load cycle, and a temporary forced-category
+    screenshot (reverted before commit) confirming the toggle renders
+    correctly in the Grains panel, right below "Enabled". The actual
+    audio-thread mute/isolation behavior itself is reasoned through
+    and mirrors the existing, already-verified Mute/Solo ramp exactly,
+    but -- like the rest of this plugin's audio path -- has no
+    automated test harness (`PluginProcessor` isn't linked by any
+    `Tools/verify_*` target) and was not confirmed by ear in a DAW in
+    this environment.
 - **English user documentation + an in-app Help window.**
   `Docs/UserGuide.md`: a full standalone manual (scene view/camera
   controls, object list, all five motion modes, the sling launch
@@ -575,6 +610,18 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
+- **"Grain Cloud" renamed to "Grains" everywhere it's shown to the
+  user** -- the parameter panel's category tab, `README.md`,
+  `Docs/UserGuide.md`, and the in-app Help window's content
+  (`Source/HelpContent.h`), including fixing two pre-existing wrong
+  section-number cross-references found while editing ("(see section
+  7)" -> the actual Grains section in each document). The internal
+  C++ identifiers (`GrainCloud` class, `GrainCloudSettings`, the
+  `grainCloud` preset JSON key, the `verify_grain_cloud` CLI tool) were
+  deliberately left as-is -- renaming those would touch many more
+  files for an internal-only detail no user ever sees, and renaming
+  the JSON key specifically would risk breaking existing saved
+  presets, unlike a display-label change.
 - **Renamed the product from "Spatial Audio POC" to "Klangorbit"** --
   applied consistently everywhere it's visible or referenced: the plugin
   name shown in a DAW's plugin list/browser (`PRODUCT_NAME`,

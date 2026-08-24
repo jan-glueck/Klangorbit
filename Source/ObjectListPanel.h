@@ -25,7 +25,7 @@
 
     Only lists active objects (inputChannel >= 0), matching what's
     visible/clickable in the scene view -- not grains, which have no
-    individual selection concept (see ParameterPanel's Grain Cloud
+    individual selection concept (see ParameterPanel's Grains
     category: one parameter set per cloud, not per grain).
 
     Each row also has its own Mute/Solo buttons (SoundObject::muted/soloed) --

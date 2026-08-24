@@ -233,6 +233,7 @@ namespace
     {
         auto* obj = new juce::DynamicObject();
         obj->setProperty ("enabled", s.enabled);
+        obj->setProperty ("sourceMuted", s.sourceMuted);
         obj->setProperty ("dopplerEnabled", s.dopplerEnabled);
         obj->setProperty ("grainRate", (double) s.grainRate);
         obj->setProperty ("grainDuration", (double) s.grainDuration);
@@ -270,6 +271,8 @@ namespace
 
         if (gcVar.hasProperty ("enabled"))
             out.enabled = (bool) gcVar.getProperty ("enabled", out.enabled);
+        if (gcVar.hasProperty ("sourceMuted"))
+            out.sourceMuted = (bool) gcVar.getProperty ("sourceMuted", out.sourceMuted);
         if (gcVar.hasProperty ("dopplerEnabled"))
             out.dopplerEnabled = (bool) gcVar.getProperty ("dopplerEnabled", out.dopplerEnabled);
 

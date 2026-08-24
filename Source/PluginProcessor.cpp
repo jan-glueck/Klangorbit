@@ -40,6 +40,7 @@ KlangorbitProcessor::KlangorbitProcessor()
         g.assign ((size_t) encoder.getNumChannels(), 0.0f);
 
     muteRampGain.assign ((size_t) numLiveInputs, 1.0f); // start unmuted/audible
+    sourceMuteRampGain.assign ((size_t) numLiveInputs, 1.0f);
 
     propagationPerObject.resize ((size_t) numLiveInputs);
     wasActiveLastBlock.assign ((size_t) numLiveInputs, false);
@@ -62,6 +63,7 @@ void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         p.prepare (sampleRate, samplesPerBlock);
     std::fill (wasActiveLastBlock.begin(), wasActiveLastBlock.end(), false);
     std::fill (muteRampGain.begin(), muteRampGain.end(), 1.0f);
+    std::fill (sourceMuteRampGain.begin(), sourceMuteRampGain.end(), 1.0f);
 
     propagationScratch.setSize (1, samplesPerBlock);
 
@@ -186,11 +188,23 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         if (ramp < muteTarget)      ramp = juce::jmin (muteTarget, ramp + rampStep);
         else if (ramp > muteTarget) ramp = juce::jmax (muteTarget, ramp - rampStep);
 
-        // Only once the ramp has actually reached silence (not just close
-        // to it) do we skip propagation+encoding entirely for this object
-        // -- the actual performance win, rather than paying full cost
-        // every block just to encode silence while muted/soloed-out.
-        const bool audioProcessingActive = ! (effectivelyMuted && ramp <= 0.0f);
+        // GrainCloudSettings::sourceMuted: mutes just this object's own dry
+        // audio (this loop), never its grains (the separate loop below,
+        // which only ever looks at muted/soloed above) -- lets the grains
+        // be heard in isolation. Same ramped treatment, own ramp array so
+        // it can't affect the grain loop's muteRampGain read.
+        const bool sourceMuted = trajectoryEngine.getGrainCloud (objIdx).getSettings().sourceMuted;
+        const float sourceMuteTarget = sourceMuted ? 0.0f : 1.0f;
+        auto& sourceRamp = sourceMuteRampGain[(size_t) objIdx];
+        if (sourceRamp < sourceMuteTarget)      sourceRamp = juce::jmin (sourceMuteTarget, sourceRamp + rampStep);
+        else if (sourceRamp > sourceMuteTarget) sourceRamp = juce::jmax (sourceMuteTarget, sourceRamp - rampStep);
+
+        // Only once a ramp has actually reached silence (not just close to
+        // it) do we skip propagation+encoding entirely for this object --
+        // the actual performance win, rather than paying full cost every
+        // block just to encode silence while muted/soloed/source-muted-out.
+        const bool audioProcessingActive = ! (effectivelyMuted && ramp <= 0.0f)
+                                         && ! (sourceMuted && sourceRamp <= 0.0f);
 
         if (! audioProcessingActive)
         {
@@ -219,7 +233,7 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         encoder.encodeBlock (propagated,
                               numSamples,
                               azimuth, elevation, distance,
-                              obj.gain * directivityGain * ramp,
+                              obj.gain * directivityGain * ramp * sourceRamp,
                               buffer,
                               previousGainsPerObject[(size_t) objIdx]);
     }
@@ -249,7 +263,10 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         // for the parent object in the loop above (same block, same
         // smoothed fade), skipping this object's grains entirely once
         // that ramp has actually reached silence, same performance
-        // reasoning as the main-object loop above.
+        // reasoning as the main-object loop above. Deliberately NOT
+        // gated by GrainCloudSettings::sourceMuted (that one only silences
+        // the main-object loop's own dry-audio rendering above) -- so
+        // muting just the source still leaves these grains audible.
         const bool effectivelyMuted = MuteSoloLogic::isEffectivelyMuted (obj.muted, obj.soloed, anySoloed);
         const float muteRamp = muteRampGain[(size_t) objIdx];
         if (effectivelyMuted && muteRamp <= 0.0f)

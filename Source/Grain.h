@@ -105,6 +105,15 @@ struct GrainCloudSettings
 {
     bool enabled = false;
 
+    // Mutes the parent SoundObject's own dry/unGranulated audio while
+    // leaving its grains completely unaffected -- lets the grains be
+    // heard in isolation, independent of SoundObject::muted/soloed
+    // (which silence BOTH the source and its grains together, see
+    // MuteSoloLogic.h). Read directly from PluginProcessor::processBlock's
+    // main-object rendering pass only; the separate grain-rendering pass
+    // deliberately never looks at this field, only at muted/soloed.
+    bool sourceMuted = false;
+
     // --- Audio side ------------------------------------------------------
     float grainRate = 10.0f;                  // grains/sec spawned while enabled
     float grainDuration = 0.15f;              // seconds; also the grain's movement lifetime

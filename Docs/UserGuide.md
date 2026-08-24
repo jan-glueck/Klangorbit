@@ -49,8 +49,8 @@ your viewpoint, not the listener's.
   category, or the sling gesture below.
 - **Click empty space (no drag)** -- clear the current selection.
 
-Small, paler dots drifting around an object are its **grain cloud** (see
-section 7) -- optional granular-synthesis "sound dust", if enabled for
+Small, paler dots drifting around an object are its **grains** (see
+section 11) -- optional granular-synthesis "sound dust", if enabled for
 that object.
 
 ## 3. The object list (left sidebar)
@@ -236,7 +236,7 @@ direction genuinely affect the sound:
   affect its gain toward the listener, independent of its movement
   direction.
 
-## 11. Grain clouds (parameter panel -> Grain Cloud category)
+## 11. Grains (parameter panel -> Grains category)
 
 An optional granular-synthesis layer per object: instead of (or in
 addition to) hearing the object's own signal, it spawns many small,
@@ -244,6 +244,12 @@ independently-moving "grains" -- short, windowed bursts read from a
 rolling buffer of that object's live input, each with its own tiny
 trajectory. Turn it on with **Enabled**.
 
+- **Mute Original Audio** -- silences just this object's own dry/
+  unGranulated signal, leaving its grains completely untouched. Unlike
+  the object list's Mute button (which silences the object entirely,
+  grains included), this lets you isolate and listen to only the
+  grains on their own, independent of the underlying sound they're
+  generated from.
 - **Grain Rate / Grain Duration** -- how often grains spawn, and how
   long each one plays (also its movement lifetime).
 - **Pitch Jitter** -- random per-grain playback-rate deviation.
@@ -264,7 +270,7 @@ trajectory. Turn it on with **Enabled**.
     just that cloud).
 - **Jitter Target / Jitter Range** -- randomizes one movement parameter
   (relevant to the current Movement Mode) per spawned grain.
-- **Doppler** (grain cloud) -- optional, separate per-grain Doppler
+- **Doppler** (grains) -- optional, separate per-grain Doppler
   shift based on each grain's own velocity; when on, it's still scaled
   by the parent object's own Doppler Factor above.
 
@@ -272,7 +278,7 @@ trajectory. Turn it on with **Enabled**.
 
 **Load Preset...** / **Save Preset...** in the toolbar save/load the
 entire scene (every active object, its mode and all parameters, scene
-settings, grain clouds) as a `.json` file. Presets carry a schema
+settings, grains) as a `.json` file. Presets carry a schema
 version and are validated on load -- an incompatible or corrupted file
 is rejected with a clear error message instead of silently loading
 wrong.
@@ -302,8 +308,8 @@ wrong.
    recording, or design a scene ahead of time and save it as a preset.
 3. Start with 1-2 objects while getting a feel for the physics
    (damping, gravity, orbit) before scaling up -- CPU cost grows with
-   active objects and grain clouds.
-4. Watch the **CPU** readout in the toolbar if you enable many grain
-   clouds at once -- it's a real measured load, not an estimate, so
+   active objects and grains.
+4. Watch the **CPU** readout in the toolbar if you enable grains on
+   many objects at once -- it's a real measured load, not an estimate, so
    amber/red means audible dropouts are actually likely, not just
    theoretical.

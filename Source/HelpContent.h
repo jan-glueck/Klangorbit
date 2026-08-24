@@ -42,8 +42,8 @@ actual spatial audio.
   Double-click an object       quick demo: start/stop a circular orbit
   Click empty space (no drag)  clear selection
 
-Small pale dots drifting around an object are its optional grain cloud
-(section 7).
+Small pale dots drifting around an object are its optional grains
+(section 10).
 
 
 == 2. OBJECT LIST (left sidebar) ==
@@ -180,12 +180,18 @@ its position:
    Source Orientation      independent of movement direction
 
 
-== 10. GRAIN CLOUDS (panel -> Grain Cloud) ==
+== 10. GRAINS (panel -> Grains) ==
 
 Optional granular layer per object: spawns many small, independently
 moving "grains", short windowed bursts read from a rolling buffer of
 that object's live input. Turn on with Enabled.
 
+  Mute Original Audio           silences just this object's OWN dry
+                                  signal, leaving its grains untouched --
+                                  isolates the grains from the source
+                                  they're generated from. Independent of
+                                  the object list's Mute (which silences
+                                  both source and grains together).
   Grain Rate / Duration        how often grains spawn / how long each
                                  plays (also its movement lifetime)
   Pitch Jitter                   random per-grain playback-rate deviation
@@ -196,7 +202,7 @@ that object's live input. Turn on with Enabled.
                                   Orbit Around Parent / Attract-Repel
                                   Siblings (gravity within the cloud only)
   Jitter Target / Range          randomizes one movement parameter per grain
-  Doppler (grain cloud)          optional per-grain Doppler, still scaled
+  Doppler (grains)                optional per-grain Doppler, still scaled
                                   by the parent object's own Doppler Factor
 
 

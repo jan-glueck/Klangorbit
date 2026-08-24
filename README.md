@@ -462,8 +462,14 @@ purely random.
   depth beyond what's actually allocated.
 - **Single-shot grain model.** `grainDuration` is both the audio envelope
   length and the movement lifetime -- a grain is spawned, moves for that
-  duration while fading, and is done. `grainRate` controls how often new
-  grains spawn.
+  duration while fading, and is done. `grainRate` ("Spawn Rate" in the
+  UI) controls how often new grains spawn, deliberately independent of
+  `grainDuration` at the scheduling level (`GrainCloud::update()`'s
+  spawn-interval timer only ever reads `grainRate`) -- the one place they
+  interact is `maxConcurrentGrains`: sustaining `grainRate * grainDuration`
+  overlapping grains needs that cap raised to match, or new spawns stall
+  once it's hit (see `Source/Grain.h`'s `GrainCloudSettings` class
+  comment for the full explanation).
 - **Movement modes** (`Source/Grain.h`, `GrainMovementMode`): `RandomWalk`,
   `Bounce` (elastic reflection within `boundaryRadius` around the spawn
   position, `restitution`), `RadialExplosion` (`initialSpeed` +

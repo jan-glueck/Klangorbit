@@ -288,12 +288,21 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
     if (settings.enabled && settings.grainRate > 0.0f)
     {
         timeSinceLastSpawn += dtSeconds;
+        // grainRate alone determines this interval -- grainDuration never
+        // enters this calculation, so the two are independent by design
+        // (see GrainCloudSettings's own class comment).
         const double spawnInterval = 1.0 / (double) settings.grainRate;
 
         while (timeSinceLastSpawn >= spawnInterval)
         {
             if (globalGrainBudget <= 0 || getNumActiveGrains() >= settings.maxConcurrentGrains)
             {
+                // The one place grainDuration indirectly affects the
+                // EFFECTIVE spawn rate: a long-lived grain occupies a pool
+                // slot until it expires, so if grainRate*grainDuration
+                // exceeds maxConcurrentGrains, new spawns stall here until
+                // an old grain's grainDuration elapses -- see
+                // GrainCloudSettings's own comment for the full picture.
                 timeSinceLastSpawn = spawnInterval; // cap backlog, avoid a burst once capacity frees up
                 break;
             }

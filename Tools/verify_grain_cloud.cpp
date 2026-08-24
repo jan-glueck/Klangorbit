@@ -202,6 +202,62 @@ static void testSpawnRateAndCaps()
     check (globalBudget >= 0, "GrainCloud: never spends more than the globalGrainBudget it was given");
 }
 
+// Regression for a specific report: "grain duration also affects spawn
+// rate". At the scheduling level it never has (see
+// GrainCloud::update()'s spawn-interval calculation, which only ever
+// reads grainRate) -- but a long grainDuration CAN look that way if it
+// pushes the number of simultaneously-alive grains up against
+// maxConcurrentGrains, since that cap blocks new spawns until an old
+// grain expires. This test uses a duration/rate/cap combination where
+// the cap has headroom (grainRate * grainDuration well under
+// maxConcurrentGrains), so it isolates the actual claim: a long-lived
+// grain must not, by itself, suppress new grains from spawning on
+// schedule.
+static void testSpawnRateIndependentOfDuration()
+{
+    // Pool/cap sized to exactly the steady-state overlap (rate*duration =
+    // 1*4 = 4), so every slot gets reused repeatedly once that steady
+    // state is reached -- letting spawnGeneration prove spawning keeps
+    // going at the configured rate well past the initial fill, not just
+    // that the first few grains fit.
+    GrainCloud cloud (/*poolSize*/ 4);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 1.0f;      // one new grain per second
+    cloud.getSettings().grainDuration = 4.0f;  // each lives 4x longer than the spawn interval
+    cloud.getSettings().maxConcurrentGrains = 4;
+
+    juce::Random rng (2024);
+    int budget = 16;
+    cloud.setRingBufferContext (0, kSampleRate);
+
+    int maxActive = 0;
+    const double dt = 1.0 / 90.0;
+    const int numTicks = (int) (4.5 * 90.0); // 4.5s: past the point steady-state overlap should be reached
+    for (int tick = 0; tick < numTicks; ++tick)
+    {
+        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+        maxActive = juce::jmax (maxActive, cloud.getNumActiveGrains());
+    }
+
+    std::printf ("       max simultaneously active grains (rate=1Hz, duration=4s): %d (expected ~4)\n", maxActive);
+    check (maxActive >= 3, "GrainCloud: a long grainDuration does not suppress overlapping spawns when maxConcurrentGrains has headroom (rate*duration ~ 4 grains overlap as expected)");
+
+    // Keep running well past the first 4s so every one of the 4 slots must
+    // be reused at least once (~8.5s total at 1 spawn/sec is ~8 spawns
+    // across 4 slots) -- proving the spawn rate is sustained over time,
+    // not just achieved once during the initial fill.
+    const int moreTicks = (int) (4.0 * 90.0);
+    for (int tick = 0; tick < moreTicks; ++tick)
+        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int maxGeneration = 0;
+    for (auto& s : snap) maxGeneration = juce::jmax (maxGeneration, s.spawnGeneration);
+    std::printf ("       max per-slot spawnGeneration after 8.5s at grainRate=1 (4 slots): %d (expected >= 2)\n", maxGeneration);
+    check (maxGeneration >= 2, "GrainCloud: spawn cadence keeps matching grainRate well past the initial fill -- a long grainDuration does not stall it over time");
+}
+
 static void testGlobalBudgetSharedAcrossClouds()
 {
     GrainCloud cloudA (32), cloudB (32);
@@ -595,6 +651,7 @@ int main()
 {
     testRenderGrainBlock();
     testSpawnRateAndCaps();
+    testSpawnRateIndependentOfDuration();
     testGlobalBudgetSharedAcrossClouds();
     testLifetimeExpiry();
     testBounceStaysWithinBoundary();

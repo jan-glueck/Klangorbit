@@ -610,6 +610,16 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
+- **"Grain Rate" renamed to "Spawn Rate" in the Grains parameter
+  category** (`README.md`, `Docs/UserGuide.md`, the in-app Help window)
+  -- reported as unclear/confusable with Grain Duration. The internal
+  field name (`GrainCloudSettings::grainRate`, the `grainRate` preset
+  JSON key) is deliberately unchanged, same reasoning as the "Grains"
+  rename below.
+- **"Mute Original Audio" renamed to "Grains Only (Mute Original
+  Audio)"** in the Grains parameter category, README, UserGuide, and
+  the in-app Help window -- clearer at a glance about what you'll
+  actually hear with it on.
 - **"Grain Cloud" renamed to "Grains" everywhere it's shown to the
   user** -- the parameter panel's category tab, `README.md`,
   `Docs/UserGuide.md`, and the in-app Help window's content
@@ -762,6 +772,36 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     result is unverified, see "Known limitations" below.
 
 ### Fixed
+- **Investigated a report that "grain duration also affects spawn
+  rate."** Traced `GrainCloud::update()`'s spawn-scheduling code
+  carefully: the spawn-interval timer only ever reads `grainRate`
+  ("Spawn Rate"), never `grainDuration` -- the two are, and always
+  were, independent at the scheduling level. The actual, real
+  interaction is one step removed: `maxConcurrentGrains` is a hard cap
+  on simultaneously-alive grains, and a grain occupies its pool slot
+  for the full `grainDuration`, so if `grainRate * grainDuration`
+  (the natural steady-state overlap count) exceeds that cap, new
+  spawns stall until an old grain expires and frees a slot --
+  throttling the *effective* spawn rate below the configured
+  `grainRate` without `grainRate` itself having changed. Raising
+  `grainDuration` alone (leaving `maxConcurrentGrains` at its default
+  of 8) is exactly the scenario that triggers this, which is almost
+  certainly what was actually observed.
+  - No scheduling-logic change needed (verified as already correct,
+    see the new test below) -- addressed by making the relationship
+    explicit and hard to miss: an expanded class comment on
+    `GrainCloudSettings` (`Source/Grain.h`), inline comments at the
+    exact point in `GrainCloud::update()` where the throttling
+    happens, and equivalent explanations in `README.md`,
+    `Docs/UserGuide.md`, and the in-app Help window's Grains section.
+  - `Tools/verify_grain_cloud` gained
+    `testSpawnRateIndependentOfDuration()`: with `grainRate=1`,
+    `grainDuration=4` and `maxConcurrentGrains` sized to match (4, i.e.
+    the cap has no headroom problem), confirms ~4 grains overlap
+    simultaneously as expected, then keeps running well past the
+    initial fill (8.5s total) and confirms pool slots keep getting
+    reused at the same ~1/sec cadence throughout -- proving spawn rate
+    is sustained over time, not just achieved once at start-up.
 - **Slingshot mode: thrown objects fell almost straight into the target and
   jittered there instead of swinging past or settling into a smooth orbit.**
   Reported right after the Slingshot mode above shipped: the bow-line

@@ -186,18 +186,32 @@ Optional granular layer per object: spawns many small, independently
 moving "grains", short windowed bursts read from a rolling buffer of
 that object's live input. Turn on with Enabled.
 
-  Mute Original Audio           silences just this object's OWN dry
-                                  signal, leaving its grains untouched --
+  Grains Only                    silences just this object's OWN dry
+   (Mute Original Audio)          signal, leaving its grains untouched --
                                   isolates the grains from the source
                                   they're generated from. Independent of
                                   the object list's Mute (which silences
                                   both source and grains together).
-  Grain Rate / Duration        how often grains spawn / how long each
-                                 plays (also its movement lifetime)
+  Spawn Rate / Grain Duration    two INDEPENDENT controls: Spawn Rate is
+                                  how often a NEW grain starts, Duration
+                                  is how long EACH one then plays. Raising
+                                  Duration does not slow down Spawn Rate --
+                                  both together just means more grains
+                                  overlapping at once (audible whenever
+                                  Spawn Rate x Duration > 1). See Max
+                                  Concurrent Grains below for the one
+                                  real interaction between the two.
   Pitch Jitter                   random per-grain playback-rate deviation
   Position Jitter / Read Depth   how far back into recent audio a grain
    Min/Max/Distribution           reads from, and the depth distribution
-  Max Concurrent Grains          per-cloud cap (there's also a global cap)
+  Max Concurrent Grains          hard cap on simultaneously alive grains
+                                  (there's also a global cap across all
+                                  objects). If Spawn Rate x Duration
+                                  exceeds this, new grains stall until an
+                                  old one's Duration finishes -- raise
+                                  this alongside Duration for denser
+                                  overlap, or a long Duration can look
+                                  like it's throttling the Spawn Rate.
   Movement Mode                  Random Walk / Bounce / Radial Explosion /
                                   Orbit Around Parent / Attract-Repel
                                   Siblings (gravity within the cloud only)

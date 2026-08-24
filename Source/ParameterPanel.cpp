@@ -168,7 +168,7 @@ ParameterPanel::ParameterPanel()
     addCategoryButton ("Attraction", Category::Attraction);
     addCategoryButton ("Orbit", Category::Orbit);
     addCategoryButton ("Doppler", Category::Doppler);
-    addCategoryButton ("Grain Cloud", Category::GrainCloud);
+    addCategoryButton ("Grains", Category::GrainCloud);
 
     // --- Scene ------------------------------------------------------------
     addSceneFloatRow ("Room Size (0 = no boundary)", &SceneSettings::roomSize, 0.0, 50.0, 0.1, Category::Scene);
@@ -279,11 +279,21 @@ ParameterPanel::ParameterPanel()
 
     addObjectVec3Row ("Source Orientation", &SoundObject::sourceOrientation, -1.0, 1.0, 0.01, Category::Doppler);
 
-    // --- Grain Cloud ------------------------------------------------------
+    // --- Grains -------------------------------------------------------------
     grainEnabledRow = std::make_unique<ToggleRowComponent> ("Enabled");
     grainEnabledRow->onToggled = [this] (bool v) { if (editedGrainCloud != nullptr) editedGrainCloud->enabled = v; };
     content.addAndMakeVisible (*grainEnabledRow);
     addToLayout (*grainEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
+
+    // Mutes just this object's own dry audio (independent of the
+    // Mute/Solo buttons in the object list, which silence both source
+    // and grains together) -- lets the grains be heard on their own,
+    // isolated from the underlying signal they're granulated from. See
+    // GrainCloudSettings::sourceMuted's own comment.
+    grainSourceMutedRow = std::make_unique<ToggleRowComponent> ("Mute Original Audio");
+    grainSourceMutedRow->onToggled = [this] (bool v) { if (editedGrainCloud != nullptr) editedGrainCloud->sourceMuted = v; };
+    content.addAndMakeVisible (*grainSourceMutedRow);
+    addToLayout (*grainSourceMutedRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
 
     // Default off -- grains skip PropagationProcessor entirely for
     // performance, so this is a much cheaper, coarser approximation (see
@@ -570,6 +580,7 @@ void ParameterPanel::refreshFromModel()
         return;
 
     grainEnabledRow->setValueQuiet (editedGrainCloud->enabled);
+    grainSourceMutedRow->setValueQuiet (editedGrainCloud->sourceMuted);
     grainDopplerEnabledRow->setValueQuiet (editedGrainCloud->dopplerEnabled);
     for (auto& b : grainFloatRows)
         b.row->setValueQuiet (editedGrainCloud->*b.member);

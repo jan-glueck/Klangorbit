@@ -189,6 +189,7 @@ private:
     std::unique_ptr<ComboRowComponent> directivityRow;
 
     std::unique_ptr<ToggleRowComponent> grainEnabledRow;
+    std::unique_ptr<ToggleRowComponent> grainSourceMutedRow;
     std::unique_ptr<ToggleRowComponent> grainDopplerEnabledRow;
     std::unique_ptr<ComboRowComponent> grainWindowShapeRow;
     std::unique_ptr<ComboRowComponent> grainMovementModeRow;

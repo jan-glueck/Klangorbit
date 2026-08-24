@@ -124,6 +124,15 @@ private:
     std::vector<float> muteRampGain;
     static constexpr float muteRampSeconds = 0.02f; // a few ms, per the design brief -- short enough to feel instant, long enough to never click
 
+    // Same ramped-mute treatment as muteRampGain above, but driven by
+    // GrainCloudSettings::sourceMuted instead of SoundObject::muted --
+    // silences only the main-object rendering pass below (this object's
+    // own dry audio), never the separate grain-rendering pass, so the
+    // grains stay audible in isolation. Kept as its own ramp/array rather
+    // than folded into muteRampGain because that one is also read by the
+    // grain-rendering loop and must stay unaffected by this setting.
+    std::vector<float> sourceMuteRampGain;
+
     // Per-object propagation delay/Doppler/air-absorption state (see
     // PropagationProcessor). Applied to the mono source signal before
     // AmbisonicsEncoder::encodeBlock().

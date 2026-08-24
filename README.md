@@ -161,7 +161,7 @@ the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
   in sync the other way too -- clicking in the scene updates the list's
   own highlight. Only active objects are listed, matching what's actually
   visible/clickable in the scene; individual grains aren't listed (no
-  per-grain selection exists, see the Grain Cloud parameter category).
+  per-grain selection exists, see the Grains parameter category).
   Each row also has its own **M**(ute)/**S**(olo) buttons
   (`SoundObject::muted`/`soloed`) -- this is the ONLY place these two are
   exposed in the GUI, deliberately not duplicated as checkboxes in the
@@ -487,7 +487,7 @@ purely random.
   per-grain delay/air-absorption/directivity pass would be too expensive
   with dozens of concurrent grains.
 - **Optional per-grain Doppler** (`Source/GrainDoppler.h`, "Doppler" toggle
-  in the Grain Cloud parameter category, **off by default**): a much
+  in the Grains parameter category, **off by default**): a much
   cheaper approximation than `PropagationProcessor`'s delay-line-based
   Doppler -- a single classic-Doppler-formula pitch ratio computed once
   per grain per audio block from its control-rate position/velocity
@@ -518,7 +518,7 @@ purely random.
 - **GUI:** active grains render as small dots around their parent object in
   the scene view, in a paler variant of the parent's color, fading out
   with age (and now also with camera distance -- see "3D camera view"
-  above); a "Grain Cloud" category in the
+  above); a "Grains" category in the
   parameter panel exposes all cloud-level parameters (one parameter set per
   cloud, not per individual grain).
 - **Verification:** `Tools/verify_grain_cloud.cpp` exercises the exact

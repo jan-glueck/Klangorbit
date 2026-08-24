@@ -97,9 +97,27 @@ namespace GrainLimits
 
     A grain's audio envelope and its movement lifetime are the SAME
     duration (grainDuration): a grain is a single spawn-move-fade event,
-    not a persistent point that repeatedly re-triggers audio. grainRate is
-    how often NEW grains are spawned (classic granular-synthesis "density"
-    parameter); grains overlap when grainRate * grainDuration > 1.
+    not a persistent point that repeatedly re-triggers audio. grainRate
+    ("Spawn Rate" in the UI) is how often NEW grains are spawned (classic
+    granular-synthesis "density" parameter) -- deliberately independent of
+    grainDuration at the scheduling level (see GrainCloud::update(): the
+    spawn-interval timer only ever reads grainRate, never grainDuration),
+    so a long grainDuration does not, by itself, throttle how often new
+    grains start. Grains overlap whenever grainRate * grainDuration > 1
+    (that's the intended, expected way to get a dense/continuous texture,
+    not a side effect).
+
+    The one place these two DO interact: maxConcurrentGrains below is a
+    hard ceiling on how many of this cloud's grains may be alive at once.
+    Sustaining grainRate * grainDuration overlapping grains needs
+    maxConcurrentGrains to be at least that large -- once the ceiling is
+    hit, GrainCloud::update() stops honoring grainRate's spawn interval
+    until an existing grain's grainDuration elapses and frees a slot, so
+    raising grainDuration alone (without also raising maxConcurrentGrains
+    to match) throttles the EFFECTIVE spawn rate below the configured
+    grainRate. This is a deliberate CPU/pool-size safety cap, not a bug --
+    but it's the only real coupling between the two, so it's called out
+    here explicitly.
 */
 struct GrainCloudSettings
 {
@@ -115,11 +133,11 @@ struct GrainCloudSettings
     bool sourceMuted = false;
 
     // --- Audio side ------------------------------------------------------
-    float grainRate = 10.0f;                  // grains/sec spawned while enabled
+    float grainRate = 10.0f;                  // "Spawn Rate" in the UI; grains/sec spawned while enabled, independent of grainDuration -- see this struct's own comment
     float grainDuration = 0.15f;              // seconds; also the grain's movement lifetime
     float pitchJitter = 0.0f;                 // 0..1, max random +/- playback-rate deviation per grain
     float positionJitterInBuffer = 0.05f;     // seconds, random look-back offset into the ring buffer per grain
-    int maxConcurrentGrains = 8;              // per-cloud local cap (on top of the global cap, see PluginProcessor)
+    int maxConcurrentGrains = 8;              // per-cloud local cap (on top of the global cap, see PluginProcessor); must be >= grainRate*grainDuration to avoid throttling the spawn rate, see this struct's own comment
     GrainWindowShape windowShape = GrainWindowShape::Hann;
     // Per-grain Doppler pitch shift, based on each grain's own velocity
     // relative to the listener at the origin -- separate from and default

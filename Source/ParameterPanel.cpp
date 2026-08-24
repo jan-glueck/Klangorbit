@@ -290,7 +290,7 @@ ParameterPanel::ParameterPanel()
     // and grains together) -- lets the grains be heard on their own,
     // isolated from the underlying signal they're granulated from. See
     // GrainCloudSettings::sourceMuted's own comment.
-    grainSourceMutedRow = std::make_unique<ToggleRowComponent> ("Mute Original Audio");
+    grainSourceMutedRow = std::make_unique<ToggleRowComponent> ("Grains Only (Mute Original Audio)");
     grainSourceMutedRow->onToggled = [this] (bool v) { if (editedGrainCloud != nullptr) editedGrainCloud->sourceMuted = v; };
     content.addAndMakeVisible (*grainSourceMutedRow);
     addToLayout (*grainSourceMutedRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
@@ -309,7 +309,7 @@ ParameterPanel::ParameterPanel()
     // GrainLimits (Grain.h), the same constants the ring buffer is sized
     // from -- see there for why these three can't be extended
     // independently of the buffer without risking silent misbehavior.
-    addGrainFloatRow ("Grain Rate (grains/sec)", &GrainCloudSettings::grainRate, 0.1, GrainLimits::maxGrainRate, 0.1, Category::GrainCloud);
+    addGrainFloatRow ("Spawn Rate (grains/sec)", &GrainCloudSettings::grainRate, 0.1, GrainLimits::maxGrainRate, 0.1, Category::GrainCloud);
     addGrainFloatRow ("Grain Duration (s)", &GrainCloudSettings::grainDuration, 0.01, GrainLimits::maxGrainDuration, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Pitch Jitter", &GrainCloudSettings::pitchJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Position Jitter In Buffer (s)", &GrainCloudSettings::positionJitterInBuffer, 0.0, GrainLimits::maxPositionJitterInBuffer, 0.01, Category::GrainCloud);

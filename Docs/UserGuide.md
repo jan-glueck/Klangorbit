@@ -244,21 +244,34 @@ independently-moving "grains" -- short, windowed bursts read from a
 rolling buffer of that object's live input, each with its own tiny
 trajectory. Turn it on with **Enabled**.
 
-- **Mute Original Audio** -- silences just this object's own dry/
-  unGranulated signal, leaving its grains completely untouched. Unlike
-  the object list's Mute button (which silences the object entirely,
-  grains included), this lets you isolate and listen to only the
-  grains on their own, independent of the underlying sound they're
+- **Grains Only (Mute Original Audio)** -- silences just this object's
+  own dry/unGranulated signal, leaving its grains completely untouched.
+  Unlike the object list's Mute button (which silences the object
+  entirely, grains included), this lets you isolate and listen to only
+  the grains on their own, independent of the underlying sound they're
   generated from.
-- **Grain Rate / Grain Duration** -- how often grains spawn, and how
-  long each one plays (also its movement lifetime).
+- **Spawn Rate / Grain Duration** -- two independent controls, easy to
+  mix up but not the same thing: Spawn Rate (grains/sec) is how often
+  a *new* grain starts; Grain Duration (s) is how long *each* grain
+  plays (also its movement lifetime) once it has started. Raising
+  Duration does not, by itself, slow down Spawn Rate -- a high rate and
+  a long duration together mean MORE overlapping grains at once, not
+  fewer new ones. Grains audibly overlap into a denser, more continuous
+  texture whenever `Spawn Rate x Grain Duration > 1`.
 - **Pitch Jitter** -- random per-grain playback-rate deviation.
 - **Position Jitter In Buffer / Read Depth Min / Max / Distribution** --
   control how far back into the object's recent audio each grain reads
   from, and whether that's evenly spread, biased shallow (recent), or
   biased deep (older).
-- **Max Concurrent Grains** -- per-cloud cap (there's also a global cap
-  shared by all clouds, so total CPU cost stays bounded).
+- **Max Concurrent Grains** -- a hard cap on how many of this object's
+  grains may be alive simultaneously (there's also a global cap shared
+  by all objects' clouds, so total CPU cost stays bounded either way).
+  The one place Spawn Rate and Grain Duration genuinely interact: if
+  `Spawn Rate x Grain Duration` exceeds this cap, new grains stop
+  spawning on schedule until an existing one's Duration finishes and
+  frees up a slot -- so a long Duration can only look like it's
+  throttling the Spawn Rate when this cap is too low for the two
+  combined. Raise this alongside Duration if you want denser overlap.
 - **Movement Mode** -- how each grain moves during its short life:
   - *Random Walk* -- smoothed random drift.
   - *Bounce* -- elastic reflection inside a small sphere around its

@@ -271,7 +271,19 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
             if (obj.orbitRadiusReversionRate != 0.0f || obj.orbitRadiusNoiseAmplitude != 0.0f)
             {
                 const float reversion = obj.orbitRadiusReversionRate * (obj.orbitRadiusBaseline - obj.orbitRadius) * fdt;
-                const float noise = obj.orbitRadiusNoiseAmplitude * std::sqrt (fdt) * nextGaussian();
+
+                // Low-pass the raw Gaussian sample itself (one-pole,
+                // exp(-dt/tau)) before scaling it into the radius update --
+                // see SoundObject::orbitRadiusNoiseSmoothing's own comment.
+                // smoothing<=0 => coeff 0 => smoothed == raw every tick,
+                // exactly reproducing the pre-existing unsmoothed behavior.
+                const float rawNoise = nextGaussian();
+                const float smoothingCoeff = obj.orbitRadiusNoiseSmoothing > 0.0f
+                    ? std::exp (-fdt / obj.orbitRadiusNoiseSmoothing) : 0.0f;
+                obj.orbitRadiusNoiseSmoothed = smoothingCoeff * obj.orbitRadiusNoiseSmoothed
+                                                + (1.0f - smoothingCoeff) * rawNoise;
+
+                const float noise = obj.orbitRadiusNoiseAmplitude * std::sqrt (fdt) * obj.orbitRadiusNoiseSmoothed;
                 obj.orbitRadius = juce::jlimit (0.05f, 1000.0f, obj.orbitRadius + reversion + noise);
             }
 

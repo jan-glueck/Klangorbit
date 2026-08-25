@@ -152,6 +152,17 @@ struct SoundObject
     // sqrt(dt) in the update above -- keeps the noise's statistical
     // properties independent of the actual update rate).
     float orbitRadiusNoiseAmplitude = 0.0f;
+    // Time constant (seconds), low-pass-filters the raw per-tick Gaussian
+    // noise sample itself (one-pole, same exp(-dt/tau) idiom as
+    // PropagationProcessor's dopplerSmoothing) before it's scaled into the
+    // radius update below -- turns a jagged white-noise wander into a
+    // smoother, more "breathing" one. 0 (default) = no smoothing, i.e. the
+    // raw sample is used directly, identical to this field never having
+    // existed. See TrajectoryEngine::integrate()'s Orbit case.
+    float orbitRadiusNoiseSmoothing = 0.0f;
+    // Runtime state for the filter above (not a starting parameter --
+    // reset on preset load like orbitPhase/attractionPulsePhase).
+    float orbitRadiusNoiseSmoothed = 0.0f;
     // -1 = orbitCenter is a fixed point (previous behavior). Otherwise the
     // id of another SoundObject to orbit around (e.g. moon-around-planet
     // hierarchies).

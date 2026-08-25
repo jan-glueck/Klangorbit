@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdio>
+#include <vector>
 #include <juce_core/juce_core.h>
 #include "../Source/TrajectoryEngine.h"
 #include "../Source/SlingGesture.h"
@@ -430,6 +431,52 @@ int main()
         }
         check (maxDeviation < theoreticalStdDev * 8.0f,
                "combined reversion+noise stays statistically bounded near the baseline over a long run (not an unbounded drift)");
+    }
+    {
+        // orbitRadiusNoiseSmoothing: low-pass-filters the raw per-tick
+        // Gaussian sample itself, so consecutive tick-to-tick CHANGES in
+        // orbitRadius should shrink (the noise becomes correlated/slow-
+        // moving) even though the radius still wanders overall. Compares
+        // the std-dev of per-tick deltas with smoothing off vs. a
+        // substantial smoothing time constant, same noise amplitude and
+        // RNG-consuming step count for both (same seed via a fresh engine
+        // each, deterministic Box-Muller stream).
+        auto deltaStdDev = [&] (float smoothing) -> float
+        {
+            TrajectoryEngine engine (1);
+            engine.activateObject (0);
+            engine.startOrbit (0, center, 1.0f, 1.0f);
+            engine.getObject (0).orbitRadiusNoiseAmplitude = 1.0f;
+            engine.getObject (0).orbitRadiusNoiseSmoothing = smoothing;
+
+            std::vector<float> deltas;
+            float previous = engine.getObject (0).orbitRadius;
+            for (int i = 0; i < 2000; ++i)
+            {
+                engine.update (0.01);
+                const float r = engine.getObject (0).orbitRadius;
+                deltas.push_back (r - previous);
+                previous = r;
+            }
+
+            double mean = 0.0;
+            for (float d : deltas) mean += d;
+            mean /= (double) deltas.size();
+            double variance = 0.0;
+            for (float d : deltas) variance += (d - mean) * (d - mean);
+            variance /= (double) deltas.size();
+            return (float) std::sqrt (variance);
+        };
+
+        const float unsmoothedStdDev = deltaStdDev (0.0f);
+        const float smoothedStdDev = deltaStdDev (2.0f);
+
+        std::printf ("       per-tick orbitRadius delta stddev: smoothing=0 -> %.5f, smoothing=2.0 -> %.5f\n",
+                     unsmoothedStdDev, smoothedStdDev);
+        check (smoothedStdDev < unsmoothedStdDev,
+               "orbitRadiusNoiseSmoothing reduces tick-to-tick radius jumps (smoother wander) instead of leaving them raw");
+        check (smoothedStdDev > 0.0f,
+               "orbitRadiusNoiseSmoothing still lets the radius change at all (not frozen)");
     }
 
     std::printf ("\n%s (%d failures)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED", g_failures);

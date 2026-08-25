@@ -67,16 +67,16 @@ public:
     // are granulating. Enforced by the editor's timer via
     // GrainCloud::update()'s globalGrainBudget parameter.
     //
-    // Raised from 32 to 128: a rough operation-count estimate (order-3
-    // Ambisonics encode = 16 channels, block-rate spherical-harmonic
-    // coefficients + a cheap per-sample ramp, no per-sample trig) suggests
-    // 128 concurrent grains stays comfortably real-time-safe on any
-    // reasonably modern CPU -- but that is a back-of-envelope estimate,
-    // not a measurement on real hardware (not available in this
-    // environment). getEstimatedCpuLoad() below exists specifically so
-    // the user can verify this on their own machine instead of trusting
-    // the estimate blindly.
-    static constexpr int maxConcurrentGrainsGlobal = 128;
+    // Raised 32 -> 128 -> 256 over time: a rough operation-count estimate
+    // (order-3 Ambisonics encode = 16 channels, block-rate
+    // spherical-harmonic coefficients + a cheap per-sample ramp, no
+    // per-sample trig) suggests even 256 concurrent grains stays
+    // real-time-safe on any reasonably modern CPU -- but that is still a
+    // back-of-envelope estimate, not a measurement on real hardware (not
+    // available in this environment). getEstimatedCpuLoad() below exists
+    // specifically so the user can verify this on their own machine
+    // instead of trusting the estimate blindly.
+    static constexpr int maxConcurrentGrainsGlobal = 256;
 
     // Smoothed fraction of each block's available real-time budget
     // actually spent inside processBlock() (measured wall-clock time /

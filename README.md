@@ -495,6 +495,20 @@ purely random.
   `AttractRepelSiblings` (n-body force *within the same cloud only*,
   reusing `TrajectoryEngine::computeAttractionForce`'s softened
   inverse-square model; negative `attractionStrength` repels).
+  - **`orbitSphereSpread`** (`OrbitAroundParent` only, 0..1): blends each
+    grain's own orbit-plane normal from `{0,0,1}` (flat, the original
+    behavior -- every grain circles in the same horizontal plane) toward
+    a uniformly random unit vector (1 -- each grain's own plane is
+    essentially random), chosen once per grain at spawn
+    (`GrainCloud::spawnGrain()`, stored in `Grain::orbitPlaneNormal`) and
+    reused every tick after. `GrainCloud::orbitPlaneOffset()` builds an
+    orthonormal basis for whatever plane that normal defines (seeded
+    deliberately so `normal={0,0,1}` reproduces the exact original
+    `cos(phase), sin(phase), 0` formula, not just an equivalent
+    reparametrization) -- a strict generalization, zero behavior change
+    at the default. Over many grains and full rotations, higher spread
+    values sweep out a shape approaching a sphere instead of a flat
+    disc. See `Tools/verify_grain_cloud.cpp`'s `testOrbitSphereSpread`.
 - **Per-parameter jitter.** Each of `grainRate`, `grainDuration`,
   `boundaryRadius`, `initialSpeed`, and `orbitRadius` has its own
   dedicated `*Jitter` field (0..1, fractional +/- randomization applied
@@ -528,18 +542,18 @@ purely random.
   rate, no delay line and no per-sample cost. Uses the parent object's own
   `dopplerFactor` (Doppler parameter category) to scale strength, so it's
   one familiar knob, not a second one. Off by default because it's a real
-  (if small) added cost per grain per block, and at up to 128 concurrent
+  (if small) added cost per grain per block, and at up to 256 concurrent
   grains that adds up -- opt-in rather than silently changing existing
   grain-cloud sound.
 - **Global spawn budget.** `maxConcurrentGrains` caps each cloud
-  individually (up to 128, default raised 8 -> 32 -- comfortably covers
-  common `grainRate * grainDuration` combinations without needing voice
-  stealing at all); a further system-wide cap
-  (`KlangorbitProcessor::maxConcurrentGrainsGlobal`, currently 128,
+  individually (up to 256, default raised 8 -> 32 -> 256 over time --
+  comfortably covers common `grainRate * grainDuration` combinations
+  without needing voice stealing at all); a further system-wide cap
+  (`KlangorbitProcessor::maxConcurrentGrainsGlobal`, currently 256,
   raised from an initial 32) is shared across all clouds each control-rate
   tick, since every active grain costs a full Ambisonics encoding pass
   regardless of cloud. `grainDuration` (up to 5s) and `grainRate` (up to
-  500/sec) were extended alongside it. 128 is a rough operation-count
+  500/sec) were extended alongside it. 256 is a rough operation-count
   estimate for real-time safety, not a number profiled on real hardware in
   this environment -- the toolbar's **CPU meter** (top of the editor, next
   to the object count) shows the actual measured fraction of each audio

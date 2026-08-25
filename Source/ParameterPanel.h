@@ -147,6 +147,16 @@ private:
     void layoutContent(); // lays out only the currently visible rows within the viewport
     static bool categoryRequiresObject (Category category);
 
+    // Shows/hides orbitModeHintLabel: visible only while the Orbit category
+    // is showing AND the edited object's Mode isn't actually "Orbit" --
+    // every other control in that category is inert until Mode is set, a
+    // point of real confusion reported by a user who didn't realize the
+    // Mode dropdown (Object category) is the actual switch, not anything
+    // in the Orbit category itself. Called from selectCategory() (category
+    // switched), setEditedObject()/refreshFromModel() (selection/preset
+    // changed), and modeRow's onSelected (mode changed live).
+    void updateOrbitModeHintVisibility();
+
     juce::Viewport viewport;
     juce::Component content;
 
@@ -181,6 +191,7 @@ private:
     std::vector<GrainIntBinding> grainIntRows;
 
     juce::Label objectHeaderLabel;
+    juce::Label orbitModeHintLabel; // see updateOrbitModeHintVisibility()
     std::unique_ptr<ComboRowComponent> modeRow;
     std::unique_ptr<ComboRowComponent> boundaryRow;
     std::unique_ptr<ToggleRowComponent> showRoomBoundaryRow;

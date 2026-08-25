@@ -679,7 +679,7 @@ void KlangorbitEditor::paint (juce::Graphics& g)
         // see slingReferenceObjectId's comment (Tab cycles this while the
         // gesture is active). Shared by Orbit Shot and Slingshot's labels.
         const auto targetLabel = juce::String ("around ")
-            + (slingReferenceObjectId >= 0 ? ("Object " + juce::String (slingReferenceObjectId))
+            + (slingReferenceObjectId >= 0 ? ("Object " + juce::String (slingReferenceObjectId + 1)) // display 1-based; slingReferenceObjectId itself stays the real 0-based id
                                             : juce::String ("Center"));
 
         if (slingMode == SlingLaunchMode::OrbitShot)

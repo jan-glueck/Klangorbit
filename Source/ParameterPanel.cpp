@@ -221,6 +221,7 @@ ParameterPanel::ParameterPanel()
     {
         if (editedObject != nullptr)
             editedObject->mode = (SoundObject::Mode) index;
+        updateOrbitModeHintVisibility();
     };
     content.addAndMakeVisible (*modeRow);
     addToLayout (*modeRow, ComboRowComponent::preferredHeight, Category::Object);
@@ -242,6 +243,18 @@ ParameterPanel::ParameterPanel()
     addObjectFloatRow ("Pulse Depth", &SoundObject::attractionPulseDepth, 0.0, 1.0, 0.01, Category::Attraction);
 
     // --- Orbit ----------------------------------------------------------
+    // Every control below is inert until the object's own Mode (Object
+    // category) is actually set to "Orbit" -- TrajectoryEngine::integrate()
+    // only ever reads these fields in its Orbit case. orbitModeHintLabel
+    // makes that visible instead of silently doing nothing; see
+    // updateOrbitModeHintVisibility().
+    styleRowLabel (orbitModeHintLabel, "Set the Object's Mode to \"Orbit\" (Object category) "
+                                        "to start and edit an orbit -- these settings have no "
+                                        "effect otherwise.", 12.5f, UiColours::solo());
+    orbitModeHintLabel.setJustificationType (juce::Justification::topLeft);
+    content.addAndMakeVisible (orbitModeHintLabel);
+    addToLayout (orbitModeHintLabel, 48, Category::Orbit);
+
     addObjectVec3Row ("Orbit Center (fixed point)", &SoundObject::orbitCenter, -20.0, 20.0, 0.01, Category::Orbit);
     addObjectFloatRow ("Orbit Radius", &SoundObject::orbitRadius, 0.05, 10.0, 0.01, Category::Orbit);
     addObjectFloatRow ("Orbit Angular Speed (rad/s)", &SoundObject::orbitAngularSpeed, -10.0, 10.0, 0.01, Category::Orbit);
@@ -251,6 +264,12 @@ ParameterPanel::ParameterPanel()
     addObjectFloatRow ("Radius Baseline (mean-reverting)", &SoundObject::orbitRadiusBaseline, 0.05, 10.0, 0.01, Category::Orbit);
     addObjectFloatRow ("Radius Reversion Rate", &SoundObject::orbitRadiusReversionRate, 0.0, 5.0, 0.01, Category::Orbit);
     addObjectFloatRow ("Radius Noise Amplitude", &SoundObject::orbitRadiusNoiseAmplitude, 0.0, 5.0, 0.01, Category::Orbit);
+    // 0 = raw per-tick Gaussian samples (unchanged default behavior); higher
+    // low-pass-filters the noise source itself before it's scaled into the
+    // radius update, so the wander looks like a smooth, organic "breathing"
+    // instead of a jagged random walk. See TrajectoryEngine::integrate()'s
+    // Orbit case and SoundObject::orbitRadiusNoiseSmoothed.
+    addObjectFloatRow ("Radius Noise Smoothing (s)", &SoundObject::orbitRadiusNoiseSmoothing, 0.0, 5.0, 0.01, Category::Orbit);
 
     orbitRefRow = std::make_unique<ComboRowComponent> ("Orbit Reference Object");
     orbitRefRow->onSelected = [this] (int index)
@@ -290,7 +309,7 @@ ParameterPanel::ParameterPanel()
     // and grains together) -- lets the grains be heard on their own,
     // isolated from the underlying signal they're granulated from. See
     // GrainCloudSettings::sourceMuted's own comment.
-    grainSourceMutedRow = std::make_unique<ToggleRowComponent> ("Grains Only (Mute Original Audio)");
+    grainSourceMutedRow = std::make_unique<ToggleRowComponent> ("Isolate Grains");
     grainSourceMutedRow->onToggled = [this] (bool v) { if (editedGrainCloud != nullptr) editedGrainCloud->sourceMuted = v; };
     content.addAndMakeVisible (*grainSourceMutedRow);
     addToLayout (*grainSourceMutedRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
@@ -300,7 +319,7 @@ ParameterPanel::ParameterPanel()
     // GrainDoppler.h), opt-in rather than silently changing existing
     // grain-cloud sound. Uses the object's own "Doppler Factor" (Doppler
     // category) to scale strength, same as main-object Doppler.
-    grainDopplerEnabledRow = std::make_unique<ToggleRowComponent> ("Doppler (uses object's Doppler Factor)");
+    grainDopplerEnabledRow = std::make_unique<ToggleRowComponent> ("Doppler");
     grainDopplerEnabledRow->onToggled = [this] (bool v) { if (editedGrainCloud != nullptr) editedGrainCloud->dopplerEnabled = v; };
     content.addAndMakeVisible (*grainDopplerEnabledRow);
     addToLayout (*grainDopplerEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
@@ -336,7 +355,7 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*grainReadDepthDistributionRow);
     addToLayout (*grainReadDepthDistributionRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
 
-    addGrainIntRow ("Max Concurrent Grains (this cloud)", &GrainCloudSettings::maxConcurrentGrains, 1.0, 128.0, Category::GrainCloud);
+    addGrainIntRow ("Max Concurrent Grains (this cloud)", &GrainCloudSettings::maxConcurrentGrains, 1.0, 256.0, Category::GrainCloud);
 
     grainWindowShapeRow = std::make_unique<ComboRowComponent> ("Window Shape");
     grainWindowShapeRow->combo.addItem ("Hann", 1);
@@ -372,6 +391,10 @@ ParameterPanel::ParameterPanel()
     addGrainFloatRow ("Orbit Radius (m, OrbitAroundParent)", &GrainCloudSettings::orbitRadius, 0.05, 5.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Orbit Radius Jitter (OrbitAroundParent)", &GrainCloudSettings::orbitRadiusJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Orbit Angular Speed (rad/s)", &GrainCloudSettings::orbitAngularSpeed, -10.0, 10.0, 0.01, Category::GrainCloud);
+    // 0 = flat, all grains circle in the same horizontal plane (original
+    // behavior); 1 = each grain's own orbit plane is essentially random,
+    // so over many grains/rotations the swept shape approaches a sphere.
+    addGrainFloatRow ("Orbit Sphere Spread (2D -> 3D)", &GrainCloudSettings::orbitSphereSpread, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Attraction Strength (Siblings)", &GrainCloudSettings::attractionStrength, -10.0, 10.0, 0.01, Category::GrainCloud);
 
     updateCategoryButtonsEnabled();
@@ -486,7 +509,11 @@ void ParameterPanel::rebuildOrbitReferenceItems (int numObjects, int selfId)
     combo.clear (juce::dontSendNotification);
     combo.addItem ("Fixed (orbit center)", 1);
     for (int i = 0; i < numObjects; ++i)
-        combo.addItem ("Object " + juce::String (i) + (i == selfId ? " (itself -- ignored)" : ""), i + 2);
+        // Displayed 1-based (i+1) -- purely cosmetic; the item ID (i+2,
+        // decoded back to the real 0-based orbitReferenceObjectId in
+        // onSelected above) and selfId comparison both stay on the actual
+        // 0-based index i.
+        combo.addItem ("Object " + juce::String (i + 1) + (i == selfId ? " (itself -- ignored)" : ""), i + 2);
 }
 
 void ParameterPanel::updateCategoryButtonsEnabled()
@@ -506,8 +533,20 @@ void ParameterPanel::selectCategory (Category category)
     for (auto& cb : categoryButtons)
         cb.button->setToggleState (cb.category == category, juce::dontSendNotification);
 
+    // Overrides the generic category-visibility pass above for this one
+    // row specifically -- visible only while ALSO not in Orbit mode, not
+    // just whenever the Orbit category happens to be showing.
+    updateOrbitModeHintVisibility();
+
     viewport.setViewPosition (0, 0);
     layoutContent();
+}
+
+void ParameterPanel::updateOrbitModeHintVisibility()
+{
+    orbitModeHintLabel.setVisible (currentCategory == Category::Orbit
+                                    && editedObject != nullptr
+                                    && editedObject->mode != SoundObject::Mode::Orbit);
 }
 
 void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects)
@@ -523,14 +562,15 @@ void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader
         // longer exists.
         if (categoryRequiresObject (currentCategory))
             selectCategory (Category::Scene);
+        updateOrbitModeHintVisibility();
         return;
     }
 
-    objectHeaderLabel.setText ("Object " + juce::String (objectIndexForHeader), juce::dontSendNotification);
+    objectHeaderLabel.setText ("Object " + juce::String (objectIndexForHeader + 1), juce::dontSendNotification);
     updateCategoryButtonsEnabled();
 
     rebuildOrbitReferenceItems (numObjects, obj->id);
-    refreshFromModel();
+    refreshFromModel(); // also updates orbitModeHintLabel's visibility
 }
 
 void ParameterPanel::setEditedGrainCloud (GrainCloudSettings* settings)
@@ -564,6 +604,7 @@ void ParameterPanel::refreshFromModel()
     modeRow->combo.setSelectedItemIndex ((int) editedObject->mode, juce::dontSendNotification);
     orbitRefRow->combo.setSelectedItemIndex (editedObject->orbitReferenceObjectId + 1, juce::dontSendNotification);
     directivityRow->combo.setSelectedItemIndex ((int) editedObject->directivityPattern, juce::dontSendNotification);
+    updateOrbitModeHintVisibility(); // Mode may have changed (e.g. a preset load) without going through setEditedObject()
 
     if (editedGrainCloud == nullptr)
         return;

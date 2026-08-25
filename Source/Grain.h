@@ -153,11 +153,13 @@ struct GrainCloudSettings
     float pitchJitter = 0.0f;                 // 0..1, max random +/- playback-rate deviation per grain
     float positionJitterInBuffer = 0.05f;     // seconds, random look-back offset into the ring buffer per grain
     // Per-cloud local cap (on top of the global cap, see PluginProcessor).
-    // Raised from an initial default of 8 -- comfortably covers common
-    // grainRate*grainDuration combinations without needing voice stealing
-    // (see this struct's own comment) at all; still far under the global
-    // cap (128) shared across every object's cloud.
-    int maxConcurrentGrains = 32;
+    // Raised over time from an initial default of 8 -- comfortably covers
+    // common grainRate*grainDuration combinations without needing voice
+    // stealing (see this struct's own comment) at all; matches the global
+    // cap (256, PluginProcessor::maxConcurrentGrainsGlobal) shared across
+    // every object's cloud, so a single object granulating alone can use
+    // the whole budget if nothing else is competing for it.
+    int maxConcurrentGrains = 256;
     GrainWindowShape windowShape = GrainWindowShape::Hann;
     // Per-grain Doppler pitch shift, based on each grain's own velocity
     // relative to the listener at the origin -- separate from and default
@@ -198,6 +200,18 @@ struct GrainCloudSettings
     float orbitRadius = 0.5f;                 // m, OrbitAroundParent
     float orbitRadiusJitter = 0.0f;           // 0..1, +/- randomization of orbitRadius at spawn time (OrbitAroundParent)
     float orbitAngularSpeed = 2.0f;           // rad/s, OrbitAroundParent
+    // 0..1, OrbitAroundParent: blends each grain's own orbit PLANE
+    // orientation from flat (0 -- every grain circles in the same
+    // horizontal x/y plane, the original/default behavior) toward a
+    // uniformly random direction (1 -- each grain's plane is oriented
+    // essentially at random, so over many grains and full rotations the
+    // swept shape approaches a sphere instead of a flat disc). Picked
+    // once per grain at spawn time (GrainCloud::spawnGrain(), stored in
+    // Grain::orbitPlaneNormal), not re-randomized per tick -- a given
+    // grain keeps circling in its own fixed plane for its whole life,
+    // same "decided once, fixed for this grain's life" treatment as
+    // RadialExplosion's explosionDirection.
+    float orbitSphereSpread = 0.0f;
 
     float attractionStrength = 1.0f;          // AttractRepelSiblings, negative = repel
 };
@@ -233,6 +247,10 @@ struct Grain
     // current movementMode are meaningful for a given grain.
     float orbitPhase = 0.0f;                        // OrbitAroundParent
     float currentOrbitRadius = 0.0f;                // OrbitAroundParent, jittered at spawn
+    // OrbitAroundParent: normal of the plane this grain circles in, fixed
+    // at spawn (see GrainCloudSettings::orbitSphereSpread). {0,0,1}
+    // reproduces the original flat x/y-plane orbit exactly.
+    Vec3 orbitPlaneNormal { 0.0f, 0.0f, 1.0f };
     Vec3 boundaryCenter { 0.0f, 0.0f, 0.0f };        // Bounce, fixed at spawn position
     float currentBoundaryRadius = 0.0f;             // Bounce, jittered at spawn
     Vec3 explosionDirection { 1.0f, 0.0f, 0.0f };    // RadialExplosion, fixed at spawn

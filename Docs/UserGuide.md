@@ -55,8 +55,8 @@ that object.
 
 ## 3. The object list (left sidebar)
 
-Every active object gets a row: **Object N**, plus an **M** (Mute) and
-**S** (Solo) button.
+Every active object gets a row: **Object N** (numbered from 1), plus an
+**M** (Mute) and **S** (Solo) button.
 
 - Click a row to select that object, same as clicking it in the 3D view
   -- useful when an object is small, fast, or off-screen.
@@ -130,6 +130,12 @@ A label near the cursor shows the current mode and target while you aim.
 
 ## 6. Orbit parameters (parameter panel -> Orbit category)
 
+**Every control in this category only has an effect once the object's own
+Mode is actually set to "Orbit"** (Object category -> Mode dropdown, or
+double-click the object in the scene for a quick demo orbit). If Mode is
+anything else, the panel shows a reminder of this directly in the Orbit
+category instead of silently doing nothing.
+
 For any object in Orbit mode, the parameter panel exposes:
 
 - **Orbit Center (fixed point)** -- the point it orbits, if no reference
@@ -148,6 +154,11 @@ For any object in Orbit mode, the parameter panel exposes:
   an alternative to Decay: a "living, breathing" orbit whose radius
   randomly wanders but keeps drifting back toward Baseline, instead of
   drifting away forever. Both 0 by default (off).
+- **Radius Noise Smoothing (s)** -- 0 (default) leaves the random
+  wander raw/jagged, exactly as Radius Noise Amplitude alone produces
+  it. Raising this low-pass-filters the noise itself, turning a jittery
+  wander into a smoother, more organic "breathing" motion -- higher
+  values feel slower and gentler.
 
 ## 7. Object physics parameters (parameter panel -> Object category)
 
@@ -244,12 +255,12 @@ independently-moving "grains" -- short, windowed bursts read from a
 rolling buffer of that object's live input, each with its own tiny
 trajectory. Turn it on with **Enabled**.
 
-- **Grains Only (Mute Original Audio)** -- silences just this object's
-  own dry/unGranulated signal, leaving its grains completely untouched.
-  Unlike the object list's Mute button (which silences the object
-  entirely, grains included), this lets you isolate and listen to only
-  the grains on their own, independent of the underlying sound they're
-  generated from.
+- **Isolate Grains** -- silences just this object's own dry/unGranulated
+  signal, leaving its grains completely untouched. Unlike the object
+  list's Mute button (which silences the object entirely, grains
+  included), this lets you isolate and listen to only the grains on
+  their own, independent of the underlying sound they're generated
+  from.
 - **Grain Rate (Spawn Rate) / Grain Duration** -- two independent
   controls, easy to mix up but not the same thing: Grain Rate
   (grains/sec) is how often a *new* grain starts; Grain Duration (s) is
@@ -270,8 +281,8 @@ trajectory. Turn it on with **Enabled**.
 - **Max Concurrent Grains** -- a hard cap on how many of this object's
   grains may be alive simultaneously (there's also a global cap shared
   by all objects' clouds, so total CPU cost stays bounded either way;
-  default raised to 32, comfortably covering common Rate/Duration
-  combinations). If `Grain Rate x Grain Duration` exceeds this cap,
+  default 256, comfortably covering common Rate/Duration combinations).
+  If `Grain Rate x Grain Duration` exceeds this cap,
   Klangorbit doesn't stall new spawns waiting for room -- it fades out
   the OLDEST currently-playing grain a little early (a quick, click-free
   10ms fade) and reuses its slot immediately, so new grains keep
@@ -288,13 +299,22 @@ trajectory. Turn it on with **Enabled**.
   - *Radial Explosion* -- flies outward from the parent at spawn time
     (**Initial Speed Jitter** varies the launch speed).
   - *Orbit Around Parent* -- circles the parent's current position
-    (**Orbit Radius Jitter** varies the orbit's size).
+    (**Orbit Radius Jitter** varies the orbit's size). **Orbit Sphere
+    Spread** (0..1) reshapes the orbit itself: 0 (default) keeps every
+    grain circling in the same flat horizontal plane, exactly like a
+    classic 2D orbit; raising it toward 1 tilts each grain's own orbit
+    plane by an increasingly random amount (picked once per grain at
+    spawn), so over many grains and full rotations the swept-out shape
+    grows from a flat disc into something approaching a full sphere
+    around the object. In between gives a partial tilt/wobble.
   - *Attract/Repel Siblings* -- grains in the same cloud pull or push
     each other (gravity-like, same force law as section 8, scoped to
     just that cloud).
-- **Doppler** (grains) -- optional, separate per-grain Doppler
-  shift based on each grain's own velocity; when on, it's still scaled
-  by the parent object's own Doppler Factor above.
+- **Doppler** -- optional, separate per-grain Doppler shift based on
+  each grain's own velocity; when on, it's still scaled by the parent
+  object's own Doppler Factor (Doppler category). Each grain has its
+  own position/velocity, so the actual pitch shift is genuinely
+  different per grain even though they share that one strength knob.
 
 ## 12. Presets
 

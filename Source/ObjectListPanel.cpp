@@ -27,7 +27,10 @@ void ObjectListPanel::refresh (TrajectoryEngine& engineIn)
         Row row;
         row.objectIndex = i;
 
-        row.selectButton = std::make_unique<juce::TextButton> ("Object " + juce::String (i));
+        // Displayed 1-based (i+1) -- purely cosmetic, i itself (the actual
+        // 0-based object/array index used everywhere internally, including
+        // onObjectSelected below) is completely unaffected.
+        row.selectButton = std::make_unique<juce::TextButton> ("Object " + juce::String (i + 1));
         row.selectButton->setClickingTogglesState (false); // toggle state reflects selection, driven by updateRowColours(), not by clicking itself
         row.selectButton->setColour (juce::TextButton::buttonColourId, UiColours::bgRaised());
         row.selectButton->setColour (juce::TextButton::buttonOnColourId, UiColours::accentDim());

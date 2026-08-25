@@ -627,6 +627,79 @@ static void testOrbitTracksMovingParent()
     check (std::abs (distFromMovedParent - 0.75f) < 0.05f, "GrainCloud: OrbitAroundParent tracks the parent's CURRENT (moved) position");
 }
 
+static void testOrbitSphereSpread()
+{
+    // orbitSphereSpread=0 (default) must reproduce the original flat
+    // x/y-plane orbit exactly -- z stays 0 for every grain, every tick.
+    {
+        GrainCloud cloud (8);
+        cloud.getSettings().enabled = true;
+        cloud.getSettings().grainRate = 50.0f;
+        cloud.getSettings().grainDuration = 2.0f;
+        cloud.getSettings().movementMode = GrainMovementMode::OrbitAroundParent;
+        cloud.getSettings().orbitRadius = 1.0f;
+        cloud.getSettings().orbitAngularSpeed = 1.0f;
+        cloud.getSettings().orbitSphereSpread = 0.0f;
+        cloud.getSettings().maxConcurrentGrains = 8;
+
+        juce::Random rng (55);
+        int budget = 64;
+        cloud.setRingBufferContext (0, kSampleRate);
+
+        bool allFlat = true;
+        for (int tick = 0; tick < 90; ++tick)
+        {
+            cloud.update (1.0 / 90.0, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+            std::vector<GrainCloud::Snapshot> snap;
+            cloud.getSnapshot (snap);
+            for (auto& s : snap)
+                if (s.active && std::abs (s.position.z) > 1.0e-4f)
+                    allFlat = false;
+        }
+        check (allFlat, "GrainCloud: orbitSphereSpread=0 reproduces the original flat x/y-plane orbit exactly (z stays 0)");
+    }
+
+    // orbitSphereSpread=1 -- grains should show real out-of-plane (z)
+    // movement across many spawns, while the orbit RADIUS itself (just
+    // the plane's orientation is randomized, not the size) stays intact.
+    {
+        GrainCloud cloud (16);
+        cloud.getSettings().enabled = true;
+        cloud.getSettings().grainRate = 50.0f;
+        cloud.getSettings().grainDuration = 2.0f;
+        cloud.getSettings().movementMode = GrainMovementMode::OrbitAroundParent;
+        cloud.getSettings().orbitRadius = 1.0f;
+        cloud.getSettings().orbitAngularSpeed = 1.0f;
+        cloud.getSettings().orbitSphereSpread = 1.0f;
+        cloud.getSettings().maxConcurrentGrains = 16;
+
+        juce::Random rng (56);
+        int budget = 128;
+        cloud.setRingBufferContext (0, kSampleRate);
+
+        float maxAbsZ = 0.0f;
+        for (int tick = 0; tick < 90; ++tick)
+        {
+            cloud.update (1.0 / 90.0, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+            std::vector<GrainCloud::Snapshot> snap;
+            cloud.getSnapshot (snap);
+            for (auto& s : snap)
+                if (s.active)
+                    maxAbsZ = juce::jmax (maxAbsZ, std::abs (s.position.z));
+        }
+        std::printf ("       max |z| observed with orbitSphereSpread=1.0 (orbitRadius=1.0): %.3f\n", maxAbsZ);
+        check (maxAbsZ > 0.2f, "GrainCloud: orbitSphereSpread=1.0 produces grains with real out-of-plane (z) movement");
+
+        std::vector<GrainCloud::Snapshot> finalSnap;
+        cloud.getSnapshot (finalSnap);
+        bool allNearRadius = true;
+        for (auto& s : finalSnap)
+            if (s.active && std::abs (s.position.length() - 1.0f) > 0.05f)
+                allNearRadius = false;
+        check (allNearRadius, "GrainCloud: orbitSphereSpread changes the orbit plane's orientation only, not its radius");
+    }
+}
+
 static void testAttractRepelSiblings()
 {
     auto runWithStrength = [] (float strength) -> float
@@ -859,6 +932,7 @@ int main()
     testBounceStaysWithinBoundary();
     testRadialExplosionMovesOutward();
     testOrbitTracksMovingParent();
+    testOrbitSphereSpread();
     testAttractRepelSiblings();
     testGrainDoppler();
     testReadDepthRangeDisabledByDefault();

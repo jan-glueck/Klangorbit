@@ -48,7 +48,8 @@ Small pale dots drifting around an object are its optional grains
 
 == 2. OBJECT LIST (left sidebar) ==
 
-One row per active object: "Object N" plus M (Mute) and S (Solo).
+One row per active object: "Object N" (numbered from 1) plus M (Mute)
+and S (Solo).
 
   - Click a row to select that object, same as clicking it in 3D.
   - Mute always wins: a muted object stays silent even if soloed.
@@ -109,6 +110,10 @@ A label near the cursor shows the current mode/target while aiming.
 
 == 5. ORBIT PARAMETERS (panel -> Orbit) ==
 
+EVERY control below only has an effect once the object's own Mode
+(Object category) is actually set to "Orbit" -- otherwise it's shown
+right in the panel as a reminder instead of silently doing nothing.
+
   Orbit Center (fixed point)    point orbited if no reference object
   Orbit Reference Object        orbit another object's LIVE position
                                   instead ("Fixed" = use the point above)
@@ -119,6 +124,9 @@ A label near the cursor shows the current mode/target while aiming.
   Radius Baseline/Reversion     ALTERNATIVE to Decay: radius randomly
    Rate/Noise Amplitude          wanders but keeps drifting back to
                                   Baseline, instead of drifting away
+  Radius Noise Smoothing (s)    0 = raw/jagged wander (default); higher
+                                  low-pass-filters the noise itself for
+                                  a smoother, more "breathing" motion
 
 
 == 6. OBJECT PHYSICS (panel -> Object) ==
@@ -186,8 +194,8 @@ Optional granular layer per object: spawns many small, independently
 moving "grains", short windowed bursts read from a rolling buffer of
 that object's live input. Turn on with Enabled.
 
-  Grains Only                    silences just this object's OWN dry
-   (Mute Original Audio)          signal, leaving its grains untouched --
+  Isolate Grains                 silences just this object's OWN dry
+                                  signal, leaving its grains untouched --
                                   isolates the grains from the source
                                   they're generated from. Independent of
                                   the object list's Mute (which silences
@@ -205,7 +213,7 @@ that object's live input. Turn on with Enabled.
    Min/Max/Distribution           reads from, and the depth distribution
   Max Concurrent Grains          hard cap on simultaneously alive grains
                                   (there's also a global cap across all
-                                  objects; default 32). If Grain Rate x
+                                  objects; default 256). If Grain Rate x
                                   Duration exceeds this, new grains don't
                                   stall -- the OLDEST active grain gets a
                                   quick (10ms) fade-out and its slot is
@@ -221,9 +229,19 @@ that object's live input. Turn on with Enabled.
                                   Jitter slider under their size/speed
                                   parameter (Boundary Radius, Initial
                                   Speed, Orbit Radius) -- all usable at
-                                  once, not mutually exclusive.
-  Doppler (grains)                optional per-grain Doppler, still scaled
-                                  by the parent object's own Doppler Factor
+                                  once, not mutually exclusive. Orbit
+                                  Around Parent also has Orbit Sphere
+                                  Spread (0..1): 0 = flat, every grain
+                                  circles in the same horizontal plane
+                                  (default); 1 = each grain's own orbit
+                                  plane is essentially random, so over
+                                  many grains/rotations the shape
+                                  approaches a sphere instead of a disc.
+  Doppler                        optional per-grain Doppler, still scaled
+                                  by the parent object's own Doppler
+                                  Factor -- but each grain has its own
+                                  position/velocity, so the actual pitch
+                                  shift genuinely differs per grain.
 
 
 == 11. PRESETS ==

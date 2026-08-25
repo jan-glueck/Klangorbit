@@ -247,6 +247,7 @@ namespace
         obj->setProperty ("orbitRadius", (double) s.orbitRadius);
         obj->setProperty ("orbitRadiusJitter", (double) s.orbitRadiusJitter);
         obj->setProperty ("orbitAngularSpeed", (double) s.orbitAngularSpeed);
+        obj->setProperty ("orbitSphereSpread", (double) s.orbitSphereSpread);
         obj->setProperty ("attractionStrength", (double) s.attractionStrength);
         obj->setProperty ("grainReadDepthRangeMin", (double) s.grainReadDepthRangeMin);
         obj->setProperty ("grainReadDepthRangeMax", (double) s.grainReadDepthRangeMax);
@@ -303,6 +304,7 @@ namespace
         out.orbitRadius          = (float) gcVar.getProperty ("orbitRadius", (double) out.orbitRadius);
         out.orbitRadiusJitter    = (float) gcVar.getProperty ("orbitRadiusJitter", (double) out.orbitRadiusJitter);
         out.orbitAngularSpeed   = (float) gcVar.getProperty ("orbitAngularSpeed", (double) out.orbitAngularSpeed);
+        out.orbitSphereSpread   = (float) gcVar.getProperty ("orbitSphereSpread", (double) out.orbitSphereSpread);
         out.attractionStrength  = (float) gcVar.getProperty ("attractionStrength", (double) out.attractionStrength);
 
         // LEGACY: presets saved before dedicated per-parameter jitter
@@ -407,6 +409,7 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         objVar->setProperty ("orbitRadiusBaseline", (double) obj.orbitRadiusBaseline);
         objVar->setProperty ("orbitRadiusReversionRate", (double) obj.orbitRadiusReversionRate);
         objVar->setProperty ("orbitRadiusNoiseAmplitude", (double) obj.orbitRadiusNoiseAmplitude);
+        objVar->setProperty ("orbitRadiusNoiseSmoothing", (double) obj.orbitRadiusNoiseSmoothing);
         objVar->setProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
         // Acoustic propagation (optional, see SoundObject.h)
@@ -525,6 +528,7 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         obj.orbitRadiusBaseline         = (float) element.getProperty ("orbitRadiusBaseline", (double) obj.orbitRadiusBaseline);
         obj.orbitRadiusReversionRate    = (float) element.getProperty ("orbitRadiusReversionRate", (double) obj.orbitRadiusReversionRate);
         obj.orbitRadiusNoiseAmplitude   = (float) element.getProperty ("orbitRadiusNoiseAmplitude", (double) obj.orbitRadiusNoiseAmplitude);
+        obj.orbitRadiusNoiseSmoothing   = (float) element.getProperty ("orbitRadiusNoiseSmoothing", (double) obj.orbitRadiusNoiseSmoothing);
         obj.orbitReferenceObjectId = (int) element.getProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
         // Acoustic propagation (optional, default from SoundObject{})
@@ -549,6 +553,7 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         // reset cleanly, so a freshly loaded orbit/pulse object doesn't
         // keep running with the phase/velocity of a previous state.
         obj.orbitPhase = 0.0f;
+        obj.orbitRadiusNoiseSmoothed = 0.0f;
         obj.attractionPulsePhase = 0.0f;
         obj.velocity = {};
         obj.slingshotTargetId = -1;

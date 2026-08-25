@@ -99,6 +99,7 @@ defaults for everything new.
       "orbitRadiusBaseline": 1.0,             // target value the mean-reverting radius wanders around (see below)
       "orbitRadiusReversionRate": 0.0,        // 0 = disabled; how strongly the radius is pulled back toward the baseline
       "orbitRadiusNoiseAmplitude": 0.0,       // 0 = disabled; random perturbation strength (Ornstein-Uhlenbeck process, m/sqrt(s))
+      "orbitRadiusNoiseSmoothing": 0.0,       // seconds, 0 = disabled (raw per-tick noise, unchanged behavior); low-pass-filters the noise source itself for a smoother "breathing" wander instead of a jagged one
       "orbitReferenceObjectId": -1,   // -1 = orbitCenter (fixed point), otherwise the id of another object
 
       // Acoustic propagation (Doppler, directivity -- see PropagationProcessor)
@@ -120,7 +121,7 @@ defaults for everything new.
       // pitch ratio instead).
       "grainCloud": {
         "enabled": false,
-        "sourceMuted": false,          // mutes just this object's own dry signal, leaving its grains untouched ("Grains Only" in the UI) -- independent of the object's own muted/soloed
+        "sourceMuted": false,          // mutes just this object's own dry signal, leaving its grains untouched ("Isolate Grains" in the UI) -- independent of the object's own muted/soloed
         "dopplerEnabled": false,       // per-grain Doppler pitch shift, off by default (see above); uses this object's own dopplerFactor to scale strength
         "grainRate": 10.0,             // grains/sec, spawn rate while enabled ("Grain Rate (Spawn Rate)" in the UI) -- independent of grainDuration at the scheduling level, see Source/Grain.h::GrainCloudSettings
         "grainRateJitter": 0.0,        // 0..1, random +/- variation of the spawn INTERVAL per spawn (not a per-grain property)
@@ -128,7 +129,7 @@ defaults for everything new.
         "grainDurationJitter": 0.0,    // 0..1, random +/- variation of grainDuration per spawned grain
         "pitchJitter": 0.0,            // 0..1, random per-grain playback-rate variation
         "positionJitterInBuffer": 0.05,// 0..1 fraction of the ring buffer, randomizes the read start position
-        "maxConcurrentGrains": 32,     // per-cloud cap; the effective cap is also limited by a global budget shared across all clouds (see Source/PluginProcessor.h::maxConcurrentGrainsGlobal). If grainRate*grainDuration exceeds this, the OLDEST active grain is voice-stolen (quick fade-out, slot reused) rather than stalling new spawns -- see GrainCloud::beginVoiceSteal()
+        "maxConcurrentGrains": 256,    // per-cloud cap; the effective cap is also limited by a global budget shared across all clouds (see Source/PluginProcessor.h::maxConcurrentGrainsGlobal, also 256). If grainRate*grainDuration exceeds this, the OLDEST active grain is voice-stolen (quick fade-out, slot reused) rather than stalling new spawns -- see GrainCloud::beginVoiceSteal()
         "windowShape": "hann",         // grain envelope shape; hann is currently the only option
         "movementMode": "randomWalk",  // randomWalk | bounce | radialExplosion | orbitAroundParent | attractRepelSiblings
 
@@ -142,6 +143,7 @@ defaults for everything new.
         "orbitRadius": 0.5,            // meters, used by orbitAroundParent
         "orbitRadiusJitter": 0.0,      // 0..1, random +/- variation of orbitRadius per spawned grain (orbitAroundParent)
         "orbitAngularSpeed": 2.0,      // rad/s, used by orbitAroundParent
+        "orbitSphereSpread": 0.0,      // 0..1, used by orbitAroundParent -- 0 = flat (all grains circle in the same horizontal plane), 1 = each grain's own orbit plane is essentially random (approaches a sphere over many grains/rotations); picked once per grain at spawn
         "attractionStrength": 1.0,     // used by attractRepelSiblings; negative = repulsive, n-body only within this cloud (see TrajectoryEngine::computeAttractionForce)
 
         // "jitterTarget"/"jitterRange" (a single shared, mutually-exclusive

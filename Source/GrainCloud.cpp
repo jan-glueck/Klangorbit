@@ -16,6 +16,34 @@ namespace
         return baseValue * (1.0f + range * (rng.nextFloat() * 2.0f - 1.0f));
     }
 
+    // Point at `radius` and angle `phase` on the circle lying in the plane
+    // perpendicular to `normal`, centered at the origin (caller adds the
+    // parent's position) -- used by OrbitAroundParent for both flat
+    // (normal={0,0,1}) and tilted/spherical orbits (see
+    // GrainCloudSettings::orbitSphereSpread).
+    //
+    // Builds an orthonormal (u, v) basis for the plane via a seed vector
+    // and two cross products; the seed is deliberately {0,1,0} (not the
+    // more obvious {0,0,1} or {1,0,0}) specifically so that normal=
+    // {0,0,1} reproduces u={1,0,0}, v={0,1,0} exactly -- i.e. this
+    // function is a strict generalization of the original hardcoded
+    // "cos(phase), sin(phase), 0" x/y-plane formula, not just a
+    // same-shape-different-parametrization replacement. Falls back to a
+    // different seed only when normal is too close to {0,1,0} itself for
+    // the cross product to stay well-conditioned.
+    Vec3 orbitPlaneOffset (Vec3 normal, float phase, float radius)
+    {
+        Vec3 seed = (std::abs (normal.y) < 0.9f) ? Vec3 { 0.0f, 1.0f, 0.0f } : Vec3 { 1.0f, 0.0f, 0.0f };
+
+        Vec3 u = cross (seed, normal);
+        const float uLen = u.length();
+        u = (uLen > 1.0e-6f) ? (u / uLen) : Vec3 { 1.0f, 0.0f, 0.0f };
+
+        const Vec3 v = cross (normal, u); // already unit length: normal and u are orthonormal
+
+        return (u * std::cos (phase) + v * std::sin (phase)) * radius;
+    }
+
     // Maps a uniform [0,1) draw to a [0,1] fraction biased per distribution.
     // Deliberately simple power-curve shaping (not a general parametric
     // model) -- see GrainReadDepthDistribution's own comment in Grain.h.
@@ -189,7 +217,17 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
             if (settings.orbitRadiusJitter > 0.0f)
                 radius = applyJitter (radius, settings.orbitRadiusJitter, rng);
             g.currentOrbitRadius = juce::jmax (0.01f, radius);
-            g.position = parentPosition + Vec3 { std::cos (g.orbitPhase), std::sin (g.orbitPhase), 0.0f } * g.currentOrbitRadius;
+
+            g.orbitPlaneNormal = { 0.0f, 0.0f, 1.0f };
+            if (settings.orbitSphereSpread > 0.0f)
+            {
+                const Vec3 randomAxis = randomUnitVector (rng);
+                Vec3 blended = g.orbitPlaneNormal * (1.0f - settings.orbitSphereSpread) + randomAxis * settings.orbitSphereSpread;
+                const float len = blended.length();
+                g.orbitPlaneNormal = (len > 1.0e-6f) ? (blended / len) : Vec3 { 0.0f, 0.0f, 1.0f };
+            }
+
+            g.position = parentPosition + orbitPlaneOffset (g.orbitPlaneNormal, g.orbitPhase, g.currentOrbitRadius);
             break;
         }
 
@@ -276,9 +314,9 @@ void GrainCloud::updateGrain (Grain& g, float fdt, Vec3 parentPosition, Vec3 /*p
         case GrainMovementMode::OrbitAroundParent:
         {
             g.orbitPhase += settings.orbitAngularSpeed * fdt;
-            const Vec3 offset { std::cos (g.orbitPhase) * g.currentOrbitRadius,
-                                 std::sin (g.orbitPhase) * g.currentOrbitRadius,
-                                 0.0f };
+            // g.orbitPlaneNormal was fixed once at spawn (see spawnGrain());
+            // {0,0,1} reproduces the original flat x/y-plane orbit exactly.
+            const Vec3 offset = orbitPlaneOffset (g.orbitPlaneNormal, g.orbitPhase, g.currentOrbitRadius);
             g.position = parentPosition + offset; // tracks the CURRENT (possibly moving) parent position
             break;
         }

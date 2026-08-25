@@ -7,6 +7,44 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Orbit-mode usage hint.** The Orbit parameter category now shows an
+  inline reminder ("Set the Object's Mode to \"Orbit\" ... these
+  settings have no effect otherwise") whenever the edited object's Mode
+  isn't actually Orbit -- every control in that category was already
+  correctly inert until then (`TrajectoryEngine::integrate()` only
+  reads them in its Orbit case), but nothing in the UI said so,
+  reported as confusing. `ParameterPanel::orbitModeHintLabel`, kept in
+  sync via `updateOrbitModeHintVisibility()` from category switches,
+  selection changes, preset loads, and live Mode changes.
+- **Orbit Radius Noise Smoothing** (`SoundObject::orbitRadiusNoiseSmoothing`,
+  seconds, 0 = off/unchanged default behavior): low-pass-filters the
+  raw per-tick Gaussian noise sample itself (one-pole, same
+  `exp(-dt/tau)` idiom as `PropagationProcessor`'s `dopplerSmoothing`)
+  before it's scaled into the mean-reverting orbit radius update,
+  turning a jagged random walk into a smoother, more "breathing"
+  motion. New runtime field `orbitRadiusNoiseSmoothed` holds the
+  filter's own state (reset on preset load, like `orbitPhase`).
+  `Tools/verify_orbit` gained a test comparing per-tick radius-delta
+  std-dev with smoothing off vs. on (0.099 -> 0.004 in the test's
+  numbers -- confirms the filter measurably smooths without freezing
+  the radius entirely).
+- **Grains: Orbit Around Parent, 2D -> 3D sphere spread**
+  (`GrainCloudSettings::orbitSphereSpread`, 0..1). 0 (default)
+  reproduces the original behavior exactly: every grain circles in the
+  same flat horizontal plane. Raising it blends each grain's own orbit
+  PLANE normal (picked once at spawn, `Grain::orbitPlaneNormal`) from
+  `{0,0,1}` toward a uniformly random unit vector, so at 1.0 each
+  grain's plane is essentially random -- over many grains and full
+  rotations the swept shape approaches a sphere instead of a disc.
+  `GrainCloud::orbitPlaneOffset()` builds an orthonormal basis for
+  whatever plane a given normal defines; its seed vector was
+  deliberately chosen so `normal={0,0,1}` reproduces the exact
+  original `cos(phase), sin(phase), 0` formula (not just an
+  equivalent-shape reparametrization) -- verified by
+  `Tools/verify_grain_cloud`'s `testOrbitSphereSpread`, which checks
+  spread=0 keeps every grain's `z` at exactly 0 and spread=1 produces
+  real out-of-plane movement while the orbit's actual radius stays
+  unchanged.
 - **Voice stealing for grain spawning + per-parameter grain jitter.**
   Follow-up to the "grainRate/grainDuration independence" investigation
   above: that entry concluded the scheduling was already correct, but
@@ -676,6 +714,26 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
+- **Objects are now numbered from 1 instead of 0 everywhere they're
+  displayed** -- the object list sidebar, the parameter panel's object
+  header, the Orbit Reference Object dropdown, and the sling gesture's
+  target label. Purely a display change: internal 0-based indices/ids
+  (array indices, `SoundObject::id`, `inputChannel`, preset JSON `id`
+  fields, combo-box item IDs) are completely unaffected, only the text
+  shown to the user adds 1.
+- **"Doppler (uses object's Doppler Factor)" simplified to just
+  "Doppler"** and **"Grains Only (Mute Original Audio)" simplified to
+  just "Isolate Grains"** in the Grains parameter category -- both
+  parenthetical clarifications moved into the Help window/UserGuide
+  instead of staying in the on-screen label. No functional change.
+- **`Max Concurrent Grains`'s default and range raised again, 32 -> 256**
+  (`GrainCloudSettings::maxConcurrentGrains`), matching a corresponding
+  raise of the global cap shared across every object's cloud
+  (`KlangorbitProcessor::maxConcurrentGrainsGlobal`, 128 -> 256, which
+  also raises the per-cloud pool size since it's derived from the same
+  constant) -- still the same "rough operation-count estimate, not
+  profiled on real hardware" caveat as the earlier 32->128 raise; the
+  toolbar's CPU meter remains the way to verify it on your own machine.
 - **"Grain Rate" renamed to "Grain Rate (Spawn Rate)" in the Grains
   parameter category** (`README.md`, `Docs/UserGuide.md`, the in-app
   Help window) -- went through two iterations: first renamed outright

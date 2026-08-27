@@ -7,6 +7,46 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Canonical controller-input layer -- protocol-neutral abstraction for
+  gamepad/MIDI/OSC, no driver or consumer yet.** New `CanonicalInputEvent`
+  + `CanonicalInputHub` (`Source/CanonicalInput.h/.cpp`), owned by
+  `KlangorbitProcessor` (`getCanonicalInputHub()`, parallel to how it
+  already owns `ParameterRegistry`, see above). Builds directly on the
+  parameter registry: a `CanonicalInputEvent` is "one control changed,
+  in a protocol-neutral shape" -- a stable, driver-chosen `sourceId`
+  (e.g. `"Gamepad0.LeftStick.X"`), a `Kind` (`Continuous` for a stick
+  axis/analog trigger, `Button` for a discrete digital control), a
+  normalized `value`, and a `Polarity` (reuses
+  `ParameterRegistry::Polarity` rather than duplicating the same
+  two-valued concept, since a mapping consumer needs both a canonical
+  value and a target parameter's own polarity to convert correctly via
+  `Descriptor::denormalize()`). `CanonicalInputHub` is a small,
+  thread-safe (snapshot-before-call, so a listener reentrantly adding/
+  removing another listener mid-dispatch can't deadlock) broadcast
+  point: any driver posts events to it, any number of consumers
+  (a future Learn-mode mapping engine, or a Learn-mode UI watching for
+  "what did the user just move") can listen, without either side
+  knowing about the other.
+  - Deliberately NOT `juce::ListenerList` -- `dispatch()` needs to be
+    safely callable from whichever thread a driver happens to poll/
+    receive on (a gamepad driver polling from a timer, a hypothetical
+    future MIDI driver's own callback thread), which isn't something
+    `juce::ListenerList` specifically guarantees; a plain
+    `juce::CriticalSection`-protected vector, snapshotted before
+    calling out to listeners, is simple and sufficient at the expected
+    listener-count scale here (a handful, not hundreds).
+  - This is the whole point of the layer: adding MIDI or OSC later
+    means writing a new, thin driver that translates ITS OWN
+    protocol-specific state into the same `CanonicalInputEvent` shape
+    and posts to the same hub -- this header and `CanonicalInputHub`
+    itself shouldn't need to change. Not built or scheduled as part of
+    this branch, only kept open for it.
+  - New `Tools/verify_canonical_input` (basic dispatch and field
+    round-tripping, multiple listeners all receiving the same event,
+    `removeListener()` actually stopping delivery, `addListener()`
+    idempotency, and a reentrant add/remove-during-dispatch scenario
+    confirming the snapshot-before-call design is deadlock/corruption-
+    safe).
 - **Parameter registry -- foundation for controller mapping (gamepad/MIDI/
   OSC), no consumers yet.** New `ParameterRegistry` (`Source/
   ParameterRegistry.h/.cpp`): a central register of every controllable

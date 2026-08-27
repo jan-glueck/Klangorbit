@@ -25,14 +25,15 @@ loaded on a track with no editor ever opened) does not pause anything;
 only audio callbacks pausing (a host bypassing/disabling the track) would.
 
 A connected gamepad's left stick rate-controls the selected object's
-movement (see "Gamepad control" below), and any other control can be
-bound to any parameter via Learn mode (see "Controller mapping" below) --
-built on a protocol-neutral controller-mapping architecture
-(`ParameterRegistry` + `CanonicalInputHub` + `MappingEngine`, see the
-CHANGELOG) meant to also carry MIDI/OSC drivers later, which don't exist
-yet -- everything above them (the registry, the canonical layer, Learn
-mode, mapping profiles) is protocol-neutral already and needs no changes
-when a MIDI/OSC driver is added.
+movement (see "Gamepad control" below), and any other control -- gamepad,
+MIDI CC/Note/Pitch Bend, or OSC (see "Controller mapping" below) -- can be
+bound to any parameter via the same Learn mode, built on a
+protocol-neutral controller-mapping architecture (`ParameterRegistry` +
+`CanonicalInputHub` + `MappingEngine`, see the CHANGELOG): the registry,
+the canonical layer, Learn mode, and mapping profiles are all
+protocol-neutral, and `MidiDriver`/`OscDriver` (`Source/MidiDriver.h/.cpp`,
+`Source/OscDriver.h/.cpp`) needed zero changes to any of them to plug in
+as two more thin drivers alongside `GamepadDriver`.
 
 ## Signal flow
 
@@ -494,14 +495,16 @@ isGamepadConnected()` exists for a future indicator to read).
 
 ## Controller mapping
 
-Open **Mappings...** in the toolbar to bind any gamepad control to any
-parameter: pick a **Target parameter** from the dropdown, press
-**Learn**, then move the stick/trigger/button you want to drive it --
-the panel captures whichever control changed next and creates the
-binding automatically. The binding list shows every current mapping
-(with a **Remove** button each); **Load Profile.../Save Profile...**
-save the whole binding set (plus the paging modifier below) as its own
-file, independent of scene presets (`MappingProfiles/schema/README.md`).
+Open **Mappings...** in the toolbar to bind any gamepad, MIDI, or OSC
+control to any parameter: pick a **Target parameter** from the dropdown,
+press **Learn**, then move the stick/trigger/button/MIDI knob/OSC
+control you want to drive it -- the panel captures whichever control
+changed next and creates the binding automatically, the same way
+regardless of which of the three sources it came from. The binding list
+shows every current mapping (with a **Remove** button each); **Load
+Profile.../Save Profile...** save the whole binding set (plus the paging
+modifier below) as its own file, independent of scene presets
+(`MappingProfiles/schema/README.md`).
 
 The target-parameter dropdown only lists scene-wide parameters and
 "whichever object is currently selected" parameters (`mass`, `gain`,
@@ -522,6 +525,32 @@ The left stick's own built-in rate-control movement (see "Gamepad
 control" above) is a real default, not a fixed one: binding either of
 its axes to something else via Learn mode takes over that axis pair
 completely, and the object it was moving just stays put.
+
+## MIDI / OSC control
+
+Two more input sources on the same canonical layer as the gamepad
+(`Source/MidiDriver.h/.cpp`, `Source/OscDriver.h/.cpp`) -- bind either
+one to a parameter through the exact same **Mappings...** / Learn-mode
+workflow described above, no separate MIDI-Learn or OSC-Learn step.
+
+- **MIDI**: the plugin already declares MIDI input (`NEEDS_MIDI_INPUT`),
+  so any MIDI routed to it by the host (or, in Standalone, by macOS's
+  own MIDI input selection) works automatically -- no extra setup in
+  Klangorbit itself. Control Change, Note On/Off, and Pitch Bend are all
+  bindable; a knob/fader sends CC, a pad/key sends Note On/Off (as a
+  button, not velocity-sensitive), a pitch strip sends Pitch Bend
+  (bipolar, centered).
+- **OSC**: listens on UDP port **9000** by default (matches TouchOSC's
+  own default) -- point any OSC control-surface app (TouchOSC, Lemur,
+  etc.) at this machine's IP on that port and its controls become
+  bindable the same way. A control sending a normalized 0..1 float or
+  int value binds as a continuous control; a control with no arguments
+  (a bare trigger/button message) binds as a button.
+- **No UI yet** for changing the OSC port or showing MIDI/OSC connection
+  status (`KlangorbitProcessor::isOscConnected()`/`getOscPort()`/
+  `setOscPort()` exist for a future indicator/setting to use) -- the
+  same kind of gap already noted above for gamepad deadzone/curve/
+  inertia tuning, not an oversight.
 
 ## Acoustic propagation: Doppler, delay, air absorption, directivity
 
@@ -804,12 +833,6 @@ Docs/WORKFLOW.md.
   (see "3D camera view" above) -- there's no way to drag an object's
   height directly with the mouse yet (it still only changes through
   physics: orbit planes, global field, n-body forces, etc.).
-- **No MIDI/OSC drivers yet.** The registry, canonical input layer,
-  Learn mode, and mapping-profile persistence (see "Controller mapping"
-  above and the CHANGELOG) are all already protocol-neutral -- only a
-  gamepad driver exists to post events into that system. Adding MIDI/
-  OSC means a new, thin driver translating into the same
-  `CanonicalInputEvent` shape; not yet built or scheduled.
 - **Mapping-panel "profile status" doesn't reflect the profile loaded
   automatically at startup.** `KlangorbitProcessor`'s constructor loads
   `MappingProfiles/factory/default.json` directly into `MappingEngine`

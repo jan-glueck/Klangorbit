@@ -137,6 +137,15 @@ void KlangorbitProcessor::timerCallback()
     // (message-thread timer) and not processBlock().
     gamepadDriver.poll (canonicalInputHub, selectedObjectIndex, dt);
 
+    // Drains whatever CC/Note/PitchBend messages processBlock() queued
+    // since the last tick and dispatches them here -- see MidiDriver's
+    // own class comment for why (MIDI arrives on the audio thread, but
+    // dispatch/mapping application needs to happen on the message
+    // thread, same as gamepad polling above). oscDriver needs no
+    // equivalent call -- it dispatches directly from its own JUCE-
+    // marshaled message-thread callback whenever a packet arrives.
+    midiDriver.drainAndDispatch (canonicalInputHub);
+
     trajectoryEngine.update (dt);
 
     // GrainCloud: control-rate update, same loop/rate as TrajectoryEngine
@@ -304,11 +313,16 @@ void KlangorbitProcessor::setCircularArraySpeakerCount (int n)
     updateHostDisplay (juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged (true));
 }
 
-void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
 
     const auto blockStartTicks = juce::Time::getHighResolutionTicks();
+
+    // Cheap, bounded queue push only -- see MidiDriver's own class
+    // comment on why the actual translation/dispatch happens later, from
+    // timerCallback() on the message thread, not here.
+    midiDriver.processMidiBuffer (midiMessages);
 
     const int numSamples = buffer.getNumSamples();
     const int numInCh    = juce::jmin (numLiveInputs, buffer.getNumChannels());

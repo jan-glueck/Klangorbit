@@ -430,9 +430,11 @@ thrown object) exists but has no UI toggle yet.
 
 ## 17. Controller mapping (toolbar -> Mappings...)
 
-Bind any gamepad control to any parameter: pick a **Target parameter**
-from the dropdown, press **Learn**, then move the stick/trigger/button
-you want -- the next control that changes gets bound automatically. The
+Bind any gamepad, MIDI, or OSC control to any parameter: pick a **Target
+parameter** from the dropdown, press **Learn**, then move the
+stick/trigger/button/MIDI knob/OSC control you want -- the next control
+that changes gets bound automatically, the same way regardless of which
+of the three it came from (see section 18 for MIDI/OSC specifics). The
 list below shows every current binding, each with its own **Remove**.
 **Load Profile...**/**Save Profile...** save the whole binding set (plus
 the paging modifier) as its own file, completely separate from scene
@@ -452,3 +454,25 @@ place it in that second layer.
 Binding either of the left stick's axes here takes over the built-in
 rate-control movement (section 16) completely for that axis pair --
 the object it was moving just stays where it is.
+
+## 18. MIDI / OSC control
+
+MIDI and OSC controls are bindable through the same **Mappings...**
+window and Learn mode as section 17 -- there's no separate MIDI-Learn or
+OSC-Learn step.
+
+**MIDI**: the plugin already accepts MIDI input, so anything your host
+(or, in Standalone, macOS's own MIDI input selection) routes to it works
+without extra setup here. Turning a knob/fader sends Control Change,
+pressing a pad/key sends Note On/Off (captured as a button, not
+velocity-sensitive), and moving a pitch strip sends Pitch Bend
+(centered, bipolar) -- all three are bindable via Learn.
+
+**OSC**: listens on UDP port **9000** by default (TouchOSC's own
+default). Point an OSC control-surface app at this machine's IP on that
+port and its controls become bindable the same way -- a control sending
+a normalized 0..1 value binds as a continuous control, a bare
+trigger/button message (no arguments) binds as a button.
+
+There's no on-screen indicator yet for MIDI/OSC connection status, and
+no UI yet to change the OSC port from its default.

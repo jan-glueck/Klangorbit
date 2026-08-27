@@ -7,6 +7,7 @@
 #include "ObjectListPanel.h"
 #include "SciFiLookAndFeel.h"
 #include "HelpWindow.h"
+#include "MappingWindow.h"
 #include <deque>
 #include <memory>
 #include <vector>
@@ -94,6 +95,7 @@ private:
     void savePresetClicked();
     void showPresetError (const juce::String& title, const juce::String& message);
     void showHelpClicked(); // lazily creates helpWindow, or re-shows/refronts it if already open
+    void showMappingClicked(); // lazily creates mappingWindow, or re-shows/refronts it if already open
 
     void addObjectClicked();
     void removeObjectClicked();
@@ -213,6 +215,10 @@ private:
     // reopening is instant. Declared here, not created until first clicked.
     juce::TextButton helpButton { "?" };
     std::unique_ptr<HelpWindow> helpWindow;
+
+    // Same lazily-created, hide-not-destroy pattern as helpWindow above.
+    juce::TextButton mappingButton { "Mappings..." };
+    std::unique_ptr<MappingWindow> mappingWindow;
 
     juce::TextButton addObjectButton { "+ Object" };
     juce::TextButton removeObjectButton { "- Remove Object" };

@@ -7,6 +7,86 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Controller mapping -- Learn mode, paging/banking, and saveable
+  mapping profiles.** Closes the loop on the parameter registry and
+  canonical input layer (see below): `MappingEngine` (`Source/
+  MappingEngine.h/.cpp`) listens on the `CanonicalInputHub` and, in
+  Learn mode, binds the next control that moves to a chosen
+  `ParameterRegistry` target -- a real, protocol-neutral "MIDI-Learn,
+  but for any input source" system, not gamepad-specific (works
+  identically once a MIDI/OSC driver exists and posts to the same hub).
+  New "Mappings..." toolbar button opens a window
+  (`Source/MappingWindow.h/.cpp` + `Source/MappingPanel.h/.cpp`): pick a
+  target parameter, press Learn, move a control -- done. Shows the
+  current binding list (with per-binding Remove) and the active paging
+  modifier/bank.
+  - **Paging/banking**: a held modifier source (default
+    `"Gamepad0.RightShoulder"`, configurable via a mapping profile's
+    `modifierSourceId`) unlocks a second mapping layer (bank 1) -- the
+    same physical control can drive a different parameter depending on
+    whether the modifier is held. Exactly two banks, matching the
+    project's own "a second layer" framing. Generalizes the same "a held
+    modifier changes what a gesture means" principle the sling launch
+    gesture's own Ctrl/Alt modifiers already established for mouse
+    gestures (`SlingGesture.h`) into a protocol-neutral mapping
+    mechanism, rather than being mouse/keyboard-specific code reused
+    as-is (paging works against canonical input sources, which mouse
+    modifier keys aren't).
+  - **The target-parameter picker only lists `Scope::Global` and
+    `Scope::SelectedObject` parameters**, not the per-object-slot
+    `Scope::SpecificObject` variants (8 slots x every field) -- keeps
+    the combo box to a manageable size for a workflow built around
+    "whichever object is currently selected" anyway. A `SpecificObject`
+    binding can still be authored by hand-editing a mapping profile
+    JSON; `MappingEngine` itself isn't restricted to those two scopes.
+  - **Cross-polarity conversion, handled explicitly**: binding a bipolar
+    source (e.g. a stick axis, -1..1) to a unipolar target (e.g. Gain,
+    0..1) rescales by RELATIVE POSITION across each side's own full
+    range (so the stick's full travel reaches the target's full range),
+    rather than clamping the source's negative half away, which would
+    have silently made half the stick's travel do nothing. Verified by
+    a dedicated test.
+  - **The left stick's built-in gamepad rate-control movement (see
+    below) is genuinely overridable now, not just described as such**:
+    `GamepadDriver::setLeftStickOverrideQuery()` lets `MappingEngine`
+    tell the driver "an explicit binding now claims the left stick," in
+    which case the built-in movement behavior steps aside entirely for
+    that tick rather than fighting the user's own mapping over the same
+    object. Wired up in `KlangorbitProcessor`'s constructor. Movement
+    itself stays a special-cased built-in behavior rather than an
+    ordinary `MappingBinding` -- it needs behavior (Manual-mode
+    switching, `manualVelocityActive` ownership/handoff, deadzone/curve
+    shaping) that doesn't fit "write one normalized value into one
+    registered parameter."
+  - **Mapping profiles are their own file format and schema**, entirely
+    separate from `Presets/schema/` -- own `schemaVersion` counter (see
+    `MappingProfiles/schema/README.md` for the full field reference and
+    the "why separate" reasoning, mirroring `Presets/schema/README.md`'s
+    own reasoning for its independence from the code version).
+    `MappingProfileManager` (`Source/MappingProfileManager.h/.cpp`)
+    mirrors `PresetManager`'s own save/load/`juce::Result` conventions
+    exactly. New `MappingProfiles/factory/` + `MappingProfiles/user/`
+    directories (parallel to `Presets/factory/`/`Presets/user/`).
+    Ships one factory default (`MappingProfiles/factory/default.json`)
+    with an EMPTY binding list, by design: the left stick's rate-control
+    movement already works out of the box via `GamepadDriver`'s own
+    built-in behavior (see above), with no binding required -- an empty
+    default is the honest starting point, not a placeholder that needed
+    filling with invented example bindings.
+  - Known minor gap: the Mapping panel's own "profile status" line
+    doesn't reflect a mapping profile loaded automatically at plugin
+    startup (`KlangorbitProcessor`'s constructor loads the factory
+    default directly into `MappingEngine`, bypassing the panel, which
+    isn't constructed yet at that point) -- shows "(no profile loaded)"
+    even though the (empty, so behaviorally identical either way)
+    default was in fact loaded. Cosmetic only; the actual binding state
+    is correct.
+  - New `Tools/verify_mapping_engine` (Learn-mode capture including the
+    modifier source never being a bindable target, binding application
+    and cross-polarity conversion, paging/banking, `addBinding()`'s
+    replace-not-accumulate semantics, `removeBinding()`, mapping-profile
+    save/parse/load round-trip, `schemaVersion` rejection, load-replaces
+    -not-merges).
 - **Gamepad control -- the selected object moves with a connected
   controller's left stick.** First concrete driver on the canonical
   input layer (see below): `GamepadBridge` (`Source/GamepadBridge.h/

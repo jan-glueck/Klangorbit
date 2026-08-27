@@ -25,10 +25,14 @@ loaded on a track with no editor ever opened) does not pause anything;
 only audio callbacks pausing (a host bypassing/disabling the track) would.
 
 A connected gamepad's left stick rate-controls the selected object's
-movement (see "Gamepad control" below) -- the first step of a broader,
-protocol-neutral controller-mapping architecture (`ParameterRegistry` +
-`CanonicalInputHub`, see the CHANGELOG) meant to also carry MIDI/OSC and
-a Learn-mode remapping UI later, neither of which exists yet.
+movement (see "Gamepad control" below), and any other control can be
+bound to any parameter via Learn mode (see "Controller mapping" below) --
+built on a protocol-neutral controller-mapping architecture
+(`ParameterRegistry` + `CanonicalInputHub` + `MappingEngine`, see the
+CHANGELOG) meant to also carry MIDI/OSC drivers later, which don't exist
+yet -- everything above them (the registry, the canonical layer, Learn
+mode, mapping profiles) is protocol-neutral already and needs no changes
+when a MIDI/OSC driver is added.
 
 ## Signal flow
 
@@ -467,12 +471,12 @@ parameter. No detection UI yet: there's currently no on-screen
 indicator for whether a controller is connected (`KlangorbitProcessor::
 isGamepadConnected()` exists for a future indicator to read).
 
-- **Only the left stick has a built-in effect right now.** The right
-  stick, triggers, face buttons, shoulder buttons, and D-pad are all
-  already read and dispatched internally (see the CHANGELOG's
-  canonical-input-layer entries), but nothing is bound to them yet --
-  no Learn-mode/remapping UI exists. Only one controller is read at a
-  time (whichever the OS reports first).
+- **The right stick, triggers, face buttons, shoulder buttons, and
+  D-pad are all already read and dispatched internally**, and can now
+  be bound to any parameter via Learn mode (see "Controller mapping"
+  below) -- see the CHANGELOG's canonical-input-layer entries for the
+  underlying mechanism. Only one controller is read at a time (whichever
+  the OS reports first).
 - **Optional inertia mode** (off by default,
   `KlangorbitProcessor::setGamepadInertiaModeEnabled()`, no UI toggle
   yet): instead of stopping instantly, the object keeps moving after
@@ -487,6 +491,37 @@ isGamepadConnected()` exists for a future indicator to read).
 - The stick-to-movement direction convention hasn't been confirmed
   against real hardware in this environment -- see "Known limitations"
   below if it feels inverted.
+
+## Controller mapping
+
+Open **Mappings...** in the toolbar to bind any gamepad control to any
+parameter: pick a **Target parameter** from the dropdown, press
+**Learn**, then move the stick/trigger/button you want to drive it --
+the panel captures whichever control changed next and creates the
+binding automatically. The binding list shows every current mapping
+(with a **Remove** button each); **Load Profile.../Save Profile...**
+save the whole binding set (plus the paging modifier below) as its own
+file, independent of scene presets (`MappingProfiles/schema/README.md`).
+
+The target-parameter dropdown only lists scene-wide parameters and
+"whichever object is currently selected" parameters (`mass`, `gain`,
+`orbitRadius`, and so on) -- not a specific object regardless of
+selection. That covers the great majority of real use; binding a
+control to one specific object permanently (object 3's mass, say,
+whatever is selected) is possible but only via hand-editing a saved
+mapping profile's JSON for now, not through this picker.
+
+**Paging**: hold the modifier control shown under "Paging modifier"
+(default the right shoulder button) to unlock a second layer of
+bindings -- the same stick can drive one parameter normally and a
+different one while the modifier is held. Exactly two layers. Learn a
+binding while holding the modifier to place it in the second layer;
+Learn without holding it to place it in the first (default) layer.
+
+The left stick's own built-in rate-control movement (see "Gamepad
+control" above) is a real default, not a fixed one: binding either of
+its axes to something else via Learn mode takes over that axis pair
+completely, and the object it was moving just stays put.
 
 ## Acoustic propagation: Doppler, delay, air absorption, directivity
 
@@ -769,16 +804,25 @@ Docs/WORKFLOW.md.
   (see "3D camera view" above) -- there's no way to drag an object's
   height directly with the mouse yet (it still only changes through
   physics: orbit planes, global field, n-body forces, etc.).
-- **Gamepad movement is a fixed, built-in default, not yet remappable.**
-  The left stick always rate-controls whichever object is currently
-  selected (see "Gamepad control" below) -- there is no Learn-mode/
-  mapping UI yet to bind it to something else, or to a specific object
-  regardless of selection. `Source/ParameterRegistry.h/.cpp` (every
-  controllable parameter) and `Source/CanonicalInput.h/.cpp` (the
-  protocol-neutral event/hub `GamepadDriver` already posts to) both
-  exist and are ready for that layer, but nothing consumes the hub yet.
-  Planned next: a Learn-mode mapping UI. MIDI/OSC drivers on top of the
-  same canonical layer are intended too but not yet scheduled.
+- **No MIDI/OSC drivers yet.** The registry, canonical input layer,
+  Learn mode, and mapping-profile persistence (see "Controller mapping"
+  above and the CHANGELOG) are all already protocol-neutral -- only a
+  gamepad driver exists to post events into that system. Adding MIDI/
+  OSC means a new, thin driver translating into the same
+  `CanonicalInputEvent` shape; not yet built or scheduled.
+- **Mapping-panel "profile status" doesn't reflect the profile loaded
+  automatically at startup.** `KlangorbitProcessor`'s constructor loads
+  `MappingProfiles/factory/default.json` directly into `MappingEngine`
+  before any UI exists to show that it happened -- the panel's own
+  status line says "(no profile loaded)" even though the (currently
+  empty, so behaviorally identical either way) default was in fact
+  loaded. Cosmetic only.
+- **Binding a specific object regardless of selection needs hand-
+  editing a mapping profile.** The Learn-mode picker only offers
+  scene-wide and "whichever object is selected" targets (see
+  "Controller mapping" above) -- a `Scope::SpecificObject` binding
+  (e.g. always object 3's mass) works if authored directly in a mapping
+  profile's JSON, but there's no UI path to create one.
 - **Gamepad stick-to-movement mapping direction is unverified against
   real hardware.** No gamepad was available to test with in this
   environment -- the world-space convention (stick "up" moves the

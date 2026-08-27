@@ -212,6 +212,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     addAndMakeVisible (removeObjectButton);
     addAndMakeVisible (objectCountLabel);
     addAndMakeVisible (cpuLoadLabel);
+    addAndMakeVisible (mappingButton);
     addAndMakeVisible (helpButton);
     addAndMakeVisible (objectListPanel);
     addAndMakeVisible (parameterPanel);
@@ -224,6 +225,8 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     removeObjectButton.onClick = [this] { removeObjectClicked(); };
     helpButton.onClick = [this] { showHelpClicked(); };
     helpButton.setTooltip ("Help -- every feature and parameter explained");
+    mappingButton.onClick = [this] { showMappingClicked(); };
+    mappingButton.setTooltip ("Controller mapping -- Learn mode, current bindings, mapping profiles");
 
     presetStatusLabel.setText (currentPresetName, juce::dontSendNotification);
     presetStatusLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
@@ -736,6 +739,8 @@ void KlangorbitEditor::resized()
     objectCountLabel.setBounds (row2.removeFromLeft (120).reduced (UiSpacing::xs));
     row2.removeFromLeft (UiSpacing::m);
     cpuLoadLabel.setBounds (row2.removeFromLeft (140).reduced (UiSpacing::xs));
+    row2.removeFromLeft (UiSpacing::m);
+    mappingButton.setBounds (row2.removeFromLeft (130).reduced (UiSpacing::xs));
 
     parameterPanel.setBounds (bounds.removeFromRight (parameterPanelWidth));
     objectListPanel.setBounds (bounds.removeFromLeft (objectListWidth));
@@ -749,6 +754,15 @@ void KlangorbitEditor::showHelpClicked()
 
     helpWindow->setVisible (true); // in case a previous close just hid it
     helpWindow->toFront (true);
+}
+
+void KlangorbitEditor::showMappingClicked()
+{
+    if (mappingWindow == nullptr)
+        mappingWindow = std::make_unique<MappingWindow> (audioProcessor.getParameterRegistry(), audioProcessor.getMappingEngine()); // constructor already makes it visible
+
+    mappingWindow->setVisible (true); // in case a previous close just hid it
+    mappingWindow->toFront (true);
 }
 
 void KlangorbitEditor::showPresetError (const juce::String& title, const juce::String& message)

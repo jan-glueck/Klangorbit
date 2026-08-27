@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include "CanonicalInput.h"
 #include "GamepadBridge.h"
 #include "TrajectoryEngine.h"
@@ -15,16 +16,21 @@
     mapping consumer binding the raw stick to some other parameter
     shouldn't be forced through movement-specific shaping.
 
-    ALSO implements the actual default gamepad movement behavior directly
-    (there is no generic mapping/Learn-mode system yet -- that's a later
-    branch): the left stick rate-controls the currently selected object's
-    position on the ground plane, exactly like TrajectoryEngine::dragTo()
-    does for a mouse drag, just continuously (see Mode below). This is
-    deliberately the exact behavior a later Learn-mode system's own
-    "sensible default mapping" is meant to reproduce -- when that system
-    exists, it can keep calling this same method as its literal default
-    binding, or reimplement it as an ordinary mapping entry; either way
-    nothing about the canonical dispatch above needs to change.
+    ALSO implements a BUILT-IN default gamepad movement behavior: the
+    left stick rate-controls the currently selected object's position on
+    the ground plane, exactly like TrajectoryEngine::dragTo() does for a
+    mouse drag, just continuously (see driveSelectedObjectMovement()).
+    This is the project's own "sensible default mapping" -- genuinely
+    overridable, not just described as such: setLeftStickOverrideQuery()
+    lets a MappingEngine (see MappingEngine.h) tell this driver "an
+    explicit binding now claims the left stick," in which case this
+    built-in behavior steps aside entirely for that object this tick
+    rather than fighting the user's own mapping over the same control.
+    Movement itself stays special-cased here rather than being expressed
+    as an ordinary MappingBinding, because it needs behavior (Manual-mode
+    switching, manualVelocityActive ownership/handoff, deadzone/curve
+    shaping) that doesn't fit "write one normalized value into one
+    registered parameter."
 
     poll() is meant to be called from KlangorbitProcessor's own control-
     rate timer (~90Hz, the same one driving TrajectoryEngine::update()) --
@@ -79,6 +85,18 @@ public:
     void setInertiaAcceleration (float newAccel) { inertiaAcceleration = juce::jmax (0.0f, newAccel); }
     float getInertiaAcceleration() const { return inertiaAcceleration; }
 
+    // Lets a MappingEngine (or anything else) claim the left stick away
+    // from this driver's own built-in movement behavior -- called with a
+    // predicate that answers "is this canonical sourceId currently
+    // explicitly bound (in whichever bank is active right now)?". If
+    // either "Gamepad0.LeftStick.X" or "Gamepad0.LeftStick.Y" comes back
+    // true, driveSelectedObjectMovement() does nothing that tick (see its
+    // own comment on why NOT partially -- an axis rebound alone would
+    // otherwise leave movement half-working). nullptr (the default)
+    // means nothing is ever overridden -- built-in movement always
+    // applies, i.e. this driver's original, MappingEngine-free behavior.
+    void setLeftStickOverrideQuery (std::function<bool (const juce::String&)> query) { isSourceOverridden = std::move (query); }
+
 private:
     void dispatchAxisIfChanged (CanonicalInputHub& hub, const juce::String& sourceId, float previous, float current,
                                  ParameterRegistry::Polarity polarity);
@@ -105,4 +123,7 @@ private:
     // velocity nobody is updating anymore. -1 = not currently holding anything.
     int lastControlledObjectIndex = -1;
     void releaseControlledObject(); // clears manualVelocityActive/manualVelocity on lastControlledObjectIndex, if any
+
+    // See setLeftStickOverrideQuery() above.
+    std::function<bool (const juce::String&)> isSourceOverridden;
 };

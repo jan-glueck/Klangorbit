@@ -66,6 +66,11 @@ target_compile_definitions(Klangorbit
         # (there the dialog falls back to the last-used directory).
         SAPOC_PRESETS_USER_DIR="${CMAKE_SOURCE_DIR}/Presets/user"
         SAPOC_PRESETS_FACTORY_DIR="${CMAKE_SOURCE_DIR}/Presets/factory"
+        # Same local-dev-convenience-path reasoning as the preset dirs
+        # above, for mapping profiles (MappingProfiles/schema/README.md) --
+        # a separate schema/directory tree from presets, see that file.
+        SAPOC_MAPPING_PROFILES_USER_DIR="${CMAKE_SOURCE_DIR}/MappingProfiles/user"
+        SAPOC_MAPPING_PROFILES_FACTORY_DIR="${CMAKE_SOURCE_DIR}/MappingProfiles/factory"
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
@@ -82,6 +87,8 @@ target_sources(Klangorbit
         Source/CanonicalInput.cpp
         Source/GamepadBridge.mm
         Source/GamepadDriver.cpp
+        Source/MappingEngine.cpp
+        Source/MappingProfileManager.cpp
         Source/TrajectoryEngine.cpp
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
@@ -91,6 +98,8 @@ target_sources(Klangorbit
         Source/ObjectListPanel.cpp
         Source/SciFiLookAndFeel.cpp
         Source/HelpWindow.cpp
+        Source/MappingPanel.cpp
+        Source/MappingWindow.cpp
 )
 
 target_link_libraries(Klangorbit
@@ -328,6 +337,35 @@ target_sources(verify_canonical_input
 )
 
 target_link_libraries(verify_canonical_input
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Mapping engine verification ---------------------------------------------
+# Runs MappingEngine (Learn-mode capture, binding application including
+# cross-polarity conversion, paging/banking via a modifier source, the
+# modifier itself never being a bindable target, addBinding()'s replace-
+# not-accumulate semantics, removeBinding()) and MappingProfileManager
+# (save/parse/load round-trip, schemaVersion rejection, load-replaces-not-
+# merges) against synthetic ParameterRegistry descriptors and
+# CanonicalInputEvents -- no gamepad hardware, GUI, or audio device needed.
+juce_add_console_app(verify_mapping_engine
+    PRODUCT_NAME "verify_mapping_engine"
+)
+
+target_sources(verify_mapping_engine
+    PRIVATE
+        Tools/verify_mapping_engine.cpp
+        Source/MappingEngine.cpp
+        Source/MappingProfileManager.cpp
+        Source/CanonicalInput.cpp
+        Source/ParameterRegistry.cpp
+)
+
+target_link_libraries(verify_mapping_engine
     PRIVATE
         juce::juce_core
     PUBLIC

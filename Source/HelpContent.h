@@ -316,10 +316,32 @@ it exactly where it is, immediately, no drift, no snap-back. Touching
 the stick switches the selected object into Manual mode (same mode a
 mouse drag uses) and it stays there until you select a different object.
 
-Fixed default for now, no remapping UI yet -- only the left stick has
-an effect, only one controller read at a time. Keeps working with the
-editor closed, since the whole simulation runs independent of it. An
-optional inertia mode exists (movement continues after release,
-decelerating like a thrown object) but has no UI toggle yet.
+This is the left stick's own built-in default -- see the next section
+to bind it (or anything else) to a different parameter. Only one
+controller read at a time. Keeps working with the editor closed, since
+the whole simulation runs independent of it. An optional inertia mode
+exists (movement continues after release, decelerating like a thrown
+object) but has no UI toggle yet.
+
+
+== 15. CONTROLLER MAPPING (toolbar -> Mappings...) ==
+
+Bind any gamepad control to any parameter: pick a Target parameter,
+press Learn, then move the stick/trigger/button you want -- the next
+control that changes gets bound automatically. The list shows every
+current binding (each with its own Remove). Load Profile.../Save
+Profile... save the whole binding set as its own file, separate from
+scene presets.
+
+Target picker only offers scene-wide and "whichever object is
+currently selected" parameters, not one specific object regardless of
+selection (possible by hand-editing a saved profile's JSON only).
+
+Paging: hold the shown modifier control (right shoulder by default) to
+unlock a second layer of bindings -- same stick, different parameter
+while held. Learn while holding it to place a binding in that layer.
+
+Binding either left-stick axis here takes over the built-in rate-
+control movement completely for that axis pair.
 )HELPTEXT";
 }

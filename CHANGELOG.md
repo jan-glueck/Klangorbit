@@ -7,14 +7,89 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **MIDI and OSC drivers -- two more sources on the canonical input
+  layer.** Confirms the architecture's own promise, made when the
+  parameter registry/canonical input layer/`MappingEngine` were first
+  built (see below): a new input source can be added as a thin driver
+  that only translates its own protocol into `CanonicalInputEvent`s and
+  dispatches them via the existing `CanonicalInputHub` -- zero changes
+  needed to `ParameterRegistry`, `CanonicalInputHub`, or `MappingEngine`
+  itself. `GamepadDriver` was the first proof of that; `MidiDriver`
+  (`Source/MidiDriver.h/.cpp`) and `OscDriver`
+  (`Source/OscDriver.h/.cpp`) are the second and third. Both are bindable
+  via the exact same Learn-mode UI (Mappings window) as gamepad controls
+  -- no separate MIDI-Learn or OSC-Learn workflow needed.
+  - **MIDI**: translates Control Change, Note On/Off, and Pitch Bend
+    (the message types a real controller's knobs/faders/pads/keys/pitch
+    strip actually send -- Aftertouch/Program Change/etc. deliberately
+    left out, not an oversight, addable the same way if ever needed).
+    `sourceId` scheme: `"Midi0.CC<N>.Ch<C>"`, `"Midi0.Note<N>.Ch<C>"`,
+    `"Midi0.PitchBend.Ch<C>"` (`"Midi0"` is a fixed placeholder for
+    "this plugin's MIDI input," matching `GamepadDriver`'s own
+    `"Gamepad0"` precedent -- JUCE/every plugin host delivers MIDI into
+    one already-merged buffer per block, with no per-device identity
+    available to a plugin). CC -> `Continuous`/`Unipolar`, value
+    rescaled 0..127 -> 0..1. Note On/Off -> `Button`, value exactly
+    1.0/0.0 -- velocity is deliberately NOT captured as a continuous
+    value, staying consistent with `Kind::Button`'s own 0/1-only
+    contract (a disclosed scope decision, not a silent gap). Pitch Bend
+    -> `Continuous`/`Bipolar`, 0..16383 (center 8192) rescaled to -1..1.
+    Threading: MIDI genuinely arrives on the audio thread via
+    `processBlock()`; `MidiDriver::processMidiBuffer()` only does a
+    cheap, bounded push of lightweight POD events into a
+    `juce::CriticalSection`-locked queue there (no string/heap
+    allocation on the audio thread), and `drainAndDispatch()` -- called
+    once per control-rate tick from `KlangorbitProcessor`'s own timer,
+    the same message-thread timer `GamepadDriver` already polls from --
+    does the actual translation and `CanonicalInputHub::dispatch()`
+    calls. Keeps `MappingEngine`'s own binding list (mutated by
+    Learn-mode UI actions on the message thread) from ever being touched
+    concurrently by two different threads.
+  - **OSC**: listens on a UDP port (default 9000, the common TouchOSC-
+    style default) via `juce::OSCReceiver`. `sourceId` is
+    `"OSC." + addressPattern` verbatim (e.g. address `/orbit/x` ->
+    `"OSC./orbit/x"`). A message with a float or int32 first argument
+    dispatches as `Continuous`/`Unipolar`, that argument clamped to
+    [0,1] and used AS the canonical value directly -- not rescaled from
+    some other assumed range, since common OSC control-surface apps
+    (TouchOSC, Lemur, etc.) already send normalized 0..1 values by
+    convention. A message with no arguments dispatches as `Button`
+    (value 1.0) -- the "bare trigger" convention some OSC senders use
+    for a button press; OSC has no native "release" concept, so only a
+    press is ever produced this way. A message whose first argument is
+    non-numeric (string/blob) produces nothing. This interpretation
+    logic is extracted into a pure, free function,
+    `OscInterpretation::interpretMessage()`, specifically so it's
+    unit-testable with hand-built `juce::OSCMessage`s and no real
+    network socket. Threading: unlike MIDI, no queue is needed --
+    `juce::OSCReceiver::Listener<MessageLoopCallback>` (the default)
+    already marshals its callback onto the message thread internally, so
+    `OscDriver` dispatches straight to `CanonicalInputHub` from
+    `oscMessageReceived()`.
+  - No UI yet for configuring the OSC port or displaying MIDI/OSC
+    connection status (`KlangorbitProcessor::isOscConnected()`/
+    `getOscPort()`/`setOscPort()` exist for a future indicator) -- same
+    "no UI yet" scope gap already accepted for `GamepadDriver`'s own
+    deadzone/curve/inertia-acceleration tuning, not an oversight.
+  - New `Tools/verify_midi_driver` (CC/Note On/Note Off/Pitch Bend
+    translation and value/polarity conversion, an empty-queue
+    `drainAndDispatch()` no-op, multiple messages in one block, an
+    untranslated message type producing nothing) and
+    `Tools/verify_osc_driver` (float/int32 argument handling, the
+    zero-argument bare-trigger convention, a non-numeric first argument
+    correctly producing nothing, out-of-range value clamping) -- both
+    exercise the translation logic directly against hand-built
+    `juce::MidiMessage`/`juce::OSCMessage`s, no real hardware/network
+    socket needed.
 - **Controller mapping -- Learn mode, paging/banking, and saveable
   mapping profiles.** Closes the loop on the parameter registry and
   canonical input layer (see below): `MappingEngine` (`Source/
   MappingEngine.h/.cpp`) listens on the `CanonicalInputHub` and, in
   Learn mode, binds the next control that moves to a chosen
   `ParameterRegistry` target -- a real, protocol-neutral "MIDI-Learn,
-  but for any input source" system, not gamepad-specific (works
-  identically once a MIDI/OSC driver exists and posts to the same hub).
+  but for any input source" system, not gamepad-specific (now confirmed
+  to work identically for `MidiDriver`/`OscDriver` above, exactly as
+  originally intended -- both post to the same hub as `GamepadDriver`).
   New "Mappings..." toolbar button opens a window
   (`Source/MappingWindow.h/.cpp` + `Source/MappingPanel.h/.cpp`): pick a
   target parameter, press Learn, move a control -- done. Shows the

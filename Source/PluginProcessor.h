@@ -11,6 +11,8 @@
 #include "ParameterRegistry.h"
 #include "CanonicalInput.h"
 #include "GamepadDriver.h"
+#include "MidiDriver.h"
+#include "OscDriver.h"
 #include "MappingEngine.h"
 
 /**
@@ -187,10 +189,28 @@ public:
     void setGamepadInertiaAcceleration (float newAccel) { gamepadDriver.setInertiaAcceleration (newAccel); }
     float getGamepadInertiaAcceleration() const { return gamepadDriver.getInertiaAcceleration(); }
 
+    // --- MIDI driver ---------------------------------------------------
+    // See MidiDriver.h. processMidiBuffer() (audio thread) is called from
+    // processBlock() below; drainAndDispatch() (message thread) is called
+    // from timerCallback() below, same rate as gamepad polling. No
+    // meaningful "isConnected" concept for MIDI the way there is for a
+    // gamepad or a network port -- device selection happens in the
+    // host's/Standalone's own MIDI routing UI, not in this plugin's
+    // control, so no accessor for that exists here.
+
+    // --- OSC driver -----------------------------------------------------
+    // See OscDriver.h. Listens on a UDP port (default 9000), dispatching
+    // straight to canonicalInputHub from its own JUCE-marshaled
+    // message-thread callback -- no polling/draining needed from
+    // timerCallback() below, unlike gamepad/MIDI.
+    bool isOscConnected() const { return oscDriver.isConnected(); }
+    int getOscPort() const { return oscDriver.getPort(); }
+    bool setOscPort (int newPort) { return oscDriver.setPort (newPort); }
+
     // --- Controller-mapping engine (Learn mode) ---------------------------
     // See MappingEngine.h. Registered as a CanonicalInputHub listener in
-    // the constructor, so it sees every event any driver (currently just
-    // GamepadDriver) posts. Loads MappingProfiles/factory/default.json at
+    // the constructor, so it sees every event any driver (GamepadDriver,
+    // MidiDriver, OscDriver) posts. Loads MappingProfiles/factory/default.json at
     // startup if present (see the .cpp) -- ships empty by design (see
     // that file's own comment): the left stick's rate-control movement
     // already works out of the box via GamepadDriver's own built-in
@@ -299,6 +319,17 @@ private:
     // from timerCallback() below, message-thread only (see the comment on
     // selectedObjectIndex above for why not the audio thread).
     GamepadDriver gamepadDriver { trajectoryEngine };
+
+    // See MidiDriver.h. Default-constructed (no dependencies) --
+    // processMidiBuffer() is called from processBlock() (audio thread),
+    // drainAndDispatch() from timerCallback() below (message thread).
+    MidiDriver midiDriver;
+
+    // See OscDriver.h/isOscConnected() etc. above. Constructed after
+    // canonicalInputHub (declared earlier in this class) since it holds
+    // a reference to it, and dispatches to it directly from its own
+    // message-thread-marshaled callback -- no polling needed here.
+    OscDriver oscDriver { canonicalInputHub };
 
     // See getMappingEngine() above. Constructed after parameterRegistry
     // (declared earlier in this class) since it holds a reference to it;

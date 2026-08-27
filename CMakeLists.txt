@@ -87,6 +87,8 @@ target_sources(Klangorbit
         Source/CanonicalInput.cpp
         Source/GamepadBridge.mm
         Source/GamepadDriver.cpp
+        Source/MidiDriver.cpp
+        Source/OscDriver.cpp
         Source/MappingEngine.cpp
         Source/MappingProfileManager.cpp
         Source/TrajectoryEngine.cpp
@@ -106,6 +108,8 @@ target_link_libraries(Klangorbit
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp
+        # Source/OscDriver.h/.cpp -- juce::OSCReceiver/OSCMessage.
+        juce::juce_osc
         # GameController framework -- Source/GamepadBridge.mm's bridge to
         # Apple's GCController/GCExtendedGamepad API. macOS-only, matching
         # this project's own scope (see PROJECT_BRIEF.md).
@@ -422,6 +426,66 @@ target_sources(verify_ambisonics_decoder
 target_link_libraries(verify_ambisonics_decoder
     PRIVATE
         juce::juce_audio_basics
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- MIDI driver verification ------------------------------------------------
+# Runs MidiDriver (Source/MidiDriver.h) against hand-built juce::MidiMessages
+# wrapped in a juce::MidiBuffer -- processMidiBuffer() (the audio-thread-side
+# queue push) followed by drainAndDispatch() (the message-thread-side
+# translate + CanonicalInputHub::dispatch()) -- covering CC, Note On/Off,
+# Pitch Bend (center/min/max), an empty-queue no-op, multiple messages in one
+# block, and an untranslated message type (Program Change) producing nothing.
+# No real MIDI hardware/host routing needed -- messages are constructed
+# directly.
+juce_add_console_app(verify_midi_driver
+    PRODUCT_NAME "verify_midi_driver"
+)
+
+target_sources(verify_midi_driver
+    PRIVATE
+        Tools/verify_midi_driver.cpp
+        Source/MidiDriver.cpp
+        Source/CanonicalInput.cpp
+        Source/ParameterRegistry.cpp
+)
+
+target_link_libraries(verify_midi_driver
+    PRIVATE
+        juce::juce_audio_basics
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- OSC driver verification --------------------------------------------------
+# Runs OscInterpretation::interpretMessage() (Source/OscDriver.h/.cpp) --
+# the pure, extracted interpretation logic -- against hand-built
+# juce::OSCMessages, covering a float argument, an int32 argument, zero
+# arguments (bare-trigger Button convention), a non-numeric first argument
+# (returns false), and out-of-range value clamping. Deliberately does NOT
+# exercise OscDriver itself (the class with the real juce::OSCReceiver socket
+# and JUCE message-thread marshaling) -- that half isn't testable headlessly
+# the same way GamepadDriver's own hardware polling isn't, and is instead
+# verified by full build + Standalone launch stability, consistent with how
+# this project verifies that class of integration elsewhere.
+juce_add_console_app(verify_osc_driver
+    PRODUCT_NAME "verify_osc_driver"
+)
+
+target_sources(verify_osc_driver
+    PRIVATE
+        Tools/verify_osc_driver.cpp
+        Source/OscDriver.cpp
+        Source/CanonicalInput.cpp
+        Source/ParameterRegistry.cpp
+)
+
+target_link_libraries(verify_osc_driver
+    PRIVATE
+        juce::juce_osc
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags

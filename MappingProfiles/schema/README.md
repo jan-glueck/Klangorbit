@@ -47,7 +47,7 @@ independent schema-version counters) is what makes both of those true.
     {
       // Canonical input source id (Source/CanonicalInput.h's
       // CanonicalInputEvent::sourceId) -- e.g. "Gamepad0.LeftStick.X",
-      // later "Midi0.CC1.Ch1", "OSC./orbit/x" once those drivers exist.
+      // "Midi0.CC1.Ch1" (MidiDriver), "OSC./orbit/x" (OscDriver).
       "sourceId": "Gamepad0.RightStick.X",
 
       // ParameterRegistry::Descriptor::id (see Source/ParameterRegistry.h

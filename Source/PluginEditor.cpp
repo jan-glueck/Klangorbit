@@ -2,6 +2,7 @@
 #include "PresetManager.h"
 #include "OrbitMath.h"
 #include "UiTheme.h"
+#include "AxisShaping.h"
 #include <algorithm>
 #include <cmath>
 
@@ -242,6 +243,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     parameterPanel.setProcessor (&audioProcessor);
     parameterPanel.refreshFromModel(); // show scene defaults (roomSize etc.) right away
     objectListPanel.refresh (audioProcessor.getTrajectoryEngine());
+    lastKnownActiveObjectCount = audioProcessor.getTrajectoryEngine().getNumActiveObjects(); // matches the refresh() just above -- avoids a redundant one on the first timer tick
     selectObject (-1);                 // initializes panel enablement + object count label consistently
 
     setSize (700 + objectListWidth + parameterPanelWidth, 700 + toolbarHeight);
@@ -272,6 +274,16 @@ void KlangorbitEditor::timerCallback()
     // editor closed). This timer only reads the results now, via
     // updateTrails()/repaint() below, same as everything else in this
     // class already reads TrajectoryEngine's live state without owning it.
+
+    // GamepadDriver's own built-in object-management buttons (cycle/add/
+    // remove) can change the selection/active-object set from the
+    // background -- resync this editor's display state before anything
+    // else this tick reads it.
+    resyncFromBackgroundObjectChanges();
+
+    // Right stick/D-pad camera control -- see its own comment for why this
+    // lives here rather than in GamepadDriver.
+    updateGamepadCamera();
 
     updateTrails();
 
@@ -909,6 +921,73 @@ void KlangorbitEditor::updateObjectUiState()
     objectCountLabel.setText ("Objects: " + juce::String (active) + " / " + juce::String (total), juce::dontSendNotification);
     addObjectButton.setEnabled (active < total);
     removeObjectButton.setEnabled (selectedObjectIndex >= 0);
+}
+
+void KlangorbitEditor::resyncFromBackgroundObjectChanges()
+{
+    auto& engine = audioProcessor.getTrajectoryEngine();
+
+    // The active-object SET (not just which one is selected) can change in
+    // the background via GamepadDriver's cycle/add/remove buttons -- only
+    // rebuild the (relatively expensive, full-teardown) object list when
+    // the count actually changed, not unconditionally every tick at 90Hz.
+    const int currentActiveCount = engine.getNumActiveObjects();
+    if (currentActiveCount != lastKnownActiveObjectCount)
+    {
+        objectListPanel.refresh (engine);
+        lastKnownActiveObjectCount = currentActiveCount;
+    }
+
+    // The processor's own selectedObjectIndex is the one true value (see
+    // its own comment in PluginProcessor.h); this editor's copy is a
+    // display convenience that can go stale when a background button
+    // changes the real one. selectObject() itself round-trips back into
+    // audioProcessor.setSelectedObjectIndex() with the same value, which is
+    // harmless (same pattern already used by every other selectObject()
+    // caller in this file).
+    if (audioProcessor.getSelectedObjectIndex() != selectedObjectIndex)
+        selectObject (audioProcessor.getSelectedObjectIndex());
+    else
+        updateObjectUiState(); // keeps the count label/button enablement fresh even when the selection itself didn't change
+}
+
+void KlangorbitEditor::updateGamepadCamera()
+{
+    const auto state = audioProcessor.getGamepadState();
+    if (! state.connected)
+        return;
+
+    constexpr double dt = 1.0 / 90.0; // matches startTimerHz(90) below -- see its own comment
+
+    // Right stick: look-around (azimuth/elevation). Sign convention
+    // (stick right -> orbit the same way dragging right does; stick up ->
+    // orbit the same way dragging up does) is a reasonable best guess, NOT
+    // yet manually verified against real hardware in this environment --
+    // same disclosed caveat as this project's own camera drag/zoom and
+    // gamepad-movement sign conventions (see README's "Known limitations"),
+    // and just as easy to flip (negate one shapedX/shapedY term) if it
+    // feels backwards.
+    const float shapedX = shapeAxis (state.rightStickX, gamepadCameraDeadzone, gamepadCameraCurveExponent);
+    const float shapedY = shapeAxis (state.rightStickY, gamepadCameraDeadzone, gamepadCameraCurveExponent);
+    if (shapedX != 0.0f || shapedY != 0.0f)
+    {
+        camera.rotate (shapedX * gamepadCameraRadiansPerSecond * (float) dt,
+                        shapedY * gamepadCameraRadiansPerSecond * (float) dt);
+        repaint();
+    }
+
+    // D-pad Up/Down: zoom in/out (multiplicative-feeling since Camera3D::
+    // zoom() takes an absolute distance delta and distance is clamped to
+    // Camera3D's own [minDistance, maxDistance] range regardless -- a
+    // fixed rate feels fine here since, unlike the mouse wheel, this is a
+    // continuous hold rather than discrete notches). Left/Right are
+    // deliberately unused -- see GamepadDriver.h's own class comment for
+    // what the rest of the D-pad/face buttons/shoulders do instead.
+    if (state.dpadUp != state.dpadDown) // both held at once cancels out, same as neither
+    {
+        camera.zoom ((state.dpadUp ? -1.0f : 1.0f) * gamepadCameraZoomMetersPerSecond * (float) dt);
+        repaint();
+    }
 }
 
 void KlangorbitEditor::startSling (int objectIndex)

@@ -69,7 +69,23 @@
     per-object movement-trail capture (see updateTrails()), the sling
     gesture's Ctrl/Alt modifier polling (not from mouseDrag, so a key press
     registers immediately even if the mouse isn't currently moving), the
-    CPU-load readout, and repaint().
+    CPU-load readout, gamepad camera control, and repaint().
+
+    Gamepad: see GamepadDriver.h for its full fixed default control scheme
+    (left stick movement, X/A/B cycle/add/remove selected object, Y/Left
+    Shoulder/Right Shoulder held + left stick for Free Throw/Orbit Shot/
+    Slingshot -- a gamepad-driven equivalent of this editor's own
+    Shift+drag sling gesture above, direction/strength chosen by pushing
+    the stick rather than pulling the mouse back). All of that runs from
+    KlangorbitProcessor's own timer and keeps working with this editor
+    closed, same as gamepad movement always has. Only the right stick
+    (camera look) and D-pad (camera zoom) are handled here instead, in
+    updateGamepadCamera() below -- Camera3D is purely this editor's own
+    view state (see its own class comment), so unlike everything else
+    above, camera control is meaningless without an editor open and has no
+    background equivalent. resyncFromBackgroundObjectChanges() below keeps
+    this editor's own selection highlight/object list in sync with
+    whatever GamepadDriver's cycle/add/remove buttons just changed.
 */
 class KlangorbitEditor : public juce::AudioProcessorEditor,
                                private juce::Timer
@@ -101,6 +117,24 @@ private:
     void removeObjectClicked();
     void selectObject (int index); // -1 = clear the selection
     void updateObjectUiState();    // object count label + button enablement
+
+    // Polled from timerCallback(): notices when GamepadDriver's own
+    // built-in object-management buttons (see GamepadDriver.h) changed the
+    // selection or the active-object set in the BACKGROUND (i.e. not via
+    // this editor's own addObjectClicked()/removeObjectClicked()/
+    // selectObject() calls) and resyncs this editor's display state to
+    // match -- object list highlight, parameter panel, count label. Not
+    // needed for anything mouse/toolbar-driven, since those already call
+    // selectObject()/refresh() themselves at the point of the change.
+    void resyncFromBackgroundObjectChanges();
+
+    // Right stick (look-around) + D-pad (zoom) camera control -- polled
+    // directly from GamepadDriver::getLastState() each tick, entirely
+    // separate from GamepadDriver itself (see its class comment for why:
+    // Camera3D is editor-only view state, meaningless with no editor open,
+    // so this deliberately does NOT live in the background driver the way
+    // movement/object-management/throw gestures do).
+    void updateGamepadCamera();
 
     // Sling launch gesture (see class comment).
     void startSling (int objectIndex);
@@ -147,6 +181,26 @@ private:
     // --- Camera-drag gesture (see class comment) -------------------------
     bool cameraDragActive = false;
     juce::Point<float> lastCameraDragScreenPos;
+
+    // --- Gamepad camera control (see updateGamepadCamera()) --------------
+    // Same deadzone/curve-shaping philosophy as GamepadDriver's own
+    // movement tuning (AxisShaping.h), applied here independently since
+    // this control lives entirely in the editor, not that driver.
+    static constexpr float gamepadCameraDeadzone = 0.12f;
+    static constexpr float gamepadCameraCurveExponent = 2.0f;
+    // Radians/second of azimuth or elevation change at full right-stick
+    // deflection -- tuned so a full-deflection hold sweeps a half turn in
+    // well under a second, similar in feel to a fast mouse drag.
+    static constexpr float gamepadCameraRadiansPerSecond = 2.5f;
+    // Meters/second of distance change at full D-pad-held zoom -- Camera3D
+    // clamps to [minDistance, maxDistance] itself, so this can't overshoot.
+    static constexpr float gamepadCameraZoomMetersPerSecond = 6.0f;
+
+    // See resyncFromBackgroundObjectChanges(). -1 (an impossible real
+    // count) so the very first tick after construction always treats the
+    // initial state as "changed" and does one harmless refresh -- simpler
+    // than special-casing "not yet initialized".
+    int lastKnownActiveObjectCount = -1;
 
     int draggedObjectIndex = -1;
     int selectedObjectIndex = -1;

@@ -168,14 +168,18 @@ public:
     CanonicalInputHub& getCanonicalInputHub() { return canonicalInputHub; }
 
     // --- Gamepad driver -----------------------------------------------------
-    // See GamepadDriver.h for what it does. Polled from this processor's
-    // own timerCallback() below (control rate, ~90Hz) -- per the project's
-    // own requirement that gamepad polling live in the AudioProcessor, not
-    // the editor, so control keeps working with no editor window open.
-    // Drives the SELECTED object's movement directly as its own built-in
-    // default behavior, unless mappingEngine below has an explicit
-    // binding claiming the left stick (see GamepadDriver::
-    // setLeftStickOverrideQuery(), wired up in the constructor).
+    // See GamepadDriver.h for its full fixed default control scheme
+    // (left stick movement, X/A/B object cycle/add/remove, Y/LB/RB
+    // Free-Throw/Orbit-Shot/Slingshot). Polled from this processor's own
+    // timerCallback() below (control rate, ~90Hz) -- per the project's own
+    // requirement that gamepad polling live in the AudioProcessor, not the
+    // editor, so control keeps working with no editor window open. Drives
+    // the SELECTED object's movement directly as its own built-in default
+    // behavior, unless mappingEngine below has an explicit binding
+    // claiming the left stick (see GamepadDriver::
+    // setLeftStickOverrideQuery(), wired up in the constructor). Camera
+    // look/zoom (right stick/D-pad) is deliberately NOT part of this
+    // driver -- see getGamepadState() below.
     bool isGamepadConnected() const { return gamepadDriver.isConnected(); }
 
     void setGamepadDeadzone (float newDeadzone) { gamepadDriver.setDeadzone (newDeadzone); }
@@ -188,6 +192,20 @@ public:
     bool isGamepadInertiaModeEnabled() const { return gamepadDriver.isInertiaModeEnabled(); }
     void setGamepadInertiaAcceleration (float newAccel) { gamepadDriver.setInertiaAcceleration (newAccel); }
     float getGamepadInertiaAcceleration() const { return gamepadDriver.getInertiaAcceleration(); }
+
+    // Launch strength (meters of "pull") at full left-stick deflection for
+    // the gamepad's built-in Free Throw/Orbit Shot/Slingshot buttons -- see
+    // GamepadDriver::setThrowMaxPullDistance().
+    void setGamepadThrowMaxPullDistance (float newMaxPullDistanceMeters) { gamepadDriver.setThrowMaxPullDistance (newMaxPullDistanceMeters); }
+    float getGamepadThrowMaxPullDistance() const { return gamepadDriver.getThrowMaxPullDistance(); }
+
+    // Raw, unshaped gamepad snapshot -- see GamepadDriver::getLastState()'s
+    // own comment. Returned by value (GamepadState is a small POD) so
+    // KlangorbitEditor's own timer can poll the right stick/D-pad for
+    // camera control (Camera3D is editor-only view state, see its class
+    // comment, so this driver never touches it itself) without holding a
+    // reference across the processor/editor boundary.
+    GamepadState getGamepadState() const { return gamepadDriver.getLastState(); }
 
     // --- MIDI driver ---------------------------------------------------
     // See MidiDriver.h. processMidiBuffer() (audio thread) is called from

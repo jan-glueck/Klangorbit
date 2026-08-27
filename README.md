@@ -454,30 +454,45 @@ fast the mouse happened to move.
 
 Connect a controller (macOS's GameController framework -- this covers
 most modern game controllers, e.g. Xbox/PlayStation controllers paired
-over Bluetooth or USB) and select an object (click it in the scene view
-or the object list). The **left stick** then rate-controls that object's
-position on the ground plane: deflection sets its current velocity
-continuously, in whichever direction you push; centering the stick (its
-own spring-back is enough) stops the object exactly where it is --
-immediately, with no drift and no snapping back to where it started.
-Touching the stick switches the selected object into Manual mode
-automatically, the same mode a mouse drag uses, and it stays there
-(picking a different object hands control to that one instead and
-leaves the previous object exactly where it was left).
+over Bluetooth or USB). Every control has a sensible fixed default
+binding out of the box, no setup required -- all still individually
+overridable via Learn mode (see "Controller mapping" below) exactly like
+any other bindable control:
 
-This runs independent of the editor window (see "Runs whole simulation
-in the background" note near the top) and independent of any DAW
-automation -- it's a live, always-on control path, not a recordable
-parameter. No detection UI yet: there's currently no on-screen
-indicator for whether a controller is connected (`KlangorbitProcessor::
+| Control | Default behavior |
+|---|---|
+| Left stick | Rate-controls the selected object's position on the ground plane: deflection sets its current velocity continuously, in whichever direction you push; centering the stick (its own spring-back is enough) stops the object exactly where it is, immediately, with no drift and no snapping back to where it started. Touching the stick switches the selected object into Manual mode automatically, the same mode a mouse drag uses. |
+| Right stick | Orbits the camera view (azimuth/elevation) -- the gamepad equivalent of dragging empty space with the mouse. Editor-only (there's nothing to look at with the window closed). |
+| D-pad Up/Down | Zooms the camera in/out. Left/Right are unused. Editor-only, same reasoning as the right stick above. |
+| Button X | Cycles the selection to the next active object, wrapping around. |
+| Button A | Activates the next inactive object slot and selects it -- the gamepad equivalent of the "+ Object" toolbar button. |
+| Button B | Deactivates the currently selected object and clears the selection -- the gamepad equivalent of "- Remove Object". |
+| Button Y (hold) | Aims a **Free Throw**: while held, the left stick's direction and magnitude set the launch direction/strength (push the stick the way you want the object to fly); releasing fires it. |
+| Left Shoulder (hold) | Aims an **Orbit Shot** the same way -- releases into a scripted circular orbit around the world origin, sized/oriented by how far/which way the stick was pushed. |
+| Right Shoulder (hold) | Aims a **Slingshot** the same way -- a real, physics-based throw pulled toward the first other active object (or a plain throw if none exists), same gravity-assist mechanic as the mouse gesture's Slingshot mode. |
+
+Free Throw/Orbit Shot/Slingshot are the gamepad equivalent of the mouse's
+Shift+drag sling gesture (see "The sling launch gesture" above) --
+deliberately a direct analog mapping (push the stick the way you want it
+to launch) rather than that gesture's pull-back-then-release feel, which
+only makes sense with a visible cursor to pull away from. There's no
+gamepad equivalent of that gesture's Ctrl/Alt/Tab modifiers: Orbit Shot
+always centers on the world origin at a fixed circular shape, and
+Slingshot always auto-targets the first other active object -- pick a
+specific center/target by using the mouse gesture instead. Holding a
+throw button suspends the left stick's own movement control for that
+object until you release.
+
+Camera control aside (which needs the editor open to mean anything),
+everything above runs independent of the editor window (see "Runs whole
+simulation in the background" note near the top) and independent of any
+DAW automation -- it's a live, always-on control path, not a recordable
+parameter. No detection UI yet: there's currently no on-screen indicator
+for whether a controller is connected (`KlangorbitProcessor::
 isGamepadConnected()` exists for a future indicator to read).
 
-- **The right stick, triggers, face buttons, shoulder buttons, and
-  D-pad are all already read and dispatched internally**, and can now
-  be bound to any parameter via Learn mode (see "Controller mapping"
-  below) -- see the CHANGELOG's canonical-input-layer entries for the
-  underlying mechanism. Only one controller is read at a time (whichever
-  the OS reports first).
+- Only one controller is read at a time (whichever the OS reports
+  first).
 - **Optional inertia mode** (off by default,
   `KlangorbitProcessor::setGamepadInertiaModeEnabled()`, no UI toggle
   yet): instead of stopping instantly, the object keeps moving after
@@ -488,10 +503,13 @@ isGamepadConnected()` exists for a future indicator to read).
   deadzone, exponent-2 curve -- fine control near center, full speed
   needs a deliberate push) but have no UI to adjust yet
   (`KlangorbitProcessor::setGamepadDeadzone()`/
-  `setGamepadCurveExponent()`).
-- The stick-to-movement direction convention hasn't been confirmed
-  against real hardware in this environment -- see "Known limitations"
-  below if it feels inverted.
+  `setGamepadCurveExponent()`). The throw gestures' own launch-strength
+  scale is similarly adjustable only in code
+  (`KlangorbitProcessor::setGamepadThrowMaxPullDistance()`).
+- The stick-to-movement, camera-look, and camera-zoom direction
+  conventions haven't been confirmed against real hardware in this
+  environment -- see "Known limitations" below if any of them feel
+  inverted.
 
 ## Controller mapping
 
@@ -846,14 +864,17 @@ Docs/WORKFLOW.md.
   "Controller mapping" above) -- a `Scope::SpecificObject` binding
   (e.g. always object 3's mass) works if authored directly in a mapping
   profile's JSON, but there's no UI path to create one.
-- **Gamepad stick-to-movement mapping direction is unverified against
-  real hardware.** No gamepad was available to test with in this
-  environment -- the world-space convention (stick "up" moves the
-  object further away, stick "right" moves it right) is a reasonable,
-  documented choice, not a confirmed-by-eye one. See
-  `GamepadDriver::driveSelectedObjectMovement()`'s own comment; a
-  one-line sign flip if it turns out inverted, same situation as the
-  camera drag/zoom convention above.
+- **Gamepad direction conventions are unverified against real
+  hardware.** No gamepad was available to test with in this
+  environment -- the world-space stick-to-movement convention (stick
+  "up" moves the object further away, stick "right" moves it right),
+  the throw-gesture stick-to-launch-direction convention (same mapping,
+  see `GamepadDriver::driveThrowGesture()`), and the right-stick/D-pad
+  camera-look/zoom convention (see `KlangorbitEditor::
+  updateGamepadCamera()`) are all reasonable, documented choices, not
+  confirmed-by-eye ones. Each is a one-line sign flip if it turns out
+  inverted, same situation as the mouse camera drag/zoom convention
+  above.
 - **Output format switching is host-dependent to take effect live.**
   `KlangorbitProcessor::setDecoderMode()` (Output category's "Output
   Format" dropdown) DOES change the encoder order, rebuild the decode

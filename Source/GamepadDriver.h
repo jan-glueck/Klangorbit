@@ -11,26 +11,47 @@
     GameController framework) and dispatches a raw, UNshaped
     CanonicalInputEvent for every axis/button that changed since the last
     poll() call -- deadzone/response-curve shaping (see below) is applied
-    only when this driver interprets the stick for its own built-in
-    movement behavior, never to what gets dispatched to the hub; a future
-    mapping consumer binding the raw stick to some other parameter
-    shouldn't be forced through movement-specific shaping.
+    only when this driver interprets a control for its own built-in
+    behaviors, never to what gets dispatched to the hub; a future mapping
+    consumer binding a raw axis/button to some other parameter shouldn't be
+    forced through behavior-specific shaping.
 
-    ALSO implements a BUILT-IN default gamepad movement behavior: the
-    left stick rate-controls the currently selected object's position on
-    the ground plane, exactly like TrajectoryEngine::dragTo() does for a
-    mouse drag, just continuously (see driveSelectedObjectMovement()).
-    This is the project's own "sensible default mapping" -- genuinely
-    overridable, not just described as such: setLeftStickOverrideQuery()
-    lets a MappingEngine (see MappingEngine.h) tell this driver "an
-    explicit binding now claims the left stick," in which case this
-    built-in behavior steps aside entirely for that object this tick
-    rather than fighting the user's own mapping over the same control.
-    Movement itself stays special-cased here rather than being expressed
-    as an ordinary MappingBinding, because it needs behavior (Manual-mode
-    switching, manualVelocityActive ownership/handoff, deadzone/curve
-    shaping) that doesn't fit "write one normalized value into one
-    registered parameter."
+    ALSO implements the project's fixed default gamepad control scheme --
+    genuinely overridable via MappingEngine (see setLeftStickOverrideQuery()
+    below), not just described as such, but sensible out of the box with no
+    mapping profile required:
+      - Left stick: rate-controls the selected object's position on the
+        ground plane (driveSelectedObjectMovement(), unchanged from before
+        this class grew the rest of this scheme).
+      - Button X (edge-triggered): cycle the selection to the next ACTIVE
+        object, wrapping. Button A: activate the next inactive object slot
+        (mirrors PluginEditor::addObjectClicked()) and select it. Button B:
+        deactivate the currently selected object (mirrors
+        removeObjectClicked()) and clear the selection. See
+        driveObjectManagement().
+      - Button Y / Left Shoulder / Right Shoulder (HELD): Free Throw /
+        Orbit Shot / Slingshot, the same three launch modes
+        PluginEditor's mouse-driven sling gesture offers (see
+        SlingGesture.h) -- while held, the left stick's direction and
+        magnitude choose the launch direction/strength (a direct analog
+        aim, not the mouse gesture's pull-BACK-then-release metaphor,
+        which has no natural equivalent without a screen cursor to pull
+        away from -- see driveThrowGesture()'s own comment); releasing the
+        button fires it. Suspends driveSelectedObjectMovement() for that
+        object while held (same "don't fight over the same stick" handling
+        setLeftStickOverrideQuery() already uses).
+    None of the above touches Camera3D or requires an editor window --
+    Camera3D is editor-only view state (see Camera3D's own class comment),
+    so the right stick (camera look) and D-pad (camera zoom) are instead
+    polled directly by KlangorbitEditor's own timer via getLastState()
+    below, entirely separately from this class -- see PluginEditor.cpp's
+    updateGamepadCamera().
+
+    Movement/throw-gesture state itself stays special-cased here rather
+    than being expressed as ordinary MappingBindings, because both need
+    behavior (Manual-mode switching, manualVelocityActive ownership,
+    deadzone/curve shaping, held-button aim-then-release sequencing) that
+    doesn't fit "write one normalized value into one registered parameter."
 
     poll() is meant to be called from KlangorbitProcessor's own control-
     rate timer (~90Hz, the same one driving TrajectoryEngine::update()) --
@@ -46,13 +67,32 @@ public:
     // dt: same control-rate delta KlangorbitProcessor::timerCallback()
     // already computes for trajectoryEngine.update() -- reused here
     // rather than tracked separately, so both stay in lockstep.
-    // selectedObjectIndex: -1 = nothing selected -- still polls/dispatches
-    // canonical events normally, just applies no movement this tick (see
-    // ParameterRegistry::Scope::SelectedObject's own "inert while nothing
-    // selected" precedent).
-    void poll (CanonicalInputHub& hub, int selectedObjectIndex, double dt);
+    // selectedObjectIndex: the processor's own source of truth (see
+    // KlangorbitProcessor::getSelectedObjectIndex()), passed BY REFERENCE
+    // so this driver's own built-in object-management behavior (cycle/add/
+    // remove, see driveObjectManagement()) can update it directly, exactly
+    // as if the change had come from the editor's own selectObject() --
+    // -1 = nothing selected, same "inert while nothing selected"
+    // convention ParameterRegistry::Scope::SelectedObject already
+    // documents. The caller (KlangorbitProcessor::timerCallback()) is
+    // responsible for keeping any of ITS OWN other copies of this value in
+    // sync afterward -- there are none on the processor side, but
+    // KlangorbitEditor keeps a display copy for rendering and must poll
+    // getSelectedObjectIndex() each tick to notice a change this driver
+    // made in the background (see PluginEditor.cpp's timerCallback()).
+    void poll (CanonicalInputHub& hub, int& selectedObjectIndex, double dt);
 
     bool isConnected() const { return lastState.connected; }
+
+    // Raw, unshaped snapshot from the most recent poll() -- lets
+    // KlangorbitEditor read the right stick/D-pad directly for camera
+    // control (see the class comment) without this driver needing to know
+    // anything about Camera3D. Continuous polling (not the hub's
+    // change-only dispatch) is deliberate here: a camera that only turns
+    // WHILE the stick's value is changing would stop mid-turn the instant
+    // the stick holds steady at a nonzero deflection, which isn't how a
+    // look-around control should feel.
+    const GamepadState& getLastState() const { return lastState; }
 
     // --- Movement-control tuning -------------------------------------------
     // Deadzone: fraction of full deflection near center that's treated as
@@ -97,6 +137,35 @@ public:
     // applies, i.e. this driver's original, MappingEngine-free behavior.
     void setLeftStickOverrideQuery (std::function<bool (const juce::String&)> query) { isSourceOverridden = std::move (query); }
 
+    // Meters of launch strength at full left-stick deflection while a
+    // throw-gesture button is held (see driveThrowGesture()) -- same order
+    // of magnitude as the mouse sling gesture's own pull distances
+    // (SlingGesture::minPullDistanceMeters etc.), tuned so a full-deflection
+    // Free Throw (SlingGesture::throwVelocityScale * this) lands close to
+    // SoundObject::maxVelocity's own default (6.0) rather than needing to
+    // be clamped away immediately.
+    void setThrowMaxPullDistance (float newMaxPullDistanceMeters) { throwMaxPullDistanceMeters = juce::jmax (0.0f, newMaxPullDistanceMeters); }
+    float getThrowMaxPullDistance() const { return throwMaxPullDistanceMeters; }
+
+    // --- Object-management/throw-gesture logic (see the class comment's
+    // corresponding bullets) -- public specifically so a test can exercise
+    // this logic directly against hand-built GamepadState previous/current
+    // pairs and a real TrajectoryEngine, without needing an actual
+    // connected controller (GamepadBridge -- the part of this class that
+    // genuinely can't be exercised headlessly -- is never touched by
+    // either method below; see Tools/verify_gamepad_driver.cpp). poll()
+    // itself is still the only normal caller in the running plugin.
+
+    // See the class comment's "Button X/A/B" bullet. Edge-triggered off
+    // `previous`/`current` (the same two snapshots dispatchAllChanges()
+    // already compares) so each physical press fires exactly once,
+    // regardless of how many ticks the button stays held.
+    void driveObjectManagement (int& selectedObjectIndex, const GamepadState& previous, const GamepadState& current);
+
+    // See the class comment's "Button Y / Left Shoulder / Right Shoulder"
+    // bullet -- Free Throw / Orbit Shot / Slingshot, gamepad-driven.
+    void driveThrowGesture (int selectedObjectIndex, const GamepadState& previous, const GamepadState& current);
+
 private:
     void dispatchAxisIfChanged (CanonicalInputHub& hub, const juce::String& sourceId, float previous, float current,
                                  ParameterRegistry::Polarity polarity);
@@ -126,4 +195,16 @@ private:
 
     // See setLeftStickOverrideQuery() above.
     std::function<bool (const juce::String&)> isSourceOverridden;
+
+    // --- Throw-gesture state (driveThrowGesture()) --------------------------
+    enum class ThrowMode { None, FreeThrow, OrbitShot, Slingshot };
+    ThrowMode activeThrowMode = ThrowMode::None;
+    // Snapshotted when a throw-hold button is first pressed, so a
+    // selection change made mid-hold (e.g. via driveObjectManagement()'s
+    // own cycle button) can't retarget an aim already in progress -- the
+    // object being aimed is whichever one was selected at press time,
+    // exactly like the mouse gesture's own slingObjectIndex (see
+    // PluginEditor::startSling()).
+    int throwObjectIndex = -1;
+    float throwMaxPullDistanceMeters = 2.0f;
 };

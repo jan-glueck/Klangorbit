@@ -412,21 +412,40 @@ part of the scene the preset saves -- see Presets/schema/README.md.)
 ## 16. Gamepad control
 
 Connect a game controller (Xbox/PlayStation-style, wired or Bluetooth --
-macOS's GameController framework covers most modern ones) and select an
-object. The **left stick** then rate-controls that object's position on
-the ground plane: deflection sets its current velocity continuously;
-centering the stick (its own spring-back is enough) stops the object
-exactly where it is, immediately, with no drift and no snap-back.
-Touching the stick switches the selected object into Manual mode
-automatically (the same mode a mouse drag uses) and it stays there until
-you select a different object.
+macOS's GameController framework covers most modern ones). Every control
+has a sensible built-in default -- no setup needed -- and every one of
+them can still be rebound to something else via Learn mode (section 17):
 
-This is the left stick's own built-in default -- see section 17 to bind
-it (or any other control) to something else via Learn mode. Only one
-controller is read at a time. It keeps working with the editor window
-closed, since the whole simulation runs independent of it. An optional
-inertia mode (movement continues after release, decelerating like a
-thrown object) exists but has no UI toggle yet.
+- **Left stick**: rate-controls the selected object's position on the
+  ground plane -- deflection sets its current velocity continuously;
+  centering the stick (its own spring-back is enough) stops the object
+  exactly where it is, immediately, with no drift and no snap-back.
+  Touching the stick switches the selected object into Manual mode
+  automatically (the same mode a mouse drag uses).
+- **Right stick**: orbits the camera (look-around) -- the gamepad
+  equivalent of dragging empty space with the mouse. Only does anything
+  with the editor window open (there's nothing to look at otherwise).
+- **D-pad Up/Down**: zooms the camera in/out. Also editor-only.
+- **Button X**: cycles the selection to the next active object.
+- **Button A**: activates the next inactive object slot and selects it
+  (same as the "+ Object" toolbar button).
+- **Button B**: deactivates the currently selected object (same as
+  "- Remove Object").
+- **Button Y / Left Shoulder / Right Shoulder (hold)**: aims a Free
+  Throw / Orbit Shot / Slingshot -- while held, push the left stick the
+  direction and strength you want to launch; releasing fires it. The
+  gamepad equivalent of the mouse's Shift+drag sling gesture (section 5),
+  just aimed by pushing the stick rather than pulling the mouse back.
+  Orbit Shot always centers on the world origin; Slingshot always
+  targets the first other active object -- use the mouse gesture instead
+  if you want to choose a specific center/target.
+
+All of the above (except camera look/zoom, which needs the editor open)
+keeps working with the editor window closed, since the whole simulation
+runs independent of it. Only one controller is read at a time. An
+optional inertia mode for the left stick's movement (movement continues
+after release, decelerating like a thrown object) exists but has no UI
+toggle yet.
 
 ## 17. Controller mapping (toolbar -> Mappings...)
 

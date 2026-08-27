@@ -1,5 +1,7 @@
 #include "GamepadDriver.h"
+#include "SlingGesture.h"
 #include <cmath>
+#include <vector>
 
 GamepadDriver::GamepadDriver (TrajectoryEngine& engineToControl) : engine (engineToControl) {}
 
@@ -81,17 +83,20 @@ void GamepadDriver::driveSelectedObjectMovement (int selectedObjectIndex, double
     if (obj.inputChannel < 0)
         return; // selected slot isn't an active object -- stay defensive
 
-    if (isSourceOverridden
-        && (isSourceOverridden ("Gamepad0.LeftStick.X") || isSourceOverridden ("Gamepad0.LeftStick.Y")))
+    if ((isSourceOverridden
+         && (isSourceOverridden ("Gamepad0.LeftStick.X") || isSourceOverridden ("Gamepad0.LeftStick.Y")))
+        || activeThrowMode != ThrowMode::None)
     {
-        // A MappingEngine binding now explicitly claims (at least) one
-        // axis -- hand full control to that mapping rather than also
-        // applying built-in movement on top of it. See
+        // Either a MappingEngine binding now explicitly claims (at least)
+        // one axis -- hand full control to that mapping rather than also
+        // applying built-in movement on top of it (see
         // setLeftStickOverrideQuery()'s own comment on why either axis
-        // being claimed suppresses both (avoids a half-working movement
-        // feel from an axis rebound alone). Still release any object
-        // this driver was previously holding, so it doesn't drift
-        // forever at a stale velocity nobody updates anymore.
+        // being claimed suppresses both, avoiding a half-working movement
+        // feel from an axis rebound alone) -- or a throw-gesture button is
+        // currently held (see driveThrowGesture()), which claims the left
+        // stick for aiming instead of movement, same reasoning. Still
+        // release any object this driver was previously holding, so it
+        // doesn't drift forever at a stale velocity nobody updates anymore.
         releaseControlledObject();
         return;
     }
@@ -146,11 +151,184 @@ void GamepadDriver::driveSelectedObjectMovement (int selectedObjectIndex, double
     }
 }
 
-void GamepadDriver::poll (CanonicalInputHub& hub, int selectedObjectIndex, double dt)
+void GamepadDriver::driveObjectManagement (int& selectedObjectIndex, const GamepadState& previous, const GamepadState& current)
 {
+    // Edge-triggered: only the down-transition of each press fires, exactly
+    // once, regardless of how many ticks the button stays held (matching
+    // an ordinary UI button click, not a rate control like the stick).
+    const bool cyclePressed  = current.buttonX && ! previous.buttonX;
+    const bool addPressed    = current.buttonA && ! previous.buttonA;
+    const bool removePressed = current.buttonB && ! previous.buttonB;
+
+    if (cyclePressed && engine.getNumActiveObjects() > 0)
+    {
+        // Scans forward from the current selection (wrapping), landing on
+        // the next ACTIVE slot -- starting from -1 (nothing selected)
+        // naturally lands on slot 0 first, no special-casing needed.
+        const int count = engine.getNumObjects();
+        int idx = selectedObjectIndex;
+        for (int step = 0; step < count; ++step)
+        {
+            idx = (idx + 1) % count;
+            if (engine.getObject (idx).inputChannel >= 0)
+            {
+                selectedObjectIndex = idx;
+                break;
+            }
+        }
+    }
+
+    if (addPressed)
+    {
+        // Mirrors PluginEditor::addObjectClicked() exactly (same
+        // findNextInactiveObject() + activateObject() + immediate
+        // selection), just triggered by a gamepad button instead of a
+        // toolbar click -- works with no editor open, per this driver's
+        // own "keeps working in the background" requirement.
+        const int idx = engine.findNextInactiveObject();
+        if (idx >= 0)
+        {
+            engine.activateObject (idx);
+            selectedObjectIndex = idx;
+        }
+    }
+
+    if (removePressed && juce::isPositiveAndBelow (selectedObjectIndex, engine.getNumObjects()))
+    {
+        // Mirrors PluginEditor::removeObjectClicked().
+        engine.deactivateObject (selectedObjectIndex);
+        selectedObjectIndex = -1;
+    }
+}
+
+void GamepadDriver::driveThrowGesture (int selectedObjectIndex, const GamepadState& previous, const GamepadState& current)
+{
+    if (activeThrowMode == ThrowMode::None)
+    {
+        // Not currently aiming -- start a fresh aim only on an actual
+        // button-down edge (not merely "is held"), so a button already
+        // held from before this object became selected can't retroactively
+        // start an aim it was never meant to. If more than one throw
+        // button is somehow pressed on the very same tick, Free Throw
+        // wins, then Orbit Shot, then Slingshot -- a deterministic
+        // fallback for an unsupported combination, not a meaningful
+        // priority order.
+        ThrowMode pressed = ThrowMode::None;
+        if (current.buttonY && ! previous.buttonY)                       pressed = ThrowMode::FreeThrow;
+        else if (current.leftShoulder && ! previous.leftShoulder)        pressed = ThrowMode::OrbitShot;
+        else if (current.rightShoulder && ! previous.rightShoulder)      pressed = ThrowMode::Slingshot;
+
+        // Nothing selected -- there is nothing to aim, so don't enter an
+        // aim state at all (matches PluginEditor::mouseDown()'s own
+        // "Shift+click only starts a sling if an object was actually hit"
+        // gate).
+        if (pressed != ThrowMode::None && juce::isPositiveAndBelow (selectedObjectIndex, engine.getNumObjects()))
+        {
+            activeThrowMode = pressed;
+            throwObjectIndex = selectedObjectIndex;
+        }
+        return;
+    }
+
+    // Currently aiming -- check whether the SPECIFIC button that started
+    // this aim is still held (not just "some throw button or other").
+    bool stillHeld = false;
+    switch (activeThrowMode)
+    {
+        case ThrowMode::FreeThrow:  stillHeld = current.buttonY; break;
+        case ThrowMode::OrbitShot:  stillHeld = current.leftShoulder; break;
+        case ThrowMode::Slingshot:  stillHeld = current.rightShoulder; break;
+        case ThrowMode::None:       break;
+    }
+
+    if (stillHeld)
+        return; // still aiming -- the object's rest position is left untouched throughout, same as the mouse gesture while pulling
+
+    // Released -- fire, using THIS tick's stick deflection as the final
+    // aim. Deliberately a DIRECT analog mapping (push the stick the way
+    // you want it to launch), not the mouse gesture's pull-BACK-then-
+    // release metaphor -- that metaphor only makes sense with a visible
+    // cursor being dragged away from the object, which a gamepad stick has
+    // no equivalent of; "push this way to throw this way" is the natural
+    // reading for an analog stick instead (see the class comment).
+    const float shapedX = shapeAxis (current.leftStickX, deadzone, curveExponent);
+    const float shapedY = shapeAxis (current.leftStickY, deadzone, curveExponent);
+    // Same world-space stick convention driveSelectedObjectMovement() uses
+    // (see its own comment): stick "up" -> +X (front), stick "right" -> -Y
+    // (this project's y=left-positive convention).
+    const Vec3 aimDirection { shapedY, -shapedX, 0.0f };
+    const Vec3 pullVector = aimDirection * throwMaxPullDistanceMeters;
+
+    const ThrowMode firedMode = activeThrowMode;
+    const int objectIndex = throwObjectIndex;
+    activeThrowMode = ThrowMode::None;
+    throwObjectIndex = -1;
+
+    // Below this deflection, fire nothing at all -- same
+    // "an accidental tap shouldn't launch a near-zero-velocity throw"
+    // reasoning as the mouse gesture's own minPullDistanceMeters gate
+    // (SlingGesture.h). The object index is still re-checked here too
+    // (rather than trusted from the snapshot above) in case it was
+    // deactivated mid-aim by some other path.
+    if (pullVector.length() < SlingGesture::minPullDistanceMeters
+        || ! juce::isPositiveAndBelow (objectIndex, engine.getNumObjects()))
+        return;
+
+    switch (firedMode)
+    {
+        case ThrowMode::FreeThrow:
+            engine.throwObject (objectIndex, pullVector * SlingGesture::throwVelocityScale);
+            break;
+
+        case ThrowMode::OrbitShot:
+        {
+            // Always centers on the world origin ("Center") and always
+            // circular (eccentricity 0) -- gamepad throw has no Tab-cycle
+            // equivalent to instead orbit another object, and no
+            // Alt-cycle equivalent for eccentricity. A deliberate,
+            // disclosed scope decision (see the class comment), not an
+            // oversight -- both remain available via the mouse gesture.
+            const Vec3 center { 0.0f, 0.0f, 0.0f };
+            const float semiMajor = juce::jmax (SlingGesture::minOrbitRadiusMeters, pullVector.length() * SlingGesture::orbitRadiusScale);
+            const float orientation = SlingGesture::computeOrbitOrientation (pullVector);
+            const Vec3 anchorPos = engine.getObject (objectIndex).position; // rest position -- never moved while aiming
+            const float directionSign = SlingGesture::computeOrbitDirectionSign (anchorPos - center, pullVector);
+            engine.startOrbit (objectIndex, center, semiMajor, directionSign * SlingGesture::orbitAngularSpeedMagnitude, 0.0f, orientation, -1);
+            break;
+        }
+
+        case ThrowMode::Slingshot:
+        {
+            // Auto-targets the first other active object -- the same
+            // fallback the mouse gesture's own updateSlingModifiers() uses
+            // when Ctrl-cycling into Slingshot with nothing chosen yet
+            // (SlingGesture::cycleSlingReference()'s own "Center has no
+            // gravity-well meaning" comment). Gamepad throw has no
+            // Tab-cycle equivalent to pick a SPECIFIC target -- same
+            // disclosed scope decision as Orbit Shot's fixed center above.
+            std::vector<int> activeIds;
+            for (int i = 0; i < engine.getNumObjects(); ++i)
+                if (engine.getObject (i).inputChannel >= 0)
+                    activeIds.push_back (i);
+            const int targetId = SlingGesture::cycleSlingReference (-1, activeIds, objectIndex);
+            const float strength = (targetId >= 0) ? SlingGesture::slingshotGravityStrength : 0.0f;
+            engine.throwObject (objectIndex, pullVector * SlingGesture::throwVelocityScale, targetId, strength);
+            break;
+        }
+
+        case ThrowMode::None:
+            break;
+    }
+}
+
+void GamepadDriver::poll (CanonicalInputHub& hub, int& selectedObjectIndex, double dt)
+{
+    const GamepadState previous = lastState;
     const GamepadState current = bridge.poll();
-    dispatchAllChanges (hub, lastState, current);
+    dispatchAllChanges (hub, previous, current);
     lastState = current;
 
+    driveObjectManagement (selectedObjectIndex, previous, current);
+    driveThrowGesture (selectedObjectIndex, previous, current);
     driveSelectedObjectMovement (selectedObjectIndex, dt);
 }

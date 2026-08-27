@@ -490,3 +490,43 @@ target_link_libraries(verify_osc_driver
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- Gamepad driver verification ---------------------------------------------
+# Runs GamepadDriver's fixed default control scheme (see its own class
+# comment) directly, via hand-built GamepadState previous/current pairs
+# against a real TrajectoryEngine -- object cycle/add/remove (Button
+# X/A/B) and Free Throw/Orbit Shot/Slingshot (Button Y/Left Shoulder/
+# Right Shoulder held + left stick aim, reusing SlingGesture.h's own pure
+# math). driveObjectManagement()/driveThrowGesture() are public
+# specifically so this test can call them without a connected controller
+# -- GamepadBridge (the actual GCController polling, and
+# driveSelectedObjectMovement()'s own use of it via poll()) is the part
+# that genuinely isn't testable headlessly, same as before this test
+# existed, and is instead verified by full build + Standalone launch
+# stability.
+juce_add_console_app(verify_gamepad_driver
+    PRODUCT_NAME "verify_gamepad_driver"
+)
+
+target_sources(verify_gamepad_driver
+    PRIVATE
+        Tools/verify_gamepad_driver.cpp
+        Source/GamepadDriver.cpp
+        Source/GamepadBridge.mm
+        Source/TrajectoryEngine.cpp
+        Source/GrainCloud.cpp
+        Source/CanonicalInput.cpp
+        Source/ParameterRegistry.cpp
+)
+
+target_link_libraries(verify_gamepad_driver
+    PRIVATE
+        juce::juce_core
+        # GamepadBridge.mm's bridge to Apple's GCController/GCExtendedGamepad
+        # API -- same dependency the Klangorbit target itself links, see its
+        # own comment.
+        "-framework GameController"
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)

@@ -7,6 +7,81 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Fixed default gamepad control scheme.** Extends `GamepadDriver`'s
+  existing "left stick moves the selected object" default with a full
+  set of sensible-out-of-the-box bindings, no mapping profile required
+  (all still genuinely overridable via Learn mode -- see "Controller
+  mapping" above for the pre-existing override mechanism, unchanged
+  here):
+  - **Object cycle/add/remove**: Button X cycles the selection to the
+    next active object (wrapping); Button A activates the next inactive
+    object slot and selects it (mirrors the "+ Object" toolbar button);
+    Button B deactivates the currently selected object and clears the
+    selection (mirrors "- Remove Object"). All edge-triggered (fire once
+    per physical press, not once per tick while held) and implemented in
+    `GamepadDriver::driveObjectManagement()`, which runs from
+    `KlangorbitProcessor`'s own background timer -- keeps working with
+    no editor window open, same as gamepad movement always has.
+    `KlangorbitEditor::resyncFromBackgroundObjectChanges()` (new) keeps
+    the editor's own object-list highlight/selection in sync with
+    whatever this changed in the background.
+  - **Gamepad-driven Free Throw / Orbit Shot / Slingshot**: holding
+    Button Y / Left Shoulder / Right Shoulder aims the corresponding
+    launch mode (the same three the mouse's Shift+drag sling gesture
+    offers, see `SlingGesture.h`) using the left stick's direction and
+    magnitude; releasing fires it.
+    `GamepadDriver::driveThrowGesture()` reuses `SlingGesture`'s own pure
+    math functions directly (pull-vector velocity/orbit-radius scaling,
+    orbit orientation/direction sign, the Slingshot auto-target
+    fallback) rather than a second, drifting-out-of-sync copy of the
+    same formulas. Deliberately a DIRECT analog mapping ("push the stick
+    the way you want it to launch"), not the mouse gesture's pull-BACK-
+    then-release metaphor -- that metaphor only makes sense with a
+    visible cursor being dragged away from the object, which a gamepad
+    stick has no equivalent of. Suspends the left stick's own movement
+    behavior while a throw button is held (same "don't fight over the
+    same stick" mechanism already used for `MappingEngine` overrides).
+    Runs from the background timer too, so it works with no editor open
+    -- unlike the mouse gesture, there is deliberately no live visual
+    aim preview (Camera3D/rendering are editor-only, see below), and no
+    equivalent of the mouse gesture's Ctrl/Alt/Tab modifiers: Orbit Shot
+    always centers on the world origin at a fixed circular
+    (eccentricity 0) shape, and Slingshot always auto-targets the first
+    other active object (falling back to a plain, unaffected throw if
+    none exists) -- disclosed scope decisions, not oversights; both
+    remain available via the mouse gesture for anyone who wants to pick
+    a specific center/target.
+  - **Camera look/zoom**: the right stick orbits the camera
+    (azimuth/elevation) and the D-pad's Up/Down zoom in/out --
+    deliberately NOT part of `GamepadDriver` (`Camera3D` is purely
+    editor-owned view state, meaningless with no editor open to look
+    at). Polled instead by `KlangorbitEditor`'s own timer via the new
+    `GamepadDriver::getLastState()`/`KlangorbitProcessor::
+    getGamepadState()` accessors, in a new `updateGamepadCamera()`.
+    Continuous polling (not the canonical hub's change-only dispatch) on
+    purpose: a look-around control needs to keep turning while the stick
+    holds a steady nonzero deflection, not just at the instant it
+    changes. Sign convention is a reasonable best guess, not yet
+    manually verified against real hardware in this environment -- same
+    disclosed caveat as this project's existing camera-drag/gamepad-
+    movement conventions (see "Known limitations" below), and just as
+    easy to flip if it feels backwards.
+  - `GamepadDriver::poll()`'s `selectedObjectIndex` parameter is now
+    passed by reference (was by value) so the new object-management
+    behavior can update it directly, exactly as if the change had come
+    from the editor's own `selectObject()`.
+  - New `Tools/verify_gamepad_driver` (cycle wrap-around and inactive-
+    slot skipping, add/remove mirroring the toolbar buttons' own
+    behavior, edge-triggering vs. holding, the full aim-then-release
+    sequence for all three throw modes including the min-pull-distance
+    fire gate, "nothing selected at press time never starts an aim,"
+    and simultaneous-button-press priority) -- calls
+    `driveObjectManagement()`/`driveThrowGesture()` directly against a
+    real `TrajectoryEngine` with hand-built `GamepadState` pairs, no
+    connected controller needed (both are public specifically for this;
+    `GamepadBridge`'s actual hardware polling remains the one part of
+    this driver that isn't testable headlessly, verified instead by full
+    build + Standalone launch stability as before).
 - **MIDI and OSC drivers -- two more sources on the canonical input
   layer.** Confirms the architecture's own promise, made when the
   parameter registry/canonical input layer/`MappingEngine` were first

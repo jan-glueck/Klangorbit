@@ -172,7 +172,7 @@ permanent gravity well, not just a single thrown object's temporary one.
   Time Scale              slow-motion (< 1) or fast-forward (> 1)
 
 
-== 9. ACOUSTIC SIMULATION (panel -> Acoustics, + per-object Doppler) ==
+== 9. ACOUSTIC SIMULATION (panel -> Scene, Acoustics section, + per-object Doppler) ==
 
 Distance, speed, and direction genuinely affect the sound, not just
 its position:

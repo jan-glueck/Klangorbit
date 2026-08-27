@@ -1409,6 +1409,37 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
+- **Toolbar simplified to a single row; "+ Object"/"- Remove Object" and
+  the "Objects: N / M" count moved to the object list sidebar.**
+  `KlangorbitEditor::toolbarHeight` reduced from 76 (two rows) to 38 (one)
+  now that so much of the old second row moved out: `ObjectListPanel`
+  (`Source/ObjectListPanel.h/.cpp`) now owns `addButton`/`removeButton`
+  and shows the count in its own header label (repurposed from a static
+  "Objects" title to "Objects: N / M", updated by `refresh()`) --
+  `onAddClicked`/`onRemoveClicked` callbacks wire straight to
+  `KlangorbitEditor`'s existing `addObjectClicked()`/
+  `removeObjectClicked()`, same pattern as the panel's own
+  `onObjectSelected`. `updateButtonStates()` (new, called from both
+  `refresh()` and `setSelectedIndex()`) keeps both buttons' enabled state
+  current; `KlangorbitEditor::updateObjectUiState()` is gone entirely --
+  every one of its effects is now handled by `ObjectListPanel` itself at
+  the same call sites that already existed. The now-single toolbar row
+  holds Load/Save Preset on the left, and the CPU meter (moved here from
+  the old second row) / Mappings.../Output.../"?" on the right.
+- **Acoustics split back out into its own category, and Propagation Wind
+  moved there from Scene.** Follow-up to both changes below: a single
+  flat Scene page mixing room/force-field settings with acoustic-medium
+  settings read as more cluttered than two separate tabs, so Acoustics
+  (`Category::Acoustics`, speed of sound/temperature/humidity/pressure)
+  is back as its own category button -- still grouped under "SCENE
+  SETTINGS" alongside Scene (both are still `Scope::Global`, not
+  per-object, which is why they stay in the same button GROUP even
+  though they're separate TABS again). Propagation Wind
+  (`SceneSettings::windVector`) moves from Scene into Acoustics
+  specifically, alongside the rest of the acoustic-medium settings it
+  conceptually belongs with -- completing the separation from Force
+  Field (`SceneSettings::globalField`, stays in Scene) that the rename
+  above started.
 - **Parameter panel polish, following up on the reorganization below.**
   - `objectHeaderLabel` (which object is selected) now shares the
     "OBJECT SETTINGS" label's own row, right-aligned, instead of
@@ -1440,9 +1471,12 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     done, since both fields are scene-wide (`Scope::Global`, not tied
     to any object), and Doppler lives under "OBJECT SETTINGS" (disabled/
     hidden with nothing selected) -- moving a global setting there would
-    misrepresent it as object-scoped. Both stay in Scene, renamed
-    instead. `ParameterRegistry`'s own display names (ids `"globalField"`/
-    `"windVector"`) updated to match; the ids themselves are untouched.
+    misrepresent it as object-scoped. Both stayed under "SCENE SETTINGS"
+    at this point, renamed only (see below for the follow-up that split
+    Acoustics back out as its own category and moved Propagation Wind
+    there specifically). `ParameterRegistry`'s own display names (ids
+    `"globalField"`/`"windVector"`) updated to match; the ids themselves
+    are untouched.
 - **Parameter panel reorganized: Scene settings visually separated from
   Object settings, the Acoustics category folded into Scene, and Output
   moved out into its own window entirely.** (This entry describes the

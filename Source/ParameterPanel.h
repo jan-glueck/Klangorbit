@@ -98,18 +98,28 @@ public:
 /**
     Side panel: a fixed row of category buttons at the top, grouped into
     two visually distinct sections (see resized()) -- "SCENE SETTINGS"
-    (Scene, which also holds the former separate Acoustics fields -- speed
-    of sound, temperature, humidity, pressure, wind -- alongside room/
-    global-field/time-scale settings, both being "not a single object's
-    own property" is exactly the distinction ParameterRegistry's own
-    category strings already draw, see PluginProcessor.cpp's
-    buildParameterRegistry()) above "OBJECT SETTINGS" (Object, Attraction,
-    Orbit, Doppler, Grains) below -- and a scrollable area beneath showing
-    only the currently selected category's parameters, not one long list.
+    (Scene, Acoustics) above "OBJECT SETTINGS" (Object, Attraction, Orbit,
+    Doppler, Grains) below -- and a scrollable area beneath showing only
+    the currently selected category's parameters, not one long list.
     objectHeaderLabel (which object, if any, is selected) shares the
     "OBJECT SETTINGS" label's own row, right-aligned, rather than costing
     a row of its own -- selection only matters to that group's pages, not
-    to Scene, so it stays visually tied to that one label.
+    to Scene/Acoustics, so it stays visually tied to that one label.
+
+    Acoustics (speed of sound, temperature, humidity, pressure,
+    propagation wind) is its own category, not folded into Scene -- both
+    went through an earlier revision that merged them (same
+    "not a single object's own property" reasoning
+    `ParameterRegistry`'s own "Global" category string already draws, see
+    `PluginProcessor.cpp`'s `buildParameterRegistry()`, still true of
+    both), but a single flat Scene page mixing room/force-field settings
+    with acoustic-medium settings read as more cluttered than two
+    separate, still-both-under-"SCENE SETTINGS" tabs. Propagation Wind
+    (`SceneSettings::windVector`) in particular lives here now rather
+    than in Scene, alongside the rest of the acoustic-medium settings it
+    conceptually belongs with -- separating it from Force Field
+    (`SceneSettings::globalField`, stays in Scene), which is a real
+    physical force on object movement, not an acoustic property at all.
 
     Output Format/Bass Management/Circular Array speaker count are
     deliberately NOT a category here at all -- they moved to their own
@@ -139,7 +149,7 @@ public:
 class ParameterPanel : public juce::Component
 {
 public:
-    enum class Category { Scene, Object, Attraction, Orbit, Doppler, GrainCloud };
+    enum class Category { Scene, Acoustics, Object, Attraction, Orbit, Doppler, GrainCloud };
 
     ParameterPanel();
 
@@ -255,10 +265,6 @@ private:
     // small, dim section labels, not part of the scrollable content.
     juce::Label sceneGroupLabel;
     juce::Label objectGroupLabel;
-    // Sits WITHIN the scrollable Scene page's content, between the
-    // room/time-scale rows and the former-Acoustics-category rows now
-    // folded into the same page -- see the class comment.
-    juce::Label acousticsSectionLabel;
     juce::Label orbitModeHintLabel; // see updateOrbitModeHintVisibility()
     std::unique_ptr<ComboRowComponent> modeRow;
     std::unique_ptr<ComboRowComponent> boundaryRow;

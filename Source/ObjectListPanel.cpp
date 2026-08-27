@@ -8,6 +8,12 @@ ObjectListPanel::ObjectListPanel()
     titleLabel.setFont (juce::Font (juce::FontOptions (13.0f)).withExtraKerningFactor (0.08f));
     addAndMakeVisible (titleLabel);
 
+    addAndMakeVisible (addButton);
+    addButton.onClick = [this] { if (onAddClicked != nullptr) onAddClicked(); };
+
+    addAndMakeVisible (removeButton);
+    removeButton.onClick = [this] { if (onRemoveClicked != nullptr) onRemoveClicked(); };
+
     viewport.setViewedComponent (&rowContainer, false);
     viewport.setScrollBarsShown (true, false);
     addAndMakeVisible (viewport);
@@ -79,13 +85,25 @@ void ObjectListPanel::refresh (TrajectoryEngine& engineIn)
         rows.push_back (std::move (row));
     }
 
+    numActive = engineIn.getNumActiveObjects();
+    numTotal = engineIn.getNumObjects();
+    titleLabel.setText ("Objects: " + juce::String (numActive) + " / " + juce::String (numTotal), juce::dontSendNotification);
+    updateButtonStates();
+
     resized();
     updateRowColours();
+}
+
+void ObjectListPanel::updateButtonStates()
+{
+    addButton.setEnabled (numActive < numTotal);
+    removeButton.setEnabled (selectedIndex >= 0);
 }
 
 void ObjectListPanel::setSelectedIndex (int index)
 {
     selectedIndex = index;
+    updateButtonStates();
     updateRowColours();
 }
 
@@ -108,6 +126,16 @@ void ObjectListPanel::resized()
 {
     auto bounds = getLocalBounds();
     titleLabel.setBounds (bounds.removeFromTop (headerHeight));
+
+    // + Object / - Remove Object, stacked full-width -- side by side
+    // doesn't reliably fit both labels in this panel's narrow width
+    // (objectListWidth, see PluginEditor.h).
+    auto buttonArea = bounds.removeFromTop (2 * addRemoveButtonHeight + UiSpacing::xs).reduced (sidePadding, 0);
+    addButton.setBounds (buttonArea.removeFromTop (addRemoveButtonHeight));
+    buttonArea.removeFromTop (UiSpacing::xs);
+    removeButton.setBounds (buttonArea.removeFromTop (addRemoveButtonHeight));
+    bounds.removeFromTop (UiSpacing::xs);
+
     bounds.removeFromLeft (sidePadding);
     bounds.removeFromRight (sidePadding);
     viewport.setBounds (bounds);
@@ -135,6 +163,6 @@ void ObjectListPanel::paint (juce::Graphics& g)
     g.fillAll (UiColours::bgPanel());
 
     g.setColour (UiColours::border());
-    g.fillRect (0, headerHeight - 1, getWidth(), 1); // divider under the "Objects" header
+    g.fillRect (0, contentTopHeight - 1, getWidth(), 1); // divider under the header (title + add/remove buttons)
     g.fillRect (getWidth() - 1, 0, 1, getHeight());  // right edge, separates the panel from the 3D viewport
 }

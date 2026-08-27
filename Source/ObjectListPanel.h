@@ -23,6 +23,16 @@
     scene-view click) back into this list's own highlight, without
     re-firing onObjectSelected (which would be a redundant round trip).
 
+    Also owns the "+ Object"/"- Remove Object" buttons and the "Objects:
+    N / M" count display (moved here from the toolbar -- this is where
+    they act, so this is where they live). Same "fires a callback,
+    PluginEditor does the actual work" pattern as onObjectSelected:
+    onAddClicked/onRemoveClicked wire straight to the editor's existing
+    addObjectClicked()/removeObjectClicked(). addButton/removeButton's
+    enabled state and the count text are both kept in sync by refresh()
+    (active/total counts) and setSelectedIndex() (whether Remove has
+    anything to act on) -- see updateButtonStates().
+
     Only lists active objects (inputChannel >= 0), matching what's
     visible/clickable in the scene view -- not grains, which have no
     individual selection concept (see ParameterPanel's Grains
@@ -61,8 +71,23 @@ public:
     // object's id (this panel never offers to select an inactive slot).
     std::function<void (int)> onObjectSelected;
 
+    // See the class comment. Public, like onObjectSelected above --
+    // PluginEditor wires these directly to its existing
+    // addObjectClicked()/removeObjectClicked().
+    std::function<void()> onAddClicked;
+    std::function<void()> onRemoveClicked;
+
 private:
+    void updateButtonStates(); // addButton/removeButton enabled state -- see the class comment
+
     static constexpr int headerHeight = 34;
+    static constexpr int addRemoveButtonHeight = 28;
+    // headerHeight + the two add/remove buttons + the small gaps around
+    // them (see resized()) -- where the header/divider ends and the
+    // scrollable row list begins. A plain literal for the two 4px gaps
+    // (matching UiSpacing::xs's own value) rather than pulling in
+    // UiTheme.h just for a constexpr used in exactly one place.
+    static constexpr int contentTopHeight = headerHeight + 2 * addRemoveButtonHeight + 8;
     static constexpr int rowHeight = 34;
     static constexpr int rowGap = 4;
     static constexpr int toggleButtonWidth = 26;
@@ -77,6 +102,11 @@ private:
     };
     std::vector<Row> rows;
     int selectedIndex = -1;
+    // Cached from the most recent refresh() -- setSelectedIndex() needs
+    // numTotal (via updateButtonStates()) to re-derive addButton's
+    // enabled state too, but only refresh() actually sees the engine.
+    int numActive = 0;
+    int numTotal = 0;
 
     // Not owned -- valid only because refresh() is called again by
     // PluginEditor any time the object set could change; used solely to
@@ -86,7 +116,11 @@ private:
 
     juce::Viewport viewport;
     juce::Component rowContainer; // hosted inside viewport, holds the actual row buttons
+    // Text set dynamically by refresh() to "Objects: N / M" -- see the
+    // class comment on why the count display lives here now.
     juce::Label titleLabel { {}, "Objects" };
+    juce::TextButton addButton { "+ Object" };
+    juce::TextButton removeButton { "- Remove Object" };
 
     void updateRowColours();
 };

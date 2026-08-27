@@ -185,6 +185,7 @@ ParameterPanel::ParameterPanel()
     // categoryRequiresObject(), see the class comment) -- kept in the same
     // visual order the two groups render in purely for readability here.
     addCategoryButton ("Scene", Category::Scene);
+    addCategoryButton ("Acoustics", Category::Acoustics);
     addCategoryButton ("Object", Category::Object);
     addCategoryButton ("Attraction", Category::Attraction);
     addCategoryButton ("Orbit", Category::Orbit);
@@ -239,24 +240,23 @@ ParameterPanel::ParameterPanel()
 
     addSceneFloatRow ("Time Scale (timeScale)", &SceneSettings::timeScale, 0.05, 5.0, 0.01, Category::Scene);
 
-    // --- Acoustics (part of the Scene page, not its own category -- see
-    // the class comment: these are scene-wide settings exactly like
-    // roomSize/timeScale above, just a visually distinct group of rows
-    // within the same page rather than a separate tab) --------------------
-    styleRowLabel (acousticsSectionLabel, "ACOUSTICS", 11.0f, UiColours::textDisabled());
-    acousticsSectionLabel.setFont (acousticsSectionLabel.getFont().withExtraKerningFactor (0.08f));
-    content.addAndMakeVisible (acousticsSectionLabel);
-    addToLayout (acousticsSectionLabel, 22, Category::Scene);
-
-    addSceneFloatRow ("Speed of Sound (m/s)", &SceneSettings::speedOfSound, 1.0, 400.0, 1.0, Category::Scene);
-    addSceneFloatRow ("Temperature (C)", &SceneSettings::temperature, -20.0, 45.0, 0.5, Category::Scene);
-    addSceneFloatRow ("Relative Humidity (%)", &SceneSettings::relativeHumidity, 0.0, 100.0, 1.0, Category::Scene);
-    addSceneFloatRow ("Atmospheric Pressure (kPa)", &SceneSettings::atmosphericPressure, 80.0, 110.0, 0.1, Category::Scene);
+    // --- Acoustics ----------------------------------------------------------
+    // Its own category, not a section within Scene -- see the class
+    // comment. Still SceneSettings fields (Scope::Global, not per-object),
+    // so still grouped under "SCENE SETTINGS" in resized() -- just its
+    // own tab within that group now.
+    addSceneFloatRow ("Speed of Sound (m/s)", &SceneSettings::speedOfSound, 1.0, 400.0, 1.0, Category::Acoustics);
+    addSceneFloatRow ("Temperature (C)", &SceneSettings::temperature, -20.0, 45.0, 0.5, Category::Acoustics);
+    addSceneFloatRow ("Relative Humidity (%)", &SceneSettings::relativeHumidity, 0.0, 100.0, 1.0, Category::Acoustics);
+    addSceneFloatRow ("Atmospheric Pressure (kPa)", &SceneSettings::atmosphericPressure, 80.0, 110.0, 0.1, Category::Acoustics);
     // "Propagation Wind" (not just "Wind") -- see Force Field's own
     // comment above for why: this only shifts the effective speed of
     // sound for propagation delay/Doppler, it never affects how objects
-    // actually move (that's Force Field, above).
-    addSceneVec3Row ("Propagation Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1, Category::Scene);
+    // actually move (that's Force Field, in Scene). Lives in Acoustics,
+    // not Scene, alongside the rest of the acoustic-medium settings it
+    // conceptually belongs with -- separating it from Force Field is the
+    // whole point of the rename/relocation (see the class comment).
+    addSceneVec3Row ("Propagation Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1, Category::Acoustics);
 
     // --- Object -------------------------------------------------------------
     // Mute/Solo (SoundObject::muted/soloed) are deliberately NOT exposed

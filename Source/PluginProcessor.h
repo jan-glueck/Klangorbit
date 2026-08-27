@@ -9,6 +9,7 @@
 #include "PropagationProcessor.h"
 #include "GrainCloud.h"
 #include "ParameterRegistry.h"
+#include "CanonicalInput.h"
 
 /**
     Input:  N mono channels (N = SAPOC_MAX_LIVE_INPUTS, configurable), each
@@ -154,6 +155,14 @@ public:
     int getSelectedObjectIndex() const { return selectedObjectIndex; }
     void setSelectedObjectIndex (int index) { selectedObjectIndex = index; }
 
+    // --- Canonical controller input ---------------------------------------
+    // See CanonicalInput.h for what this is/isn't. Owned here (like
+    // parameterRegistry above) so a driver and a mapping consumer, added
+    // in later branches, both have a single, already-wired hub to post to
+    // /listen on without either one owning it. No producers or consumers
+    // exist yet in this branch.
+    CanonicalInputHub& getCanonicalInputHub() { return canonicalInputHub; }
+
 private:
     // The control-rate simulation loop -- see the class comment above for
     // why this lives here instead of the editor. 90Hz, same rate the
@@ -245,6 +254,11 @@ private:
     // will need to revisit that.
     ParameterRegistry parameterRegistry;
     int selectedObjectIndex = -1;
+
+    // See getCanonicalInputHub() above. CanonicalInputHub is internally
+    // locked and safe to post to/listen on from any thread, so this
+    // member itself needs no extra synchronization here.
+    CanonicalInputHub canonicalInputHub;
 
     // Control-rate timer state -- see timerCallback(). Moved here from
     // what used to be KlangorbitEditor::lastTimerMs/grainRandom (same

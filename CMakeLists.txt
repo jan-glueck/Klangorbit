@@ -79,6 +79,7 @@ target_sources(Klangorbit
         Source/AmbisonicsDecoder.cpp
         Source/VBAP.cpp
         Source/ParameterRegistry.cpp
+        Source/CanonicalInput.cpp
         Source/TrajectoryEngine.cpp
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
@@ -295,6 +296,32 @@ target_sources(verify_parameter_registry
 )
 
 target_link_libraries(verify_parameter_registry
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Canonical controller input verification --------------------------------
+# Runs CanonicalInputHub's own contract in isolation (basic dispatch/field
+# round-tripping, multiple listeners, removeListener() actually stopping
+# delivery, addListener() idempotency, and a reentrant add/remove-during-
+# dispatch scenario to confirm the snapshot-before-call design is actually
+# deadlock/corruption-safe) -- no driver, GUI, or audio device needed. No
+# driver posts real events yet (that's a later branch); this only verifies
+# the protocol-neutral dispatch mechanism itself.
+juce_add_console_app(verify_canonical_input
+    PRODUCT_NAME "verify_canonical_input"
+)
+
+target_sources(verify_canonical_input
+    PRIVATE
+        Tools/verify_canonical_input.cpp
+        Source/CanonicalInput.cpp
+)
+
+target_link_libraries(verify_canonical_input
     PRIVATE
         juce::juce_core
     PUBLIC

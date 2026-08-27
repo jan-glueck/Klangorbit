@@ -8,6 +8,7 @@
 #include "AmbisonicsDecoder.h"
 #include "PropagationProcessor.h"
 #include "GrainCloud.h"
+#include "ParameterRegistry.h"
 
 /**
     Input:  N mono channels (N = SAPOC_MAX_LIVE_INPUTS, configurable), each
@@ -111,7 +112,75 @@ public:
     int getCircularArraySpeakerCount() const { return decoder.getCircularArraySpeakerCount(); }
     void setCircularArraySpeakerCount (int n);
 
+    // --- Parameter registry ----------------------------------------------
+    // See ParameterRegistry.h for what this is/isn't. Built once at
+    // construction (buildParameterRegistry()), covering every possible
+    // object/grain-cloud slot -- read-only from the outside; nothing
+    // outside this class registers into it.
+    const ParameterRegistry& getParameterRegistry() const { return parameterRegistry; }
+
+    // Processor-owned source of truth for "which object is currently
+    // selected" -- moved here (rather than staying purely GUI/editor
+    // state, which is where it lived before this registry existed) so
+    // ParameterRegistry::Scope::SelectedObject parameters keep resolving
+    // correctly even without an editor window open. KlangorbitEditor keeps
+    // its own selection-highlight bookkeeping for rendering, but now
+    // forwards every selection change here too (see PluginEditor.cpp's
+    // selectObject()) -- this is the one true value; the editor's own copy
+    // is a display convenience, not a second source of truth.
+    // -1 = nothing selected.
+    int getSelectedObjectIndex() const { return selectedObjectIndex; }
+    void setSelectedObjectIndex (int index) { selectedObjectIndex = index; }
+
 private:
+    void buildParameterRegistry();
+
+    // Registration helpers for buildParameterRegistry() -- each registers
+    // ONE field as multiple ParameterRegistry entries: one
+    // Scope::SpecificObject entry per object slot (id
+    // "object.<n>.<key>"), plus one Scope::SelectedObject entry (id
+    // "selectedObject.<key>") that resolves against
+    // getSelectedObjectIndex() at call time. Mirrors ParameterPanel's own
+    // addObjectFloatRow()-style helpers (same binding idiom, generalized
+    // behind ParameterRegistry's type-erased get/set instead of a
+    // UI row).
+    void registerObjectFloatParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                    float SoundObject::* member, float minValue, float maxValue,
+                                    ParameterRegistry::Polarity polarity = ParameterRegistry::Polarity::Unipolar);
+    void registerObjectBoolParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                   bool SoundObject::* member);
+    // Registers member.x/.y/.z as three separate float parameters (id
+    // suffixes ".x"/".y"/".z") -- same reasoning as Vec3RowComponent's own
+    // three-slider split in ParameterPanel: a single controller axis maps
+    // naturally to one Vec3 component, not to all three at once.
+    void registerObjectVec3Param (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                   Vec3 SoundObject::* member, float minValue, float maxValue,
+                                   ParameterRegistry::Polarity polarity = ParameterRegistry::Polarity::Bipolar);
+
+    void registerGrainFloatParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                   float GrainCloudSettings::* member, float minValue, float maxValue,
+                                   ParameterRegistry::Polarity polarity = ParameterRegistry::Polarity::Unipolar);
+    void registerGrainBoolParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                  bool GrainCloudSettings::* member);
+    // Int fields (e.g. maxConcurrentGrains) go through the same float
+    // get/set path, rounding on write -- same reuse-not-reinvent choice
+    // ParameterPanel's own addGrainIntRow() already made for the identical
+    // reason (one field, not worth a dedicated int-typed Descriptor kind).
+    void registerGrainIntParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                 int GrainCloudSettings::* member, float minValue, float maxValue);
+
+    // Scene parameters are Scope::Global -- there is exactly one
+    // SceneSettings, registered once, no per-object/selected-object
+    // variants.
+    void registerSceneFloatParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                   float SceneSettings::* member, float minValue, float maxValue,
+                                   ParameterRegistry::Polarity polarity = ParameterRegistry::Polarity::Unipolar);
+    void registerSceneBoolParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                  bool SceneSettings::* member);
+    void registerSceneVec3Param (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                  Vec3 SceneSettings::* member, float minValue, float maxValue,
+                                  ParameterRegistry::Polarity polarity = ParameterRegistry::Polarity::Bipolar);
+
     // BusesProperties is a protected nested type of juce::AudioProcessor --
     // only constructible via a method of the derived class, not via a free
     // function.
@@ -135,6 +204,16 @@ private:
     TrajectoryEngine trajectoryEngine { numLiveInputs, grainPoolSizePerCloud };
     AmbisonicsEncoder encoder;
     AmbisonicsDecoder decoder;
+
+    // See getParameterRegistry()/getSelectedObjectIndex() above. Message-
+    // thread state only (GUI selection changes, mapping-consumer reads in
+    // a later branch) -- not read from processBlock() by anything in this
+    // branch, so no audio-thread synchronization concern yet; a later
+    // branch consuming this from the audio thread (e.g. a gamepad driver
+    // polling from processBlock(), per the user's own stated requirement)
+    // will need to revisit that.
+    ParameterRegistry parameterRegistry;
+    int selectedObjectIndex = -1;
 
     // Encode target for every non-raw-passthrough decoder mode -- always
     // exactly 16 channels (order-3 Ambisonics, the fixed internal encode

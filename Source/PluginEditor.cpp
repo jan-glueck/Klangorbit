@@ -876,6 +876,12 @@ void KlangorbitEditor::removeObjectClicked()
 void KlangorbitEditor::selectObject (int index)
 {
     selectedObjectIndex = index;
+    // The editor's own copy above is purely for rendering (selection
+    // highlight, panel enablement) -- the processor's copy is the actual
+    // source of truth ParameterRegistry::Scope::SelectedObject parameters
+    // resolve against, and keeps working even without an editor open (see
+    // KlangorbitProcessor::getSelectedObjectIndex()'s own comment).
+    audioProcessor.setSelectedObjectIndex (index);
     auto& engine = audioProcessor.getTrajectoryEngine();
 
     if (index < 0)

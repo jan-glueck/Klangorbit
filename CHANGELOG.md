@@ -7,6 +7,94 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Parameter registry -- foundation for controller mapping (gamepad/MIDI/
+  OSC), no consumers yet.** New `ParameterRegistry` (`Source/
+  ParameterRegistry.h/.cpp`): a central register of every controllable
+  parameter, built once at construction
+  (`KlangorbitProcessor::buildParameterRegistry()`) instead of a fixed
+  list living in mapping-specific code, so a future controller-mapping
+  layer (gamepad, later MIDI/OSC) can enumerate/bind against parameters
+  generically. This branch adds ONLY the register and the migration of
+  existing parameters into it -- no gamepad, MIDI, or OSC code at all.
+  - Each registered `Descriptor` is self-contained: stable ID, display
+    name, category (for a future mapping-UI parameter picker), REAL
+    (not normalized) value range + polarity (`Unipolar` 0..1 or
+    `Bipolar` -1..1), type-erased get/set, and a binding `Scope`:
+    `Global` (one instance, e.g. `SceneSettings::roomSize`),
+    `SpecificObject` (a fixed object slot, by id, regardless of current
+    UI selection), or `SelectedObject` (dynamically resolves against
+    whichever object is currently selected -- inert, not an error,
+    while nothing is selected). `normalize()`/`denormalize()` convert
+    between a parameter's real range and 0..1/-1..1 for a future mapping
+    consumer.
+  - **Deliberately NOT built on `juce::AudioProcessorParameter`.**
+    Every parameter in this codebase today is a plain public struct
+    field (`SoundObject`, `GrainCloudSettings`, `SceneSettings`),
+    read/written directly by the GUI (`ParameterPanel`'s own
+    pointer-to-member bindings) and the audio thread, with no
+    abstraction layer at all -- `juce::AudioProcessorParameter` is
+    built for host-automatable, identity-stable parameters declared
+    once at construction, a poor fit for up to 8 objects' worth of
+    fields (most inactive at any time) and, more fundamentally, for
+    `Scope::SelectedObject`, which by design retargets which underlying
+    field a single registered parameter resolves to from one call to
+    the next -- something JUCE's parameter identity model isn't meant
+    to express. This registry has no host-automation ambition; it
+    exists purely for internal controller-mapping use. A lightweight
+    descriptor generalizing `ParameterPanel`'s own existing
+    pointer-to-member binding idiom behind a common, type-erased
+    interface was the closer fit.
+  - **Migrated every existing controllable parameter** that already had
+    a `ParameterPanel` slider/toggle: `SoundObject` (physics, attraction,
+    orbit -- including `orbitOrientation`, which has a real, well-defined
+    range but no `ParameterPanel` slider yet -- Doppler, mute/solo),
+    `GrainCloudSettings` (audio + movement side, all five movement
+    modes' parameters), and `SceneSettings` (room/global field/time
+    scale, acoustic medium properties). Registered per object slot
+    (`object.<n>.<key>`, 0-based, one entry per possible slot whether
+    active or not -- mirrors `TrajectoryEngine`'s own fixed-size object
+    pool) plus once more as the dynamic `selectedObject.<key>` variant;
+    `Vec3` fields (position/orientation-type fields) register as three
+    separate `.x`/`.y`/`.z` float parameters, same split
+    `Vec3RowComponent` already uses in the UI. Deliberately excluded:
+    pure runtime physics STATE (position, velocity, `orbitPhase`,
+    `attractionPulsePhase`, `orbitRadiusNoiseSmoothed`,
+    `slingshotTargetId`/`Strength`) and every enum-valued field (`Mode`,
+    `DirectivityPattern`, `GrainWindowShape`, `GrainMovementMode`,
+    `GrainReadDepthDistribution`, `BoundaryBehavior`) -- a single float
+    range doesn't naturally fit a fixed choice of N discrete options;
+    left for a later, purpose-built discrete-parameter kind if ever
+    needed, not forced into this one.
+  - **Moved "which object is selected" from editor-only state into the
+    processor** (`KlangorbitProcessor::getSelectedObjectIndex()`/
+    `setSelectedObjectIndex()`) -- required for `Scope::SelectedObject`
+    to mean anything without an editor window open, since this concept
+    previously existed only as `KlangorbitEditor::selectedObjectIndex`.
+    The editor still keeps its own copy for rendering (selection
+    highlight, panel enablement) but now forwards every change to the
+    processor too; the processor's copy is the actual source of truth.
+  - Found while reading the existing architecture for this branch, NOT
+    fixed here (out of scope, flagged for the upcoming gamepad-driver
+    branch instead): `TrajectoryEngine::update()` -- the actual physics
+    integration -- is currently only ever called from
+    `PluginEditor::timerCallback()` at 90Hz, meaning the whole
+    simulation freezes if the editor window closes. A gamepad driver
+    that's meant to keep working with the window closed will need this
+    resolved first (most likely: a processor-owned timer replacing the
+    editor's, not folding physics into `processBlock()` itself).
+  - New `Tools/verify_parameter_registry` (register/find, `normalize()`/
+    `denormalize()` for both polarities including clamping and an
+    asymmetric bipolar range, `SpecificObject` independence between
+    slots, `SelectedObject`'s dynamic retargeting including the
+    nothing-selected inert case, registration-order preservation) --
+    tests `ParameterRegistry` itself in isolation with synthetic
+    descriptors, since constructing a full `juce::AudioProcessor`
+    outside a host/message-thread context isn't how any other
+    `Tools/verify_*` in this project works; the actual
+    `buildParameterRegistry()` registration is instead exercised by the
+    full plugin build + a Debug-build standalone launch (catches an ID
+    collision via `jassert`, compiled out in Release) as part of this
+    change's own verification.
 - **Octophonic + Circular Array output formats.** Two more decoder modes,
   added to the internal decoder below, both for regular circular
   loudspeaker arrays: `AmbisonicsDecoder::Mode::Octophonic` (fixed,

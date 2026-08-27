@@ -78,6 +78,7 @@ target_sources(Klangorbit
         Source/AmbisonicsEncoder.cpp
         Source/AmbisonicsDecoder.cpp
         Source/VBAP.cpp
+        Source/ParameterRegistry.cpp
         Source/TrajectoryEngine.cpp
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
@@ -264,6 +265,36 @@ target_sources(verify_vbap
 )
 
 target_link_libraries(verify_vbap
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Parameter registry verification ---------------------------------------
+# Runs ParameterRegistry's own contract in isolation (register/find,
+# normalize()/denormalize() for both polarities including clamping and an
+# asymmetric bipolar range, Scope::SpecificObject independence between
+# slots, Scope::SelectedObject's dynamic retargeting including the
+# nothing-selected inert case, registration-order preservation) against
+# synthetic descriptors -- no PluginProcessor/GUI/audio device needed. See
+# PluginProcessor::buildParameterRegistry() for the real registration (not
+# covered here -- constructing a full juce::AudioProcessor outside a
+# host/message-thread context isn't how any other verify_* tool in this
+# project works; that integration is instead verified by the full plugin
+# build + standalone launch).
+juce_add_console_app(verify_parameter_registry
+    PRODUCT_NAME "verify_parameter_registry"
+)
+
+target_sources(verify_parameter_registry
+    PRIVATE
+        Tools/verify_parameter_registry.cpp
+        Source/ParameterRegistry.cpp
+)
+
+target_link_libraries(verify_parameter_registry
     PRIVATE
         juce::juce_core
     PUBLIC

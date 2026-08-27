@@ -711,8 +711,14 @@ Docs/WORKFLOW.md.
   (see "3D camera view" above) -- there's no way to drag an object's
   height directly with the mouse yet (it still only changes through
   physics: orbit planes, global field, n-body forces, etc.).
-- **No MIDI mapping.** The `InputMapper` module from the architecture
-  sketch isn't implemented yet; MIDI CC on object parameters is missing.
+- **No gamepad/MIDI/OSC control yet.** `Source/ParameterRegistry.h/.cpp`
+  now exists (see CHANGELOG) -- every controllable object/grain-cloud/
+  scene parameter is registered there, ready for a mapping layer to bind
+  against -- but no actual controller driver or mapping UI is built yet.
+  Planned as a sequence of further branches (canonical controller-input
+  abstraction, a gamepad driver via Apple's GameController framework,
+  then a Learn-mode mapping UI); MIDI/OSC drivers on top of the same
+  abstraction are intended too but not yet scheduled.
 - **Output format switching is host-dependent to take effect live.**
   `KlangorbitProcessor::setDecoderMode()` (Output category's "Output
   Format" dropdown) DOES change the encoder order, rebuild the decode

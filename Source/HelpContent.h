@@ -60,16 +60,17 @@ living in the parameter panel.
 
 == 2. OBJECT LIST (left sidebar) ==
 
-One row per active object: "Object N" (numbered from 1) plus M (Mute)
-and S (Solo).
+Top: "Objects: N / M" count, then "+ Object" / "- Remove Object" to
+change how many objects are active. Removing one resets its slot to
+defaults.
+
+Below: one row per active object: "Object N" (numbered from 1) plus M
+(Mute) and S (Solo).
 
   - Click a row to select that object, same as clicking it in 3D.
   - Mute always wins: a muted object stays silent even if soloed.
   - Solo is non-exclusive: with any object soloed, every NON-soloed
     object goes silent, but multiple objects can be soloed at once.
-
-"+ Object" / "- Remove Object" in the toolbar change how many objects
-are active. Removing one resets its slot to defaults.
 
 
 == 3. MOTION MODES (parameter panel -> Object -> Mode) ==
@@ -185,10 +186,12 @@ permanent gravity well, not just a single thrown object's temporary one.
   Time Scale              slow-motion (< 1) or fast-forward (> 1)
 
 
-== 9. ACOUSTIC SIMULATION (panel -> Scene, Acoustics section, + per-object Doppler) ==
+== 9. ACOUSTIC SIMULATION (panel -> Acoustics, + per-object Doppler) ==
 
 Distance, speed, and direction genuinely affect the sound, not just
-its position:
+its position. Acoustics is its own category, next to Scene (both under
+the "SCENE SETTINGS" group -- both scene-wide, just different concerns:
+physical boundary/force vs. the acoustic medium):
 
   Speed of Sound (m/s)   propagation delay + Doppler strength; going
                           far from the physical ~343 is a valid
@@ -196,9 +199,10 @@ its position:
   Temperature/Humidity/   feed a simplified air-absorption lowpass
    Atmospheric Pressure    (not ISO-9613-1 accurate, but directional)
   Propagation Wind (m/s)  shifts effective speed of sound directionally
-   (was "Wind")            (tailwind speeds up, headwind slows/
-                          attenuates) -- sound only, never affects how
-                          objects actually move (see Force Field above)
+   (was "Wind", now in     (tailwind speeds up, headwind slows/
+   Acoustics not Scene)    attenuates) -- sound only, never affects how
+                          objects actually move (see Force Field, Scene
+                          category, above)
   Doppler Enabled          on by default; quick on/off switch that
    (Doppler category)      doesn't touch the Doppler Factor dial below --
                           re-enabling restores whatever factor was set

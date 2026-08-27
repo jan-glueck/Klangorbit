@@ -146,9 +146,9 @@ the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
    moving freely afterward and is slowed down by `damping`/`dragCoefficient`,
    and reflected/wrapped/absorbed at the room boundary (`roomSize`).
 6. Clicking an object (without dragging) selects it -- its parameters
-   appear in the panel on the right. "+ Object" activates the next free
-   object (only object 0 is active at startup), "- Remove Object"
-   deactivates the selected one.
+   appear in the panel on the right. "+ Object" (object list, left side)
+   activates the next free object (only object 0 is active at startup),
+   "- Remove Object" deactivates the selected one.
 7. Shift+drag an object -> "sling" launch gesture: pull it away from its
    position like a catapult (a bow line follows the cursor, plus a dashed
    preview showing the actual upcoming result -- see below) and release
@@ -183,8 +183,9 @@ the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
 ## Objects, motion physics, and the parameter panel
 
 - **Object count is dynamic.** Only object 0 is active at startup (no
-  longer all of `SAPOC_MAX_LIVE_INPUTS`). "+ Object"/"- Remove Object" in
-  the toolbar activate/deactivate individual slots out of the max. 8 object
+  longer all of `SAPOC_MAX_LIVE_INPUTS`). "+ Object"/"- Remove Object"
+  (object list, left side, alongside its "Objects: N / M" count) activate/
+  deactivate individual slots out of the max. 8 object
   slots (`TrajectoryEngine::activateObject()`/`deactivateObject()`). The
   audio bus itself stays fixed at 8 channels (see the bus layout limitation
   above) -- "add/remove" is purely a matter of `SoundObject::inputChannel >= 0`,
@@ -468,7 +469,7 @@ any other bindable control:
 | Right stick | Orbits the camera view (azimuth/elevation) -- the gamepad equivalent of dragging empty space with the mouse. Editor-only (there's nothing to look at with the window closed). |
 | D-pad Up/Down | Zooms the camera in/out. Left/Right are unused. Editor-only, same reasoning as the right stick above. |
 | Button X | Cycles the selection to the next active object, wrapping around. |
-| Button A | Activates the next inactive object slot and selects it -- the gamepad equivalent of the "+ Object" toolbar button. |
+| Button A | Activates the next inactive object slot and selects it -- the gamepad equivalent of the "+ Object" button in the object list. |
 | Button B | Deactivates the currently selected object and clears the selection -- the gamepad equivalent of "- Remove Object". |
 | Button Y (hold) | Aims a **Free Throw**: while held, the left stick's direction and magnitude set the launch direction/strength (push the stick the way you want the object to fly); releasing fires it. |
 | Left Shoulder (hold) | Aims an **Orbit Shot** the same way -- releases into a scripted circular orbit around the world origin, sized/oriented by how far/which way the stick was pushed. |
@@ -751,8 +752,8 @@ purely random.
   regardless of cloud. `grainDuration` (up to 5s) and `grainRate` (up to
   500/sec) were extended alongside it. 256 is a rough operation-count
   estimate for real-time safety, not a number profiled on real hardware in
-  this environment -- the toolbar's **CPU meter** (top of the editor, next
-  to the object count) shows the actual measured fraction of each audio
+  this environment -- the toolbar's **CPU meter** (top-right, next
+  to Mappings...) shows the actual measured fraction of each audio
   block's time budget being used, turning amber/red if it gets close to or
   exceeds 100%, so you can judge for yourself on your own machine rather
   than trusting the estimate. The per-object grain ring buffer was resized

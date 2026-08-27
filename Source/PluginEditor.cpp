@@ -253,9 +253,6 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     addAndMakeVisible (loadPresetButton);
     addAndMakeVisible (savePresetButton);
     addAndMakeVisible (presetStatusLabel);
-    addAndMakeVisible (addObjectButton);
-    addAndMakeVisible (removeObjectButton);
-    addAndMakeVisible (objectCountLabel);
     addAndMakeVisible (cpuLoadLabel);
     addAndMakeVisible (mappingButton);
     addAndMakeVisible (outputButton);
@@ -264,11 +261,14 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     addAndMakeVisible (parameterPanel);
 
     objectListPanel.onObjectSelected = [this] (int index) { selectObject (index); };
+    // +/- Object now live on ObjectListPanel itself (see its own class
+    // comment) -- same "fires a callback, this editor does the actual
+    // work" pattern as onObjectSelected above.
+    objectListPanel.onAddClicked = [this] { addObjectClicked(); };
+    objectListPanel.onRemoveClicked = [this] { removeObjectClicked(); };
 
     loadPresetButton.onClick = [this] { loadPresetClicked(); };
     savePresetButton.onClick = [this] { savePresetClicked(); };
-    addObjectButton.onClick = [this] { addObjectClicked(); };
-    removeObjectButton.onClick = [this] { removeObjectClicked(); };
     helpButton.onClick = [this] { showHelpClicked(); };
     helpButton.setTooltip ("Help -- every feature and parameter explained");
     mappingButton.onClick = [this] { showMappingClicked(); };
@@ -280,9 +280,6 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     presetStatusLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
     presetStatusLabel.setJustificationType (juce::Justification::centredLeft);
 
-    objectCountLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
-    objectCountLabel.setJustificationType (juce::Justification::centredLeft);
-
     cpuLoadLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
     cpuLoadLabel.setJustificationType (juce::Justification::centredLeft);
 
@@ -290,7 +287,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     parameterPanel.refreshFromModel(); // show scene defaults (roomSize etc.) right away
     objectListPanel.refresh (audioProcessor.getTrajectoryEngine());
     lastKnownActiveObjectCount = audioProcessor.getTrajectoryEngine().getNumActiveObjects(); // matches the refresh() just above -- avoids a redundant one on the first timer tick
-    selectObject (-1);                 // initializes panel enablement + object count label consistently
+    selectObject (-1);                 // initializes ParameterPanel/ObjectListPanel enablement consistently
 
     setSize (700 + objectListWidth + parameterPanelWidth, 700 + toolbarHeight);
     setWantsKeyboardFocus (true);
@@ -787,27 +784,22 @@ void KlangorbitEditor::resized()
     auto bounds = getLocalBounds();
     auto toolbar = bounds.removeFromTop (toolbarHeight).reduced (UiSpacing::m, 0);
 
-    auto row1 = toolbar.removeFromTop (38); // toolbarHeight (76) split into two even 38px rows
-    // Right-to-left: "?" in the far corner, Output/Mappings just left of
-    // it -- all three open their own OS-level window (see the class
-    // comment), grouped together for that reason.
-    helpButton.setBounds (row1.removeFromRight (32).reduced (UiSpacing::xs));
-    outputButton.setBounds (row1.removeFromRight (110).reduced (UiSpacing::xs));
-    mappingButton.setBounds (row1.removeFromRight (130).reduced (UiSpacing::xs));
-    loadPresetButton.setBounds (row1.removeFromLeft (140).reduced (UiSpacing::xs));
-    row1.removeFromLeft (UiSpacing::s);
-    savePresetButton.setBounds (row1.removeFromLeft (140).reduced (UiSpacing::xs));
-    row1.removeFromLeft (UiSpacing::m);
-    presetStatusLabel.setBounds (row1.reduced (UiSpacing::xs));
-
-    auto row2 = toolbar;
-    addObjectButton.setBounds (row2.removeFromLeft (100).reduced (UiSpacing::xs));
-    row2.removeFromLeft (UiSpacing::s);
-    removeObjectButton.setBounds (row2.removeFromLeft (160).reduced (UiSpacing::xs));
-    row2.removeFromLeft (UiSpacing::m);
-    objectCountLabel.setBounds (row2.removeFromLeft (120).reduced (UiSpacing::xs));
-    row2.removeFromLeft (UiSpacing::m);
-    cpuLoadLabel.setBounds (row2.removeFromLeft (140).reduced (UiSpacing::xs));
+    // Single row: Load/Save Preset on the left; CPU meter, Mappings...,
+    // Output..., "?" on the right (right-to-left: "?" in the far corner,
+    // Output/Mappings just left of it -- all three open their own
+    // OS-level window, see the class comment -- then the CPU meter).
+    // +/- Object and the object count moved to ObjectListPanel itself
+    // (see its own class comment), which is what let this collapse from
+    // two rows to one.
+    helpButton.setBounds (toolbar.removeFromRight (32).reduced (UiSpacing::xs));
+    outputButton.setBounds (toolbar.removeFromRight (110).reduced (UiSpacing::xs));
+    mappingButton.setBounds (toolbar.removeFromRight (130).reduced (UiSpacing::xs));
+    cpuLoadLabel.setBounds (toolbar.removeFromRight (110).reduced (UiSpacing::xs));
+    loadPresetButton.setBounds (toolbar.removeFromLeft (140).reduced (UiSpacing::xs));
+    toolbar.removeFromLeft (UiSpacing::s);
+    savePresetButton.setBounds (toolbar.removeFromLeft (140).reduced (UiSpacing::xs));
+    toolbar.removeFromLeft (UiSpacing::m);
+    presetStatusLabel.setBounds (toolbar.reduced (UiSpacing::xs));
 
     parameterPanel.setBounds (bounds.removeFromRight (parameterPanelWidth));
     objectListPanel.setBounds (bounds.removeFromLeft (objectListWidth));
@@ -993,21 +985,10 @@ void KlangorbitEditor::selectObject (int index)
     // Reflects the selection into the list's own highlight regardless of
     // which side triggered it (scene-view click, list click, +/- Object
     // buttons, or a preset load clearing the selection) -- see
-    // ObjectListPanel's class comment.
+    // ObjectListPanel's class comment. Also keeps its own Remove button's
+    // enabled state in sync (see ObjectListPanel::updateButtonStates()),
+    // so no separate step is needed here for that anymore.
     objectListPanel.setSelectedIndex (index);
-
-    updateObjectUiState();
-}
-
-void KlangorbitEditor::updateObjectUiState()
-{
-    auto& engine = audioProcessor.getTrajectoryEngine();
-    const int active = engine.getNumActiveObjects();
-    const int total = engine.getNumObjects();
-
-    objectCountLabel.setText ("Objects: " + juce::String (active) + " / " + juce::String (total), juce::dontSendNotification);
-    addObjectButton.setEnabled (active < total);
-    removeObjectButton.setEnabled (selectedObjectIndex >= 0);
 }
 
 void KlangorbitEditor::resyncFromBackgroundObjectChanges()
@@ -1034,8 +1015,6 @@ void KlangorbitEditor::resyncFromBackgroundObjectChanges()
     // caller in this file).
     if (audioProcessor.getSelectedObjectIndex() != selectedObjectIndex)
         selectObject (audioProcessor.getSelectedObjectIndex());
-    else
-        updateObjectUiState(); // keeps the count label/button enablement fresh even when the selection itself didn't change
 }
 
 void KlangorbitEditor::updateGamepadCamera()

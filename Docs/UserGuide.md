@@ -73,8 +73,15 @@ scene, so it doesn't move or scale with zoom.
 
 ## 3. The object list (left sidebar)
 
-Every active object gets a row: **Object N** (numbered from 1), plus an
-**M** (Mute) and **S** (Solo) button.
+At the top: the **Objects: N / M** count, then **+ Object** / **- Remove
+Object** to change how many objects are active (up to the number of
+input channels the plugin was given) -- both act on this list, so both
+live here rather than in the toolbar. Removing an object resets its slot
+to defaults -- reactivating it later starts fresh, not from wherever it
+was left.
+
+Below that: every active object gets a row -- **Object N** (numbered
+from 1), plus an **M** (Mute) and **S** (Solo) button.
 
 - Click a row to select that object, same as clicking it in the 3D view
   -- useful when an object is small, fast, or off-screen.
@@ -83,11 +90,6 @@ Every active object gets a row: **Object N** (numbered from 1), plus an
 - **Solo (S)**: when any object is soloed, every object that is *not*
   soloed goes silent, regardless of its own Mute state. Multiple objects
   can be soloed at once (non-exclusive solo, like a DAW mixer).
-
-Use **+ Object** / **- Remove Object** in the toolbar to change how many
-objects are active (up to the number of input channels the plugin was
-given). Removing an object resets its slot to defaults -- reactivating it
-later starts fresh, not from wherever it was left.
 
 ## 4. Motion modes
 
@@ -240,16 +242,20 @@ Apply to the whole scene, not one object:
 - **Force Field (Wind/Gravity)** (formerly "Global Field") -- a constant
   force/mass applied to every Impulse/Attracted object, like a
   directional wind or gravity -- genuinely pushes objects around. Not
-  the same thing as Propagation Wind below, which only affects sound,
-  never movement -- renamed specifically to stop the two from reading as
+  the same thing as Propagation Wind (Acoustics category, below), which
+  only affects sound, never movement -- renamed, and moved to a separate
+  category from it, specifically to stop the two from reading as
   duplicates.
 - **Time Scale** -- slows down (< 1) or speeds up (> 1) the whole
   simulation.
 
-## 10. Acoustic simulation (parameter panel -> Scene category, Acoustics section, and per-object Doppler)
+## 10. Acoustic simulation (parameter panel -> Acoustics category, and per-object Doppler)
 
 Klangorbit doesn't just move objects visually -- distance, speed, and
-direction genuinely affect the sound:
+direction genuinely affect the sound. Acoustics is its own category
+(alongside Scene, both under "SCENE SETTINGS" -- both are scene-wide,
+not tied to any object, they just cover different concerns: physical
+boundary/force vs. the acoustic medium itself):
 
 - **Speed of Sound (m/s)** -- affects propagation delay and how strong
   Doppler pitch shift is for a given movement speed. Deliberately
@@ -262,11 +268,12 @@ direction genuinely affect the sound:
 - **Propagation Wind (m/s)** (formerly "Wind") -- a directional vector
   that shifts the effective speed of sound (tailwind speeds up arrival,
   headwind slows/attenuates it) -- both a physically real effect and a
-  distinct creative tool. Renamed to make clear it only affects
-  *sound propagation*, never how objects actually move (that's Force
-  Field above) -- both are scene-wide settings, not tied to any one
-  object, which is why both stay in Scene rather than moving into the
-  (per-object) Doppler category below.
+  distinct creative tool. Renamed, and moved here from the Scene
+  category, to make clear it only affects *sound propagation*, never how
+  objects actually move (that's Force Field, Scene category, above) --
+  not moved into the (per-object) Doppler category below despite also
+  being sound-related, since it's scene-wide, not tied to any one
+  object.
 - **Doppler Enabled** (per object, top of the Doppler category) -- on by
   default. A quick on/off switch that doesn't touch the Doppler Factor
   dial below it -- turning it back on restores whatever factor was
@@ -439,7 +446,8 @@ part of the scene the preset saves -- see Presets/schema/README.md.)
 3. Start with 1-2 objects while getting a feel for the physics
    (damping, gravity, orbit) before scaling up -- CPU cost grows with
    active objects and grains.
-4. Watch the **CPU** readout in the toolbar if you enable grains on
+4. Watch the **CPU** readout (toolbar, top-right, next to Mappings...)
+   if you enable grains on
    many objects at once -- it's a real measured load, not an estimate, so
    amber/red means audible dropouts are actually likely, not just
    theoretical.
@@ -463,9 +471,9 @@ them can still be rebound to something else via Learn mode (section 17):
 - **D-pad Up/Down**: zooms the camera in/out. Also editor-only.
 - **Button X**: cycles the selection to the next active object.
 - **Button A**: activates the next inactive object slot and selects it
-  (same as the "+ Object" toolbar button).
+  (same as the "+ Object" button in the object list).
 - **Button B**: deactivates the currently selected object (same as
-  "- Remove Object").
+  "- Remove Object" there).
 - **Button Y / Left Shoulder / Right Shoulder (hold)**: aims a Free
   Throw / Orbit Shot / Slingshot -- while held, push the left stick the
   direction and strength you want to launch; releasing fires it. The

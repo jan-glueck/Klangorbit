@@ -49,14 +49,17 @@
       to select it, same as clicking it in the scene view -- useful for
       objects too small, fast, or far away to reliably click directly.
       Selection made either way stays in sync between the list and the
-      scene view's highlight.
-    - Toolbar at the top: load/save preset (PresetManager), add/remove
-      object, "Mappings..."/"Output..." each open their own OS-level
-      window (MappingWindow/OutputWindow), "?" opens a scrollable
-      reference of every feature/parameter (see HelpWindow.h/
-      HelpContent.h) the same way -- all three work identically whether
-      Klangorbit is the Standalone app or hosted as a VST3 with no spare
-      screen space of its own
+      scene view's highlight. Also owns "+ Object"/"- Remove Object" and
+      the "Objects: N / M" count (see ObjectListPanel's own class
+      comment) -- they act on this list, so they live here rather than
+      in the toolbar.
+    - Toolbar at the top (a single row -- see toolbarHeight): load/save
+      preset (PresetManager) on the left; the CPU meter, "Mappings...",
+      "Output...", and "?" on the right. "Mappings..."/"Output..."/"?"
+      each open their own OS-level window (MappingWindow/OutputWindow/
+      HelpWindow) -- works identically whether Klangorbit is the
+      Standalone app or hosted as a VST3 with no spare screen space of
+      its own.
     - Panel on the right: scene settings and the selected object's
       parameters, see ParameterPanel -- Output Format/Bass Management/
       Circular Array speaker count live in their own "Output..." window
@@ -122,7 +125,6 @@ private:
     void addObjectClicked();
     void removeObjectClicked();
     void selectObject (int index); // -1 = clear the selection
-    void updateObjectUiState();    // object count label + button enablement
 
     // Polled from timerCallback(): notices when GamepadDriver's own
     // built-in object-management buttons (see GamepadDriver.h) changed the
@@ -254,7 +256,10 @@ private:
     static constexpr float hitRadiusPixels = 16.0f;
     static constexpr float grainHitRadiusPixels = 8.0f;
 
-    static constexpr int toolbarHeight = 76; // two even 38px rows
+    // Single row now -- +/- Object, the object count, and the CPU meter
+    // all moved out (to ObjectListPanel and this row respectively, see
+    // below), so a second row is no longer needed.
+    static constexpr int toolbarHeight = 38;
     static constexpr int parameterPanelWidth = 360;
     static constexpr int objectListWidth = 208; // wide enough for "Object N" + its Mute/Solo buttons, see ObjectListPanel
     juce::Rectangle<int> viewArea;
@@ -286,10 +291,6 @@ private:
     // pattern as helpWindow/mappingWindow above.
     juce::TextButton outputButton { "Output..." };
     std::unique_ptr<OutputWindow> outputWindow;
-
-    juce::TextButton addObjectButton { "+ Object" };
-    juce::TextButton removeObjectButton { "- Remove Object" };
-    juce::Label objectCountLabel;
 
     // Read from KlangorbitProcessor::getEstimatedCpuLoad() each timer
     // tick -- see its comment for why this exists (maxConcurrentGrainsGlobal

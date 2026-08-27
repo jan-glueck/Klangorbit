@@ -8,6 +8,7 @@
 #include "SciFiLookAndFeel.h"
 #include "HelpWindow.h"
 #include "MappingWindow.h"
+#include "OutputWindow.h"
 #include <deque>
 #include <memory>
 #include <vector>
@@ -50,12 +51,16 @@
       Selection made either way stays in sync between the list and the
       scene view's highlight.
     - Toolbar at the top: load/save preset (PresetManager), add/remove
-      object, "?" opens a scrollable reference of every feature/parameter
-      (see HelpWindow.h/HelpContent.h) in its own OS-level window -- works
-      the same whether Klangorbit is the Standalone app or hosted as a
-      VST3 with no spare screen space of its own
-    - Panel on the right: all parameters of the selected object + scene-wide
-      parameters (room boundary, global field, time scale), see ParameterPanel
+      object, "Mappings..."/"Output..." each open their own OS-level
+      window (MappingWindow/OutputWindow), "?" opens a scrollable
+      reference of every feature/parameter (see HelpWindow.h/
+      HelpContent.h) the same way -- all three work identically whether
+      Klangorbit is the Standalone app or hosted as a VST3 with no spare
+      screen space of its own
+    - Panel on the right: scene settings and the selected object's
+      parameters, see ParameterPanel -- Output Format/Bass Management/
+      Circular Array speaker count live in their own "Output..." window
+      instead (see above), not in this panel
     - Grain clouds (see GrainCloud/Grain): small dots in a paler variant of
       their parent object's color, fading out as they age
 
@@ -112,6 +117,7 @@ private:
     void showPresetError (const juce::String& title, const juce::String& message);
     void showHelpClicked(); // lazily creates helpWindow, or re-shows/refronts it if already open
     void showMappingClicked(); // lazily creates mappingWindow, or re-shows/refronts it if already open
+    void showOutputClicked(); // lazily creates outputWindow, or re-shows/refronts it if already open
 
     void addObjectClicked();
     void removeObjectClicked();
@@ -273,6 +279,13 @@ private:
     // Same lazily-created, hide-not-destroy pattern as helpWindow above.
     juce::TextButton mappingButton { "Mappings..." };
     std::unique_ptr<MappingWindow> mappingWindow;
+
+    // Output Format/Bass Management/Circular Array speaker count -- moved
+    // out of ParameterPanel's own former "Output" category into their own
+    // window (see OutputWindow.h), same lazily-created, hide-not-destroy
+    // pattern as helpWindow/mappingWindow above.
+    juce::TextButton outputButton { "Output..." };
+    std::unique_ptr<OutputWindow> outputWindow;
 
     juce::TextButton addObjectButton { "+ Object" };
     juce::TextButton removeObjectButton { "- Remove Object" };

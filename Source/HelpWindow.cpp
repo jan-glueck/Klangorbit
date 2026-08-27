@@ -26,5 +26,10 @@ HelpWindow::HelpWindow()
     setResizable (true, false);
     setContentNonOwned (&textEditor, false);
     centreWithSize (640, 760);
+
+    // Always-on-top -- see MappingWindow.cpp's own comment for why (a
+    // hosted VST3's auxiliary window can otherwise open behind the DAW's
+    // own window in some hosts, e.g. Reaper).
+    setAlwaysOnTop (true);
     setVisible (true);
 }

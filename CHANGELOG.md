@@ -7,6 +7,18 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Output Format/Bass Management/Circular Array speaker count moved to
+  their own "Output..." toolbar window.** New `OutputPanel`/
+  `OutputWindow` (mirroring `MappingPanel`/`MappingWindow`'s own
+  structure exactly), opened via a new "Output..." button next to
+  "Mappings..." in the toolbar -- same lazily-created, hide-not-destroy
+  window lifetime as Help/Mappings. These are plugin-wide settings tied
+  to neither the scene nor any object, so they now get their own place
+  instead of sharing a tab with either (see the Changed entry below for
+  the corresponding removal from `ParameterPanel`). Re-syncs itself
+  (`OutputWindow::refreshFromModel()`) every time it's shown, in case
+  something else (e.g. a preset load) changed the decoder mode since it
+  was last open.
 - **Fixed default gamepad control scheme.** Extends `GamepadDriver`'s
   existing "left stick moves the selected object" default with a full
   set of sensible-out-of-the-box bindings, no mapping profile required
@@ -1337,17 +1349,25 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
-- **Parameter panel reorganized: scene/output settings visually
-  separated from selected-object settings, and the Acoustics category
-  folded into Scene.** The category-button row (`ParameterPanel`) is now
-  two clearly labeled groups instead of one flat row of eight -- "SCENE /
-  OUTPUT" (Scene, Output) above "SELECTED OBJECT" (Object, Attraction,
-  Orbit, Doppler, Grains) below, each under its own small section label.
-  The grouping reuses `categoryRequiresObject()`'s existing boolean
-  partition (already used to disable/force-switch away from
-  object-scoped categories with nothing selected) rather than tracking
-  group membership as separate state that could drift out of sync with
-  it.
+- **Parameter panel reorganized: Scene settings visually separated from
+  Object settings, the Acoustics category folded into Scene, and Output
+  moved out into its own window entirely.** (This entry describes the
+  feature's current, final shape -- it went through an intermediate
+  "Scene / Output" grouping first, revised again after trying it, before
+  landing here; both changes were unreleased, so this entry replaces
+  rather than layers onto the original.) The category-button row
+  (`ParameterPanel`) is now a single "SCENE SETTINGS" group (just Scene
+  -- Output no longer lives here, see below) above a small section
+  label, with "OBJECT SETTINGS" (Object, Attraction, Orbit, Doppler,
+  Grains) below it. The grouping reuses `categoryRequiresObject()`'s
+  existing boolean partition (already used to disable/force-switch away
+  from object-scoped categories with nothing selected) rather than
+  tracking group membership as separate state that could drift out of
+  sync with it. `objectHeaderLabel` (which object, if any, is selected)
+  now sits just below the OBJECT SETTINGS buttons instead of above the
+  whole panel -- smaller, regular weight, not the bold section-title
+  treatment it used to have -- since selection is only relevant to that
+  group's own pages.
   - **Acoustics is no longer its own top-level tab** -- speed of sound,
     temperature, relative humidity, atmospheric pressure, and wind are
     now part of the Scene page itself, under a small "ACOUSTICS" section
@@ -1358,11 +1378,22 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     -- both are scene-wide settings, not one object's own property, and
     the panel's own tab boundary is now consistent with that instead of
     drawing a distinction the rest of the architecture never made.
-  - `ParameterPanel::Category::Acoustics` removed (its rows now register
+    `ParameterPanel::Category::Acoustics` removed (its rows now register
     under `Category::Scene`); no other code referenced it.
+  - **Output Format/Bass Management/Circular Array speaker count are no
+    longer a `ParameterPanel` category at all** -- moved to their own
+    `OutputWindow` (see the Added entry above): `ParameterPanel::
+    Category::Output` removed, along with `decoderModeRow`/
+    `circularSpeakerCountRow`/`bassManagementRow`/`setProcessor()`/
+    `decoderProcessor` (all now live in `OutputPanel` instead). Plugin-
+    wide settings tied to neither the scene nor any object don't fit
+    naturally as a tab sharing space with either, the same reasoning
+    that already applies to Help/Mappings each having their own window
+    rather than being folded into this panel.
   - Docs (`README.md`, `Docs/UserGuide.md`, `Source/HelpContent.h`)
-    updated everywhere they pointed at "the Acoustics category" to say
-    "the Scene category's Acoustics section" instead.
+    updated everywhere they pointed at "the Acoustics category" (now
+    "the Scene category's Acoustics section") or "the Output category"
+    (now "the toolbar's Output... window").
 - **Objects are now numbered from 1 instead of 0 everywhere they're
   displayed** -- the object list sidebar, the parameter panel's object
   header, the Orbit Reference Object dropdown, and the sling gesture's
@@ -1550,6 +1581,27 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     result is unverified, see "Known limitations" below.
 
 ### Fixed
+- **The Mappings window (and, latently, Help) could open behind the
+  host's own window when hosted as a VST3, with no way to reach it**
+  (reported in Reaper). A newly created `juce::DocumentWindow` from
+  inside a plugin process isn't guaranteed to be at the same OS window
+  level as the host's own window, so `toFront()` alone -- which only
+  reorders within this app's own window stack -- doesn't always
+  guarantee it actually surfaces above the host. Fixed two ways,
+  belt-and-suspenders: `MappingWindow`/`HelpWindow`/the new
+  `OutputWindow` now all call `setAlwaysOnTop (true)` before
+  `setVisible (true)` in their constructors (a small reference/settings
+  window floating above the host is an accepted tradeoff for exactly
+  this class of bug, not just a workaround); and `KlangorbitEditor`'s
+  `showMappingClicked()`/`showHelpClicked()`/`showOutputClicked()` each
+  now also re-assert `toFront (true)` one message-loop iteration later
+  via `juce::MessageManager::callAsync()` (using a `juce::Component::
+  SafePointer`, not a raw pointer, since the callback fires on a LATER
+  iteration by which point the editor -- and the window it owns -- could
+  conceivably have already closed). Not independently verified against a
+  real Reaper install in this environment (not available here); the fix
+  itself is a well-established pattern for this exact class of JUCE
+  plugin bug, applied consistently to all three toolbar windows.
 - **The whole simulation froze when the editor window closed --
   physics, panning, grain spawning, all of it.** `TrajectoryEngine::
   update()` and every `GrainCloud::update()` were only ever called from

@@ -102,6 +102,8 @@ target_sources(Klangorbit
         Source/HelpWindow.cpp
         Source/MappingPanel.cpp
         Source/MappingWindow.cpp
+        Source/OutputPanel.cpp
+        Source/OutputWindow.cpp
 )
 
 target_link_libraries(Klangorbit

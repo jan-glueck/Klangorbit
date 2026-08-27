@@ -6,9 +6,6 @@
 #include "SoundObject.h"
 #include "SceneSettings.h"
 #include "Grain.h"
-#include "AmbisonicsDecoder.h"
-
-class KlangorbitProcessor;
 
 /**
     A row widget: label + a slider, with a generic onValueChanged callback.
@@ -82,25 +79,33 @@ public:
 
 /**
     Side panel: a fixed row of category buttons at the top, grouped into
-    two visually distinct sections (see resized()) -- "Scene / Output"
-    (Scene, which now also holds the former separate Acoustics fields --
-    speed of sound, temperature, humidity, pressure, wind -- room/global-
-    field/time-scale settings and per-object acoustic-propagation
-    settings both being "not a single object's own property" is exactly
-    the distinction ParameterRegistry's own category strings already draw
-    (both register under "Global", see PluginProcessor.cpp's
-    buildParameterRegistry()) -- and Output) above "Selected Object"
-    (Object, Attraction, Orbit, Doppler, Grains) below -- and a scrollable
-    area beneath showing only the currently selected category's
-    parameters, not one long list.
+    two visually distinct sections (see resized()) -- "SCENE SETTINGS"
+    (Scene, which also holds the former separate Acoustics fields -- speed
+    of sound, temperature, humidity, pressure, wind -- alongside room/
+    global-field/time-scale settings, both being "not a single object's
+    own property" is exactly the distinction ParameterRegistry's own
+    category strings already draw, see PluginProcessor.cpp's
+    buildParameterRegistry()) above "OBJECT SETTINGS" (Object, Attraction,
+    Orbit, Doppler, Grains) below -- and a scrollable area beneath showing
+    only the currently selected category's parameters, not one long list.
+    objectHeaderLabel (which object, if any, is selected) sits just below
+    the "OBJECT SETTINGS" group's own buttons, not above the whole panel --
+    selection only matters to that group's pages, not to Scene.
+
+    Output Format/Bass Management/Circular Array speaker count are
+    deliberately NOT a category here at all -- they moved to their own
+    dedicated OutputWindow (see OutputPanel.h), opened via its own toolbar
+    button next to Mappings/Help, since they're plugin-wide settings tied
+    to neither the scene nor any object, and get their own place rather
+    than sharing space with either.
 
     Categories Object/Attraction/Orbit/Doppler/GrainCloud need a selected
     object; their buttons are disabled without one, and the panel force-
     switches away from them back to Scene if the selection is cleared
     while one of them is showing (so the panel never gets stuck showing a
     page with nothing behind it). categoryRequiresObject() is also what
-    resized() uses to sort a button into the "Scene / Output" group vs.
-    the "Selected Object" group -- one boolean partition serves both
+    resized() uses to sort a button into the "SCENE SETTINGS" group vs.
+    the "OBJECT SETTINGS" group -- one boolean partition serves both
     purposes, rather than tracking group membership as separate state
     that could drift out of sync with it.
 
@@ -115,18 +120,12 @@ public:
 class ParameterPanel : public juce::Component
 {
 public:
-    enum class Category { Scene, Output, Object, Attraction, Orbit, Doppler, GrainCloud };
+    enum class Category { Scene, Object, Attraction, Orbit, Doppler, GrainCloud };
 
     ParameterPanel();
 
     // Set once by the editor (never null again afterwards).
     void setSceneSettings (SceneSettings* settings);
-
-    // Set once by the editor (never null again afterwards) -- for the
-    // Output category's decoder-mode/bass-management controls, which live
-    // on the processor itself rather than a settings struct (see
-    // KlangorbitProcessor::setDecoderMode()).
-    void setProcessor (KlangorbitProcessor* proc);
 
     // nullptr = no selection. numObjects for the reference-object combo (orbit).
     void setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects);
@@ -184,7 +183,6 @@ private:
     SceneSettings* sceneSettings = nullptr;
     SoundObject* editedObject = nullptr;
     GrainCloudSettings* editedGrainCloud = nullptr;
-    KlangorbitProcessor* decoderProcessor = nullptr;
 
     Category currentCategory = Category::Scene;
     struct CategoryButton { std::unique_ptr<juce::TextButton> button; Category category; };
@@ -222,11 +220,6 @@ private:
     // folded into the same page -- see the class comment.
     juce::Label acousticsSectionLabel;
     juce::Label orbitModeHintLabel; // see updateOrbitModeHintVisibility()
-    juce::Label decoderModeHintLabel;
-    std::unique_ptr<ComboRowComponent> decoderModeRow;
-    std::unique_ptr<FloatRowComponent> circularSpeakerCountRow;
-    juce::Label circularArrayHintLabel;
-    std::unique_ptr<ToggleRowComponent> bassManagementRow;
     std::unique_ptr<ComboRowComponent> modeRow;
     std::unique_ptr<ComboRowComponent> boundaryRow;
     std::unique_ptr<ToggleRowComponent> showRoomBoundaryRow;

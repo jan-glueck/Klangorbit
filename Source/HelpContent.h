@@ -19,7 +19,7 @@ namespace HelpContent
 Klangorbit is an object-based Ambisonics spatializer driven by a live
 physics engine: give sound objects mass, velocity, gravity, and
 momentum, and let their motion emerge from that instead of automating
-position by hand. Output format is selectable (panel -> Output,
+position by hand. Output format is selectable (toolbar -> Output...,
 section 11): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible --
 still the default; feed it into a decoder such as SPARTA AmbiDEC/
 AmbiBIN or the IEM Plugin Suite), or an internally decoded Stereo,
@@ -247,11 +247,11 @@ that object's live input. Turn on with Enabled.
                                   shift genuinely differs per grain.
 
 
-== 11. OUTPUT FORMAT (panel -> Output) ==
+== 11. OUTPUT FORMAT (toolbar -> Output...) ==
 
-Scene-wide, not tied to any one object:
+Plugin-wide, not tied to the scene or any object -- has its own window:
 
-  Output Format          one of 11 mutually exclusive formats:
+  Output Format          one of 13 mutually exclusive formats:
                            Ambisonics Order 1/2/3 -- raw B-format, no
                             decoding (still the default)
                            Stereo -- plain 2-speaker decode, NOT

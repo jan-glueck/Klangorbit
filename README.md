@@ -1,8 +1,8 @@
 # Klangorbit
 
 Object-based Ambisonics encoder with a trajectory/physics engine, and an
-internal decoder to a selectable output format (Output category, "Output
-Format"): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible, order 1-3 --
+internal decoder to a selectable output format (toolbar -> "Output..." ->
+"Output Format"): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible, order 1-3 --
 still the default, for further processing in SPARTA (AmbiBIN/AmbiDEC) or the
 IEM Plugin Suite), Stereo, Quad, 5.1, 7.1, one of four Dolby-Atmos-bed
 layouts (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a fixed, named 8-speaker
@@ -132,7 +132,7 @@ the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
 1. Start the plugin/standalone app, connect a live input (microphone or
    audio interface channel) to Input 0.
 2. With the default Output Format (Ambisonics, Order 3, 16ch -- see the
-   Output parameter category to change it), route the output to a bus with
+   toolbar's "Output..." window to change it), route the output to a bus with
    AmbiBIN (SPARTA) or the IEM BinauralDecoder. Switching Output Format to
    Stereo/Quad/5.1/7.1/an Atmos-bed variant instead sends already-decoded
    audio straight to that many channels, no external decoder plugin needed
@@ -876,8 +876,8 @@ Docs/WORKFLOW.md.
   inverted, same situation as the mouse camera drag/zoom convention
   above.
 - **Output format switching is host-dependent to take effect live.**
-  `KlangorbitProcessor::setDecoderMode()` (Output category's "Output
-  Format" dropdown) DOES change the encoder order, rebuild the decode
+  `KlangorbitProcessor::setDecoderMode()` (the "Output..." window's
+  "Output Format" dropdown) DOES change the encoder order, rebuild the decode
   matrix, and request a host bus-layout renegotiation at runtime -- but
   VST3's mechanism for a PLUGIN-initiated bus change is weaker than a
   host-initiated one (this JUCE version's wrapper has no dedicated

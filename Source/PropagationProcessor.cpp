@@ -125,8 +125,10 @@ void PropagationProcessor::process (const float* sourceBlock,
         ? std::exp (-blockSeconds / obj.dopplerSmoothing) : 0.0f;
     smoothedDerivative = smoothingCoeff * smoothedDerivative + (1.0f - smoothingCoeff) * rawDerivative;
 
-    // dopplerFactor scales only this "AC" (pitch-shift-driving) component.
-    const float dopplerContribution = obj.dopplerFactor * smoothedDerivative;
+    // dopplerFactor scales only this "AC" (pitch-shift-driving) component --
+    // dopplerEnabled short-circuits it to 0 without touching the stored
+    // dopplerFactor value itself, see SoundObject::dopplerEnabled's own comment.
+    const float dopplerContribution = obj.dopplerEnabled ? obj.dopplerFactor * smoothedDerivative : 0.0f;
 
     // Slow, dopplerFactor-independent correction toward the true target, so
     // absolute latency can't drift away from the real distance over time

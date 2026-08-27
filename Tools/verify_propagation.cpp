@@ -161,6 +161,31 @@ int main()
         check (std::abs (freq - f0) < f0 * 0.02f, "dopplerFactor=0 test: pitch stays within 2% of source frequency");
     }
 
+    // --- Test 3b: dopplerEnabled=false suppresses the pitch shift too,
+    // independent of dopplerFactor (still at its default 1.0 here) -------
+    {
+        PropagationProcessor proc;
+        proc.prepare (kSampleRate, kBlockSize);
+
+        SoundObject dopplerOff = obj;
+        dopplerOff.dopplerEnabled = false; // dopplerFactor stays at the default 1.0 -- gate, not the dial
+        check (dopplerOff.dopplerFactor == 1.0f, "dopplerEnabled=false test: dopplerFactor itself is untouched by the toggle");
+
+        const float f0 = 1000.0f;
+        const float velocity = 30.0f;
+        const int numSamples = (int) (2.0 * kSampleRate);
+        auto approachPos = [&] (double t) -> Vec3 { return { 60.0f - (float) (velocity * t), 0.0f, 0.0f }; };
+
+        auto out = runSine (proc, dopplerOff, scene, f0, numSamples, approachPos);
+        check (allFinite (out), "dopplerEnabled=false test: output has no NaN/Inf");
+
+        const int winStart = numSamples / 2;
+        const int winEnd = numSamples / 2 + (int) kSampleRate / 2;
+        const float freq = estimateFrequencyHz (out, winStart, winEnd, kSampleRate);
+        std::printf ("       dopplerEnabled=false, approaching, measured ~%.1f Hz (should stay close to f0=%.0f Hz)\n", freq, f0);
+        check (std::abs (freq - f0) < f0 * 0.02f, "dopplerEnabled=false test: pitch stays within 2% of source frequency despite dopplerFactor=1");
+    }
+
     // --- Test 4: air absorption attenuates high frequencies more at distance ---
     {
         PropagationProcessor procNear, procFar;

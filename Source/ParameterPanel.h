@@ -2,6 +2,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 #include "SoundObject.h"
 #include "SceneSettings.h"
@@ -20,6 +21,14 @@ public:
     void resized() override;
     void setValueQuiet (float v);
 
+    // Double-clicking the slider resets it to v (juce::Slider's own
+    // built-in double-click-return mechanism -- no custom mouse handling
+    // needed). Not called from this class's own constructor since the
+    // "default" value is schema-specific (SoundObject{}.*member etc.) and
+    // only ParameterPanel's add*Row() helpers know which member this row
+    // is even bound to.
+    void setDefaultValue (float v) { slider.setDoubleClickReturnValue (true, (double) v); }
+
     static constexpr int preferredHeight = 42;
 
     juce::Label label;
@@ -35,6 +44,15 @@ public:
 
     void resized() override;
     void setValueQuiet (Vec3 v);
+
+    // See FloatRowComponent::setDefaultValue() -- same idea, one default
+    // per axis.
+    void setDefaultValue (Vec3 v)
+    {
+        xSlider.setDoubleClickReturnValue (true, (double) v.x);
+        ySlider.setDoubleClickReturnValue (true, (double) v.y);
+        zSlider.setDoubleClickReturnValue (true, (double) v.z);
+    }
 
     static constexpr int preferredHeight = 18 + 3 * 22;
 
@@ -88,9 +106,10 @@ public:
     buildParameterRegistry()) above "OBJECT SETTINGS" (Object, Attraction,
     Orbit, Doppler, Grains) below -- and a scrollable area beneath showing
     only the currently selected category's parameters, not one long list.
-    objectHeaderLabel (which object, if any, is selected) sits just below
-    the "OBJECT SETTINGS" group's own buttons, not above the whole panel --
-    selection only matters to that group's pages, not to Scene.
+    objectHeaderLabel (which object, if any, is selected) shares the
+    "OBJECT SETTINGS" label's own row, right-aligned, rather than costing
+    a row of its own -- selection only matters to that group's pages, not
+    to Scene, so it stays visually tied to that one label.
 
     Output Format/Bass Management/Circular Array speaker count are
     deliberately NOT a category here at all -- they moved to their own
@@ -151,13 +170,23 @@ private:
                                            double min, double max, double step, Category category);
     Vec3RowComponent& addObjectVec3Row (const juce::String& name, Vec3 SoundObject::* member,
                                          double min, double max, double step, Category category);
+    // requiredMovementMode (default nullopt = always visible whenever the
+    // GrainCloud category itself is showing): if set, this row is ALSO
+    // hidden whenever editedGrainCloud->movementMode doesn't match, on top
+    // of the ordinary category visibility check -- see
+    // updateGrainMovementModeVisibility(). Lets e.g. "Boundary Radius
+    // (Bounce)" hide itself while movementMode is RandomWalk, so the
+    // Grains page only ever shows controls that actually do something for
+    // the currently selected mode.
     FloatRowComponent& addGrainFloatRow (const juce::String& name, float GrainCloudSettings::* member,
-                                          double min, double max, double step, Category category);
+                                          double min, double max, double step, Category category,
+                                          std::optional<GrainMovementMode> requiredMovementMode = std::nullopt);
     // maxConcurrentGrains is the only int field -- reuses FloatRowComponent
     // (a whole-number slider) rather than a dedicated int row type for one field.
     FloatRowComponent& addGrainIntRow (const juce::String& name, int GrainCloudSettings::* member,
                                         double min, double max, Category category);
-    void addToLayout (juce::Component& c, int height, Category category);
+    void addToLayout (juce::Component& c, int height, Category category,
+                       std::optional<GrainMovementMode> requiredMovementMode = std::nullopt);
     void addCategoryButton (const juce::String& label, Category category);
 
     void rebuildOrbitReferenceItems (int numObjects, int selfId);
@@ -177,6 +206,15 @@ private:
     // changed), and modeRow's onSelected (mode changed live).
     void updateOrbitModeHintVisibility();
 
+    // Re-applies the requiredMovementMode gate (see addToLayout()) to
+    // every already-visible GrainCloud-category row, hiding whichever
+    // ones don't apply to editedGrainCloud->movementMode -- same set of
+    // triggers as updateOrbitModeHintVisibility() above: selectCategory()
+    // (category switched, e.g. into GrainCloud), setEditedGrainCloud()/
+    // refreshFromModel() (selection/preset changed), and
+    // grainMovementModeRow's onSelected (mode changed live).
+    void updateGrainMovementModeVisibility();
+
     juce::Viewport viewport;
     juce::Component content;
 
@@ -191,6 +229,8 @@ private:
     std::vector<juce::Component*> layoutOrder;
     std::vector<int> layoutHeights;
     std::vector<Category> layoutCategory;
+    // Parallel to the three above -- see addToLayout()'s own comment.
+    std::vector<std::optional<GrainMovementMode>> layoutRequiredMovementMode;
 
     struct SceneFloatBinding { std::unique_ptr<FloatRowComponent> row; float SceneSettings::* member; };
     std::vector<SceneFloatBinding> sceneFloatRows;
@@ -225,6 +265,7 @@ private:
     std::unique_ptr<ToggleRowComponent> showRoomBoundaryRow;
     std::unique_ptr<Vec3RowComponent> globalFieldRow; // SceneSettings::globalField, not a SoundObject field -> its own binding
     std::unique_ptr<ComboRowComponent> orbitRefRow;
+    std::unique_ptr<ToggleRowComponent> dopplerEnabledRow; // SoundObject::dopplerEnabled -- top of the Doppler category
     std::unique_ptr<ComboRowComponent> directivityRow;
 
     std::unique_ptr<ToggleRowComponent> grainEnabledRow;

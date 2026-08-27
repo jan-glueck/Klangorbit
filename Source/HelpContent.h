@@ -48,6 +48,15 @@ actual spatial audio.
 Small pale dots drifting around an object are its optional grains
 (section 10).
 
+A small red/green/blue axis gizmo, bottom-left corner, shows the
+current camera orientation (X/Y/Z) -- a fixed-size on-screen indicator,
+not a 3D object in the scene.
+
+Double-clicking any slider in the parameter panel resets it to its
+default value (every slider, every category). "Mappings..."/"Output..."
+each open their own small window (top-right, next to "?") rather than
+living in the parameter panel.
+
 
 == 2. OBJECT LIST (left sidebar) ==
 
@@ -162,13 +171,17 @@ permanent gravity well, not just a single thrown object's temporary one.
 
 == 8. SCENE-WIDE PARAMETERS (panel -> Scene) ==
 
-  Room Size            radius (m) of an invisible spherical boundary;
-                         0 disables it
+  Show Boundary          purely visual toggle -- sits above Boundary
+                         Size/Behavior below (see first)
+  Boundary Size           radius (m) of an invisible spherical boundary;
+   (was "Room Size")       0 disables it -- physics boundary, not an
+                          acoustic "room" (no reverb tied to it)
   Boundary Behavior      Reflect (bounce, via Restitution) / Wrap
                          (reappear opposite side) / Absorb (stop+silence)
-  Show Boundary          purely visual toggle
-  Global Field           constant force/mass on every Impulse/Attracted
-   (Wind/Gravity)         object, like directional wind or gravity
+  Force Field             constant force/mass on every Impulse/Attracted
+   (Wind/Gravity,          object, like directional wind or gravity --
+   was "Global Field")     genuinely moves objects (unlike Propagation
+                          Wind below, which only affects sound)
   Time Scale              slow-motion (< 1) or fast-forward (> 1)
 
 
@@ -182,8 +195,13 @@ its position:
                           creative tool for exaggerated effects
   Temperature/Humidity/   feed a simplified air-absorption lowpass
    Atmospheric Pressure    (not ISO-9613-1 accurate, but directional)
-  Wind (m/s)               shifts effective speed of sound directionally
-                          (tailwind speeds up, headwind slows/attenuates)
+  Propagation Wind (m/s)  shifts effective speed of sound directionally
+   (was "Wind")            (tailwind speeds up, headwind slows/
+                          attenuates) -- sound only, never affects how
+                          objects actually move (see Force Field above)
+  Doppler Enabled          on by default; quick on/off switch that
+   (Doppler category)      doesn't touch the Doppler Factor dial below --
+                          re-enabling restores whatever factor was set
   Doppler Factor           0 = off, 1 = physical, > 1 = exaggerated;
    (Doppler category)      delay itself always stays physically anchored
   Doppler Smoothing (s)    smooths sudden direction/speed changes
@@ -227,6 +245,10 @@ that object's live input. Turn on with Enabled.
   Movement Mode                  Random Walk / Bounce / Radial Explosion /
                                   Orbit Around Parent / Attract-Repel
                                   Siblings (gravity within the cloud only).
+                                  The panel only shows the parameters
+                                  that apply to whichever mode is
+                                  currently selected -- switching modes
+                                  swaps the visible rows below instantly.
                                   Bounce, Radial Explosion, and Orbit
                                   Around Parent each have their own
                                   Jitter slider under their size/speed

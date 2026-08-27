@@ -158,11 +158,13 @@ bool ParameterPanel::categoryRequiresObject (Category category)
 ParameterPanel::ParameterPanel()
 {
     // Smaller, regular weight (not the section-title treatment it used to
-    // have) -- now sits just below the Object Settings button group (see
-    // resized()) rather than above everything, since which object is
+    // have) -- now shares the "OBJECT SETTINGS" label's own row,
+    // right-aligned (see resized()), rather than costing a row of its
+    // own above or below the button group, since which object is
     // selected is only actually relevant to that group's own pages, not
-    // to Scene/Output.
+    // to Scene Settings.
     styleRowLabel (objectHeaderLabel, "No object selected", 13.0f, UiColours::textPrimary());
+    objectHeaderLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (objectHeaderLabel);
 
     auto styleGroupLabel = [] (juce::Label& l, const juce::String& text)
@@ -190,7 +192,23 @@ ParameterPanel::ParameterPanel()
     addCategoryButton ("Grains", Category::GrainCloud);
 
     // --- Scene ------------------------------------------------------------
-    addSceneFloatRow ("Room Size (0 = no boundary)", &SceneSettings::roomSize, 0.0, 50.0, 0.1, Category::Scene);
+    // Purely visual -- the boundary keeps applying physically even while
+    // hidden, see SceneSettings::showRoomBoundary. Placed above Boundary
+    // Size/Behavior (not below, as originally) since it's the natural
+    // first question ("do I even see this?") before tuning the boundary
+    // itself.
+    showRoomBoundaryRow = std::make_unique<ToggleRowComponent> ("Show Boundary");
+    showRoomBoundaryRow->onToggled = [this] (bool v) { if (sceneSettings != nullptr) sceneSettings->showRoomBoundary = v; };
+    content.addAndMakeVisible (*showRoomBoundaryRow);
+    addToLayout (*showRoomBoundaryRow, ToggleRowComponent::preferredHeight, Category::Scene);
+
+    // Renamed from "Room Size" -- this sphere is a physics boundary
+    // (reflect/wrap/absorb, see SceneSettings::boundaryBehavior), not a
+    // "room" in any acoustic-modeling sense (no reverb/reflection audio
+    // processing is tied to it), so "Boundary Size" names what it
+    // actually does. Underlying field name (roomSize) left unchanged --
+    // purely a display-string rename, no preset/schema impact.
+    addSceneFloatRow ("Boundary Size (0 = no boundary)", &SceneSettings::roomSize, 0.0, 50.0, 0.1, Category::Scene);
 
     boundaryRow = std::make_unique<ComboRowComponent> ("Boundary Behavior");
     boundaryRow->combo.addItem ("Reflect", 1);
@@ -204,15 +222,18 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*boundaryRow);
     addToLayout (*boundaryRow, ComboRowComponent::preferredHeight, Category::Scene);
 
-    // Purely visual -- the boundary keeps applying physically even while
-    // hidden, see SceneSettings::showRoomBoundary.
-    showRoomBoundaryRow = std::make_unique<ToggleRowComponent> ("Show Boundary");
-    showRoomBoundaryRow->onToggled = [this] (bool v) { if (sceneSettings != nullptr) sceneSettings->showRoomBoundary = v; };
-    content.addAndMakeVisible (*showRoomBoundaryRow);
-    addToLayout (*showRoomBoundaryRow, ToggleRowComponent::preferredHeight, Category::Scene);
-
-    globalFieldRow = std::make_unique<Vec3RowComponent> ("Global Field (Wind/Gravity)", -20.0, 20.0, 0.01);
+    // "Force Field" (not "Global Field") specifically to disambiguate from
+    // "Propagation Wind" below (SceneSettings::windVector) -- this one is
+    // a real physical force that pushes moving objects around (Impulse/
+    // Attracted modes); that one only shifts the effective speed of sound
+    // for propagation delay/Doppler and never touches object motion at
+    // all. Both are scene-wide (SceneSettings, Scope::Global -- see
+    // buildParameterRegistry()), not per-object, so both stay here in
+    // Scene Settings rather than moving into the (per-object) Doppler
+    // category.
+    globalFieldRow = std::make_unique<Vec3RowComponent> ("Force Field (Wind/Gravity)", -20.0, 20.0, 0.01);
     globalFieldRow->onValueChanged = [this] (Vec3 v) { if (sceneSettings != nullptr) sceneSettings->globalField = v; };
+    globalFieldRow->setDefaultValue (SceneSettings{}.globalField);
     content.addAndMakeVisible (*globalFieldRow);
     addToLayout (*globalFieldRow, Vec3RowComponent::preferredHeight, Category::Scene);
 
@@ -231,7 +252,11 @@ ParameterPanel::ParameterPanel()
     addSceneFloatRow ("Temperature (C)", &SceneSettings::temperature, -20.0, 45.0, 0.5, Category::Scene);
     addSceneFloatRow ("Relative Humidity (%)", &SceneSettings::relativeHumidity, 0.0, 100.0, 1.0, Category::Scene);
     addSceneFloatRow ("Atmospheric Pressure (kPa)", &SceneSettings::atmosphericPressure, 80.0, 110.0, 0.1, Category::Scene);
-    addSceneVec3Row ("Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1, Category::Scene);
+    // "Propagation Wind" (not just "Wind") -- see Force Field's own
+    // comment above for why: this only shifts the effective speed of
+    // sound for propagation delay/Doppler, it never affects how objects
+    // actually move (that's Force Field, above).
+    addSceneVec3Row ("Propagation Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1, Category::Scene);
 
     // --- Object -------------------------------------------------------------
     // Mute/Solo (SoundObject::muted/soloed) are deliberately NOT exposed
@@ -308,6 +333,16 @@ ParameterPanel::ParameterPanel()
     addToLayout (*orbitRefRow, ComboRowComponent::preferredHeight, Category::Orbit);
 
     // --- Doppler ----------------------------------------------------------
+    // Top of the category, on by default -- a quick on/off switch that
+    // doesn't touch the Doppler Factor dial below it (see
+    // SoundObject::dopplerEnabled's own comment: re-enabling restores
+    // whatever factor was actually set, rather than needing to remember
+    // and re-type a value that was overwritten to 0).
+    dopplerEnabledRow = std::make_unique<ToggleRowComponent> ("Doppler Enabled");
+    dopplerEnabledRow->onToggled = [this] (bool v) { if (editedObject != nullptr) editedObject->dopplerEnabled = v; };
+    content.addAndMakeVisible (*dopplerEnabledRow);
+    addToLayout (*dopplerEnabledRow, ToggleRowComponent::preferredHeight, Category::Doppler);
+
     addObjectFloatRow ("Doppler Factor (0=off, 1=physical)", &SoundObject::dopplerFactor, 0.0, 5.0, 0.01, Category::Doppler);
     addObjectFloatRow ("Doppler Smoothing (s)", &SoundObject::dopplerSmoothing, 0.0, 2.0, 0.01, Category::Doppler);
 
@@ -404,25 +439,32 @@ ParameterPanel::ParameterPanel()
     {
         if (editedGrainCloud != nullptr)
             editedGrainCloud->movementMode = (GrainMovementMode) index;
+        updateGrainMovementModeVisibility(); // show only the rows that apply to the newly selected mode
+        layoutContent(); // heights above/below the now-hidden/shown rows changed -- re-flow immediately, don't wait for the next resize
     };
     content.addAndMakeVisible (*grainMovementModeRow);
     addToLayout (*grainMovementModeRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
 
-    addGrainFloatRow ("Random Walk Speed (m/s)", &GrainCloudSettings::randomWalkSpeed, 0.0, 10.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Boundary Radius (m, Bounce)", &GrainCloudSettings::boundaryRadius, 0.05, 5.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Boundary Radius Jitter (Bounce)", &GrainCloudSettings::boundaryRadiusJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Restitution (Bounce)", &GrainCloudSettings::restitution, 0.0, 1.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Initial Speed (m/s, Explosion)", &GrainCloudSettings::initialSpeed, 0.0, 20.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Initial Speed Jitter (Explosion)", &GrainCloudSettings::initialSpeedJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Acceleration (m/s^2, Explosion)", &GrainCloudSettings::acceleration, -20.0, 20.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Orbit Radius (m, OrbitAroundParent)", &GrainCloudSettings::orbitRadius, 0.05, 5.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Orbit Radius Jitter (OrbitAroundParent)", &GrainCloudSettings::orbitRadiusJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Orbit Angular Speed (rad/s)", &GrainCloudSettings::orbitAngularSpeed, -10.0, 10.0, 0.01, Category::GrainCloud);
+    // Each row below is tagged with the one movementMode it actually does
+    // anything for (see addGrainFloatRow()'s own comment) -- Movement
+    // Mode above then shows only the rows relevant to whichever mode is
+    // currently selected, instead of all fifteen-ish at once regardless
+    // of mode.
+    addGrainFloatRow ("Random Walk Speed (m/s)", &GrainCloudSettings::randomWalkSpeed, 0.0, 10.0, 0.01, Category::GrainCloud, GrainMovementMode::RandomWalk);
+    addGrainFloatRow ("Boundary Radius (m, Bounce)", &GrainCloudSettings::boundaryRadius, 0.05, 5.0, 0.01, Category::GrainCloud, GrainMovementMode::Bounce);
+    addGrainFloatRow ("Boundary Radius Jitter (Bounce)", &GrainCloudSettings::boundaryRadiusJitter, 0.0, 1.0, 0.01, Category::GrainCloud, GrainMovementMode::Bounce);
+    addGrainFloatRow ("Restitution (Bounce)", &GrainCloudSettings::restitution, 0.0, 1.0, 0.01, Category::GrainCloud, GrainMovementMode::Bounce);
+    addGrainFloatRow ("Initial Speed (m/s, Explosion)", &GrainCloudSettings::initialSpeed, 0.0, 20.0, 0.01, Category::GrainCloud, GrainMovementMode::RadialExplosion);
+    addGrainFloatRow ("Initial Speed Jitter (Explosion)", &GrainCloudSettings::initialSpeedJitter, 0.0, 1.0, 0.01, Category::GrainCloud, GrainMovementMode::RadialExplosion);
+    addGrainFloatRow ("Acceleration (m/s^2, Explosion)", &GrainCloudSettings::acceleration, -20.0, 20.0, 0.01, Category::GrainCloud, GrainMovementMode::RadialExplosion);
+    addGrainFloatRow ("Orbit Radius (m, OrbitAroundParent)", &GrainCloudSettings::orbitRadius, 0.05, 5.0, 0.01, Category::GrainCloud, GrainMovementMode::OrbitAroundParent);
+    addGrainFloatRow ("Orbit Radius Jitter (OrbitAroundParent)", &GrainCloudSettings::orbitRadiusJitter, 0.0, 1.0, 0.01, Category::GrainCloud, GrainMovementMode::OrbitAroundParent);
+    addGrainFloatRow ("Orbit Angular Speed (rad/s)", &GrainCloudSettings::orbitAngularSpeed, -10.0, 10.0, 0.01, Category::GrainCloud, GrainMovementMode::OrbitAroundParent);
     // 0 = flat, all grains circle in the same horizontal plane (original
     // behavior); 1 = each grain's own orbit plane is essentially random,
     // so over many grains/rotations the swept shape approaches a sphere.
-    addGrainFloatRow ("Orbit Sphere Spread (2D -> 3D)", &GrainCloudSettings::orbitSphereSpread, 0.0, 1.0, 0.01, Category::GrainCloud);
-    addGrainFloatRow ("Attraction Strength (Siblings)", &GrainCloudSettings::attractionStrength, -10.0, 10.0, 0.01, Category::GrainCloud);
+    addGrainFloatRow ("Orbit Sphere Spread (2D -> 3D)", &GrainCloudSettings::orbitSphereSpread, 0.0, 1.0, 0.01, Category::GrainCloud, GrainMovementMode::OrbitAroundParent);
+    addGrainFloatRow ("Attraction Strength (Siblings)", &GrainCloudSettings::attractionStrength, -10.0, 10.0, 0.01, Category::GrainCloud, GrainMovementMode::AttractRepelSiblings);
 
     updateCategoryButtonsEnabled();
     selectCategory (Category::Scene);
@@ -447,6 +489,11 @@ FloatRowComponent& ParameterPanel::addSceneFloatRow (const juce::String& name, f
 {
     auto row = std::make_unique<FloatRowComponent> (name, min, max, step);
     row->onValueChanged = [this, member] (float v) { if (sceneSettings != nullptr) sceneSettings->*member = v; };
+    // Double-click resets to SceneSettings's own default member
+    // initializer -- a fresh, default-constructed instance, not the
+    // currently edited one, so this is the schema default, not "whatever
+    // it happened to start at."
+    row->setDefaultValue (SceneSettings{}.*member);
     content.addAndMakeVisible (*row);
     addToLayout (*row, FloatRowComponent::preferredHeight, category);
 
@@ -459,6 +506,7 @@ Vec3RowComponent& ParameterPanel::addSceneVec3Row (const juce::String& name, Vec
 {
     auto row = std::make_unique<Vec3RowComponent> (name, min, max, step);
     row->onValueChanged = [this, member] (Vec3 v) { if (sceneSettings != nullptr) sceneSettings->*member = v; };
+    row->setDefaultValue (SceneSettings{}.*member);
     content.addAndMakeVisible (*row);
     addToLayout (*row, Vec3RowComponent::preferredHeight, category);
 
@@ -471,6 +519,7 @@ FloatRowComponent& ParameterPanel::addObjectFloatRow (const juce::String& name, 
 {
     auto row = std::make_unique<FloatRowComponent> (name, min, max, step);
     row->onValueChanged = [this, member] (float v) { if (editedObject != nullptr) editedObject->*member = v; };
+    row->setDefaultValue (SoundObject{}.*member);
     content.addAndMakeVisible (*row);
     addToLayout (*row, FloatRowComponent::preferredHeight, category);
 
@@ -483,6 +532,7 @@ Vec3RowComponent& ParameterPanel::addObjectVec3Row (const juce::String& name, Ve
 {
     auto row = std::make_unique<Vec3RowComponent> (name, min, max, step);
     row->onValueChanged = [this, member] (Vec3 v) { if (editedObject != nullptr) editedObject->*member = v; };
+    row->setDefaultValue (SoundObject{}.*member);
     content.addAndMakeVisible (*row);
     addToLayout (*row, Vec3RowComponent::preferredHeight, category);
 
@@ -491,12 +541,14 @@ Vec3RowComponent& ParameterPanel::addObjectVec3Row (const juce::String& name, Ve
 }
 
 FloatRowComponent& ParameterPanel::addGrainFloatRow (const juce::String& name, float GrainCloudSettings::* member,
-                                                       double min, double max, double step, Category category)
+                                                       double min, double max, double step, Category category,
+                                                       std::optional<GrainMovementMode> requiredMovementMode)
 {
     auto row = std::make_unique<FloatRowComponent> (name, min, max, step);
     row->onValueChanged = [this, member] (float v) { if (editedGrainCloud != nullptr) editedGrainCloud->*member = v; };
+    row->setDefaultValue (GrainCloudSettings{}.*member);
     content.addAndMakeVisible (*row);
-    addToLayout (*row, FloatRowComponent::preferredHeight, category);
+    addToLayout (*row, FloatRowComponent::preferredHeight, category, requiredMovementMode);
 
     grainFloatRows.push_back ({ std::move (row), member });
     return *grainFloatRows.back().row;
@@ -511,6 +563,7 @@ FloatRowComponent& ParameterPanel::addGrainIntRow (const juce::String& name, int
         if (editedGrainCloud != nullptr)
             editedGrainCloud->*member = (int) std::round (v);
     };
+    row->setDefaultValue ((float) (GrainCloudSettings{}.*member));
     content.addAndMakeVisible (*row);
     addToLayout (*row, FloatRowComponent::preferredHeight, category);
 
@@ -518,11 +571,13 @@ FloatRowComponent& ParameterPanel::addGrainIntRow (const juce::String& name, int
     return *grainIntRows.back().row;
 }
 
-void ParameterPanel::addToLayout (juce::Component& c, int height, Category category)
+void ParameterPanel::addToLayout (juce::Component& c, int height, Category category,
+                                   std::optional<GrainMovementMode> requiredMovementMode)
 {
     layoutOrder.push_back (&c);
     layoutHeights.push_back (height);
     layoutCategory.push_back (category);
+    layoutRequiredMovementMode.push_back (requiredMovementMode);
 }
 
 void ParameterPanel::setSceneSettings (SceneSettings* settings)
@@ -565,6 +620,11 @@ void ParameterPanel::selectCategory (Category category)
     // just whenever the Orbit category happens to be showing.
     updateOrbitModeHintVisibility();
 
+    // Same idea, for GrainCloud rows tagged with a specific
+    // requiredMovementMode (see addToLayout()) -- further narrows what
+    // the generic pass above just made visible.
+    updateGrainMovementModeVisibility();
+
     viewport.setViewPosition (0, 0);
     layoutContent();
 }
@@ -574,6 +634,16 @@ void ParameterPanel::updateOrbitModeHintVisibility()
     orbitModeHintLabel.setVisible (currentCategory == Category::Orbit
                                     && editedObject != nullptr
                                     && editedObject->mode != SoundObject::Mode::Orbit);
+}
+
+void ParameterPanel::updateGrainMovementModeVisibility()
+{
+    if (currentCategory != Category::GrainCloud || editedGrainCloud == nullptr)
+        return;
+
+    for (size_t i = 0; i < layoutOrder.size(); ++i)
+        if (layoutRequiredMovementMode[i].has_value())
+            layoutOrder[i]->setVisible (*layoutRequiredMovementMode[i] == editedGrainCloud->movementMode);
 }
 
 void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects)
@@ -630,6 +700,7 @@ void ParameterPanel::refreshFromModel()
 
     modeRow->combo.setSelectedItemIndex ((int) editedObject->mode, juce::dontSendNotification);
     orbitRefRow->combo.setSelectedItemIndex (editedObject->orbitReferenceObjectId + 1, juce::dontSendNotification);
+    dopplerEnabledRow->setValueQuiet (editedObject->dopplerEnabled);
     directivityRow->combo.setSelectedItemIndex ((int) editedObject->directivityPattern, juce::dontSendNotification);
     updateOrbitModeHintVisibility(); // Mode may have changed (e.g. a preset load) without going through setEditedObject()
 
@@ -647,6 +718,7 @@ void ParameterPanel::refreshFromModel()
     grainWindowShapeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->windowShape, juce::dontSendNotification);
     grainMovementModeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->movementMode, juce::dontSendNotification);
     grainReadDepthDistributionRow->combo.setSelectedItemIndex ((int) editedGrainCloud->grainReadDepthDistribution, juce::dontSendNotification);
+    updateGrainMovementModeVisibility(); // movementMode may have changed (e.g. a preset load, or switching selected object) without going through grainMovementModeRow's own onSelected
 }
 
 void ParameterPanel::layoutContent()
@@ -685,9 +757,16 @@ void ParameterPanel::resized()
     for (auto& cb : categoryButtons)
         (categoryRequiresObject (cb.category) ? objectGroup : sceneGroup).push_back (&cb);
 
-    auto layoutButtonGroup = [&] (juce::Label& groupLabel, std::vector<CategoryButton*>& buttons)
+    // trailingLabel (only the OBJECT SETTINGS group uses it, for
+    // objectHeaderLabel -- see the class comment): shares the group
+    // label's own row, right-aligned, instead of costing an extra row of
+    // vertical space of its own.
+    auto layoutButtonGroup = [&] (juce::Label& groupLabel, std::vector<CategoryButton*>& buttons, juce::Label* trailingLabel)
     {
-        groupLabel.setBounds (bounds.removeFromTop (groupLabelHeight).reduced (UiSpacing::s, 0));
+        auto labelRow = bounds.removeFromTop (groupLabelHeight);
+        if (trailingLabel != nullptr)
+            trailingLabel->setBounds (labelRow.removeFromRight (labelRow.getWidth() / 2).reduced (UiSpacing::s, 0));
+        groupLabel.setBounds (labelRow.reduced (UiSpacing::s, 0));
 
         const int numRows = (int) std::ceil ((double) buttons.size() / (double) buttonsPerRow);
         auto buttonGrid = bounds.removeFromTop (numRows * buttonHeight).reduced (UiSpacing::s, 0);
@@ -706,14 +785,8 @@ void ParameterPanel::resized()
         bounds.removeFromTop (UiSpacing::xs);
     };
 
-    layoutButtonGroup (sceneGroupLabel, sceneGroup);
-    layoutButtonGroup (objectGroupLabel, objectGroup);
-
-    // Which object is selected (if any) -- placed right under the OBJECT
-    // SETTINGS group's own buttons (see the class comment), not above the
-    // whole panel, since it's only relevant to that group's pages.
-    objectHeaderLabel.setBounds (bounds.removeFromTop (22).reduced (UiSpacing::s, 0));
-    bounds.removeFromTop (UiSpacing::xs);
+    layoutButtonGroup (sceneGroupLabel, sceneGroup, nullptr);
+    layoutButtonGroup (objectGroupLabel, objectGroup, &objectHeaderLabel);
 
     bounds.removeFromTop (UiSpacing::s);
 

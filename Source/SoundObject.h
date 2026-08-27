@@ -214,12 +214,22 @@ struct SoundObject
     float slingshotStrength = 0.0f;
 
     // --- Acoustic propagation (Doppler, directivity) ---------------------
+    // On by default. A quick, dial-preserving on/off switch: when false,
+    // PropagationProcessor treats dopplerFactor as 0 for this object
+    // without touching the stored value itself, so re-enabling restores
+    // whatever dopplerFactor was actually dialed in rather than losing it.
+    // Mirrors GrainCloudSettings::dopplerEnabled's own existing role for
+    // grains (though that one defaults OFF, matching Doppler being an
+    // optional add-on for grains specifically, not the object's own
+    // default-on Doppler here).
+    bool dopplerEnabled = true;
     // See PropagationProcessor for how these are used. 0 = no Doppler
     // pitch shift, 1 = physically correct (given SceneSettings::speedOfSound),
     // >1 = exaggerated. The actual propagation delay (latency) always
     // stays anchored to the true distance regardless of this value -- only
     // the audible pitch-shift component scales with it, so this can't be
-    // used to "turn off" the delay itself, only its Doppler side effect.
+    // used to "turn off" the delay itself, only its Doppler side effect
+    // (dopplerEnabled above is the actual on/off switch for that).
     float dopplerFactor = 1.0f;
     // Time constant (seconds) smoothing the delay line's rate of change,
     // to avoid pitch/click artifacts on abrupt direction changes (e.g. a

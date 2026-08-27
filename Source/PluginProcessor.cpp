@@ -845,15 +845,20 @@ void KlangorbitProcessor::buildParameterRegistry()
     // fixed choice of N discrete options; see the class comment.
 
     // --- Scene (Global scope) -------------------------------------------
-    registerSceneFloatParam ("roomSize", "Room Size", "Global", &SceneSettings::roomSize, 0.0f, 50.0f);
+    // Display names only, below -- the id strings (first argument:
+    // "roomSize", "globalField", "windVector") are a stable identifier
+    // used by saved mapping profiles/presets and are NOT renamed here,
+    // only what's shown to the user in the Learn-mode target picker (see
+    // ParameterPanel.cpp's matching label renames for the same reasoning).
+    registerSceneFloatParam ("roomSize", "Boundary Size", "Global", &SceneSettings::roomSize, 0.0f, 50.0f);
     registerSceneBoolParam ("showRoomBoundary", "Show Boundary", "Global", &SceneSettings::showRoomBoundary);
-    registerSceneVec3Param ("globalField", "Global Field", "Global", &SceneSettings::globalField, -20.0f, 20.0f);
+    registerSceneVec3Param ("globalField", "Force Field", "Global", &SceneSettings::globalField, -20.0f, 20.0f);
     registerSceneFloatParam ("timeScale", "Time Scale", "Global", &SceneSettings::timeScale, 0.05f, 5.0f);
     registerSceneFloatParam ("speedOfSound", "Speed of Sound", "Global", &SceneSettings::speedOfSound, 1.0f, 400.0f);
     registerSceneFloatParam ("temperature", "Temperature", "Global", &SceneSettings::temperature, -20.0f, 45.0f);
     registerSceneFloatParam ("relativeHumidity", "Relative Humidity", "Global", &SceneSettings::relativeHumidity, 0.0f, 100.0f);
     registerSceneFloatParam ("atmosphericPressure", "Atmospheric Pressure", "Global", &SceneSettings::atmosphericPressure, 80.0f, 110.0f);
-    registerSceneVec3Param ("windVector", "Wind", "Global", &SceneSettings::windVector, -50.0f, 50.0f);
+    registerSceneVec3Param ("windVector", "Propagation Wind", "Global", &SceneSettings::windVector, -50.0f, 50.0f);
 
     // --- Object physics ---------------------------------------------------
     registerObjectFloatParam ("mass", "Mass", "Object Physics", &SoundObject::mass, 0.01f, 20.0f);
@@ -888,6 +893,7 @@ void KlangorbitProcessor::buildParameterRegistry()
     registerObjectFloatParam ("orbitRadiusNoiseSmoothing", "Radius Noise Smoothing", "Orbit", &SoundObject::orbitRadiusNoiseSmoothing, 0.0f, 5.0f);
 
     // --- Doppler ----------------------------------------------------------
+    registerObjectBoolParam ("dopplerEnabled", "Doppler Enabled", "Doppler", &SoundObject::dopplerEnabled);
     registerObjectFloatParam ("dopplerFactor", "Doppler Factor", "Doppler", &SoundObject::dopplerFactor, 0.0f, 5.0f);
     registerObjectFloatParam ("dopplerSmoothing", "Doppler Smoothing", "Doppler", &SoundObject::dopplerSmoothing, 0.0f, 2.0f);
     registerObjectVec3Param ("sourceOrientation", "Source Orientation", "Doppler", &SoundObject::sourceOrientation, -1.0f, 1.0f);

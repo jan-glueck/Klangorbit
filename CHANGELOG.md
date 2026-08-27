@@ -1173,6 +1173,49 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     result is unverified, see "Known limitations" below.
 
 ### Fixed
+- **The whole simulation froze when the editor window closed --
+  physics, panning, grain spawning, all of it.** `TrajectoryEngine::
+  update()` and every `GrainCloud::update()` were only ever called from
+  `KlangorbitEditor::timerCallback()` (a 90Hz `juce::Timer` owned by the
+  editor). JUCE keeps calling `processBlock()` regardless of whether an
+  editor exists, so audio never actually stopped -- but with the editor
+  closed, objects stopped moving, Doppler/panning stopped updating, and
+  no new grains ever spawned, since nothing was left to advance any of
+  that state. Found while building the parameter registry (see above)
+  and its `Scope::SelectedObject`, which needed a durable, non-editor
+  source of truth for "which object is selected" anyway.
+  - Fixed by moving timer ownership from `KlangorbitEditor` to
+    `KlangorbitProcessor` itself (`private juce::Timer`, started
+    unconditionally in the constructor, stopped in the destructor) --
+    the exact same two calls (`trajectoryEngine.update(dt)`, then every
+    active object's `GrainCloud::update(...)`), at the same 90Hz rate,
+    just moved verbatim rather than reimplemented.
+    `KlangorbitProcessor::timerCallback()` now runs regardless of
+    whether an editor is open, closed, or was ever created at all --
+    Standalone minimized, VST3 window closed in a host, or the plugin
+    just sitting loaded on a track. `grainRandom` (the spawn-jitter RNG)
+    moved from the editor to the processor along with the loop that
+    uses it.
+  - The editor keeps its own, separate 90Hz timer for view-only
+    concerns that were bundled into the same callback before: trail
+    capture, the sling gesture's Ctrl/Alt modifier polling, the
+    CPU-load readout, and `repaint()`. It no longer touches
+    `TrajectoryEngine`/`GrainCloud` at all, so there is no double-update
+    while an editor happens to be open at the same time.
+  - No new cross-thread synchronization concern: both timers still run
+    on the one, process-wide JUCE message thread (there's only ever
+    one), so this only changes which long-lived object schedules the
+    callback, not which thread runs it or how
+    `SoundObject`/`GrainCloudSettings` fields get read from the audio
+    thread (already unsynchronized-by-convention, exactly as before --
+    see `PluginProcessor::processBlock()`'s own established pattern).
+  - Not independently verified against a real DAW host with the editor
+    closed (no interactive host-automation available in this
+    environment) -- verified instead by code inspection (confirmed no
+    `TrajectoryEngine`/`GrainCloud` update calls remain in
+    `PluginEditor.cpp`) plus the full existing test suite and a
+    Standalone build/launch stability check, consistent with how this
+    class of change is verified elsewhere in this project.
 - **Investigated a report that "grain duration also affects spawn
   rate."** Traced `GrainCloud::update()`'s spawn-scheduling code
   carefully: the spawn-interval timer only ever reads `grainRate`

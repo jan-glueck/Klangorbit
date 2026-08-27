@@ -58,14 +58,17 @@
     - Grain clouds (see GrainCloud/Grain): small dots in a paler variant of
       their parent object's color, fading out as they age
 
-    The actual physics update runs on a juce::Timer that calls
-    TrajectoryEngine::update() with the measured time since the last tick --
-    that's the control-rate loop, separate from the audio thread. Each
-    object's GrainCloud is updated from the same timer tick, as is the
-    per-object movement-trail capture (see updateTrails()). The sling
-    gesture's Ctrl/Alt modifier toggling is also polled from that same timer
-    (not from mouseDrag), so a key press registers immediately even if the
-    mouse isn't currently moving.
+    The actual physics update (TrajectoryEngine::update()) and every
+    GrainCloud::update() run on KlangorbitProcessor's own juce::Timer now,
+    NOT this editor's -- see PluginProcessor.h's class comment: moving that
+    ownership to the processor means the whole simulation (movement,
+    panning, grain spawning) keeps running with this editor closed, not
+    just the audio callback. This editor still runs its OWN, separate
+    juce::Timer at the same rate, but only for view-side concerns: the
+    per-object movement-trail capture (see updateTrails()), the sling
+    gesture's Ctrl/Alt modifier polling (not from mouseDrag, so a key press
+    registers immediately even if the mouse isn't currently moving), the
+    CPU-load readout, and repaint().
 */
 class KlangorbitEditor : public juce::AudioProcessorEditor,
                                private juce::Timer
@@ -186,15 +189,8 @@ private:
     static constexpr int trailCaptureDecimation = 3; // capture every 3rd timer tick
     static constexpr int maxTrailPoints = 8;
 
-    juce::int64 lastTimerMs = 0;
     static constexpr float hitRadiusPixels = 16.0f;
     static constexpr float grainHitRadiusPixels = 8.0f;
-
-    // Message-thread-only RNG for GrainCloud spawn randomization, see
-    // timerCallback() -- GrainCloud::update() takes it by reference rather
-    // than owning one itself, since the caller (here) also needs to share
-    // one global spawn budget across all clouds each tick.
-    juce::Random grainRandom;
 
     static constexpr int toolbarHeight = 76; // two even 38px rows
     static constexpr int parameterPanelWidth = 360;

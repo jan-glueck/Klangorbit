@@ -28,8 +28,30 @@
     straight into the output buffer, exactly as before this class existed
     (zero added overhead). Every other mode encodes into an internal
     ambiScratch bus first, then decodes that down to the real output.
+
+    Owns the control-rate simulation loop itself (private juce::Timer,
+    90Hz, see timerCallback()) -- TrajectoryEngine::update() (object
+    physics) and every GrainCloud::update() (grain spawning/movement) run
+    from here, NOT from the editor. This used to be editor-owned
+    (KlangorbitEditor::timerCallback(), pre-dating this class taking it
+    over), which meant the entire simulation froze whenever the editor
+    window was closed -- audio would keep being processed (JUCE calls
+    processBlock() independent of any editor), but objects stopped
+    moving, panning stopped updating, and no new grains ever spawned.
+    Moving timer ownership here means the plugin keeps fully running --
+    physics, panning, grains, all of it -- with the editor closed, in the
+    background, or (Standalone) minimized; the editor, when open, now
+    only handles its own rendering concerns (trails, sling-gesture
+    modifier polling, repaint) on its own, separate, lighter timer. Both
+    timers still run on the same JUCE message thread (there is only ever
+    one), so this introduces no new cross-thread synchronization beyond
+    what already existed (SoundObject/GrainCloudSettings fields were
+    already read from the audio thread, unsynchronized, exactly as
+    before -- only WHICH object schedules the message-thread callback
+    changed, not who reads/writes what).
 */
-class KlangorbitProcessor : public juce::AudioProcessor
+class KlangorbitProcessor : public juce::AudioProcessor,
+                             private juce::Timer
 {
 public:
     KlangorbitProcessor();
@@ -133,6 +155,15 @@ public:
     void setSelectedObjectIndex (int index) { selectedObjectIndex = index; }
 
 private:
+    // The control-rate simulation loop -- see the class comment above for
+    // why this lives here instead of the editor. 90Hz, same rate the
+    // editor's own timer previously drove this at (unchanged behavior,
+    // just relocated). Runs TrajectoryEngine::update() (object physics)
+    // and every active object's GrainCloud::update() (spawning/movement),
+    // exactly the same two calls KlangorbitEditor::timerCallback() used
+    // to make -- moved here verbatim, not reimplemented.
+    void timerCallback() override;
+
     void buildParameterRegistry();
 
     // Registration helpers for buildParameterRegistry() -- each registers
@@ -214,6 +245,15 @@ private:
     // will need to revisit that.
     ParameterRegistry parameterRegistry;
     int selectedObjectIndex = -1;
+
+    // Control-rate timer state -- see timerCallback(). Moved here from
+    // what used to be KlangorbitEditor::lastTimerMs/grainRandom (same
+    // purpose, same values, just owned by whichever object now drives the
+    // loop). grainRandom is message-thread-only (like its editor-owned
+    // predecessor), used only inside timerCallback()'s GrainCloud::update()
+    // calls.
+    juce::uint32 lastControlRateTimerMs = 0;
+    juce::Random grainRandom;
 
     // Encode target for every non-raw-passthrough decoder mode -- always
     // exactly 16 channels (order-3 Ambisonics, the fixed internal encode

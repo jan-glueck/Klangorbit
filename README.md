@@ -17,6 +17,13 @@ horizontal-only -- a circular array of speakers cannot reproduce
 elevation/height at all, a property of the array type, not a decoder
 limitation.
 
+The whole simulation -- physics, panning, grain spawning, everything at
+control rate -- runs from a timer owned by `KlangorbitProcessor` itself,
+independent of whether an editor window is open. Closing the editor
+(Standalone minimized, VST3 window closed in a host, or the plugin just
+loaded on a track with no editor ever opened) does not pause anything;
+only audio callbacks pausing (a host bypassing/disabling the track) would.
+
 ## Signal flow
 
 ```
@@ -26,7 +33,9 @@ Live input (up to 8 mono channels)
         v                                                   v
 [SoundObject 0..7]  <-- position/motion            [ring buffer per object]
    from TrajectoryEngine                             (continuously filled,
-   (control rate, ~90 Hz)                             see GrainCloud below)
+   (control rate, ~90 Hz, driven by                   see GrainCloud below)
+    KlangorbitProcessor's own timer,
+    not the editor's -- see below)
         |                                                   |
         v                                                   v
 [PropagationProcessor]  -- per-object              [GrainCloud, if enabled]

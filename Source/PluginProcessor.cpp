@@ -62,9 +62,61 @@ KlangorbitProcessor::KlangorbitProcessor()
         wh.store (0, std::memory_order_relaxed);
 
     buildParameterRegistry();
+
+    // Starts the control-rate simulation loop -- see the class comment in
+    // PluginProcessor.h for why this runs from here rather than the
+    // editor. 90Hz matches the rate the editor's own timer previously
+    // drove TrajectoryEngine/GrainCloud updates at.
+    lastControlRateTimerMs = juce::Time::getMillisecondCounter();
+    startTimerHz (90);
 }
 
-KlangorbitProcessor::~KlangorbitProcessor() = default;
+KlangorbitProcessor::~KlangorbitProcessor()
+{
+    // Explicit, before any other member starts tearing down -- same
+    // ordering reasoning KlangorbitEditor's own destructor already
+    // established for its (now editor-only) timer. juce::Timer's own
+    // destructor would stop it safely too, but stopping it first here
+    // means timerCallback() can never fire mid-teardown of this class's
+    // own members (trajectoryEngine, grainRandom, etc.).
+    stopTimer();
+}
+
+void KlangorbitProcessor::timerCallback()
+{
+    // Moved verbatim from what used to be KlangorbitEditor::timerCallback()
+    // (see the class comment in PluginProcessor.h for why) -- same two
+    // calls, same control rate, same dt clamping. The editor's own timer
+    // (still running, at the same rate, when an editor exists) no longer
+    // touches TrajectoryEngine/GrainCloud at all -- only this one does now,
+    // so there is no double-update.
+    const auto now = juce::Time::getMillisecondCounter();
+    const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastControlRateTimerMs) / 1000.0); // clamp against outliers
+    lastControlRateTimerMs = now;
+
+    trajectoryEngine.update (dt);
+
+    // GrainCloud: control-rate update, same loop/rate as TrajectoryEngine
+    // above. A single global spawn budget is shared across all clouds so
+    // the total number of simultaneously active grains never exceeds
+    // maxConcurrentGrainsGlobal, no matter how many objects are
+    // granulating at once -- each active grain costs a full Ambisonics
+    // encode pass in processBlock() below.
+    int globalGrainBudget = maxConcurrentGrainsGlobal;
+    for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
+        globalGrainBudget -= trajectoryEngine.getGrainCloud (i).getNumActiveGrains();
+
+    for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
+    {
+        auto& obj = trajectoryEngine.getObject (i);
+        if (obj.inputChannel < 0)
+            continue; // no active parent -- freeze this cloud instead of updating it with a meaningless position
+
+        auto& cloud = trajectoryEngine.getGrainCloud (i);
+        cloud.setRingBufferContext (getGrainRingBufferWriteHead (i), getSampleRate());
+        cloud.update (dt, obj.position, obj.velocity, globalGrainBudget, grainRandom);
+    }
+}
 
 void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {

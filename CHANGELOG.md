@@ -7,6 +7,190 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Octophonic + Circular Array output formats.** Two more decoder modes,
+  added to the internal decoder below, both for regular circular
+  loudspeaker arrays: `AmbisonicsDecoder::Mode::Octophonic` (fixed,
+  8 channels, 45 degree spacing -- a named, directly selectable preset,
+  equal in standing to Quad/5.1/7.1) and `Mode::CircularArray` (generic,
+  `numSpeakers` 4..24, evenly spaced on 360/numSpeakers degrees -- for
+  the many circular-array sizes that have no established naming
+  convention at all). Deliberately kept as two separate, clearly
+  distinguished entries in the Output Format list (not one control with
+  a "how many speakers" afterthought) -- Octophonic is a real, named
+  layout people expect to just pick, Circular Array exists for
+  everything else.
+  - **Angle convention (Octophonic):** +-22.5/+-67.5/+-112.5/+-157.5 deg
+    -- a symmetric front L/R pair straddling 0 deg, not a single speaker
+    at dead-front or dead-rear. No single canonical IEM/AllRAD-published
+    octagon example was found during research (IEM's own
+    AllRADecoder/configuration-file docs don't ship one, despite AllRAD
+    itself originating there) -- this convention instead matches Blue
+    Ripple Sound's "O3A Decoder - Octagon" (a dedicated, Ambisonics/
+    B-format-native decoder product), and mirrors this project's own
+    existing pattern for every other layout with a front pair (`Quad`,
+    5.1, 7.1, Stereo above all straddle front symmetrically too).
+    Channel order is this project's own choice (four L/R pairs sweeping
+    front-to-back, matching `quad()`'s/`surround5point1()`'s own
+    ordering idiom) -- Blue Ripple's specific channel numbering wasn't
+    reproduced, since there's no JUCE-named bus here to match against
+    anyway (`Octophonic` uses `discreteChannels(8)`, same reasoning as
+    the raw Ambisonics modes). Circular Array instead starts its sweep
+    at 0 deg/front (channel 0 = front) -- the simplest, most predictable
+    default for an arbitrary N with no inherent "front stage" hierarchy
+    to preserve.
+  - **Decode method: mode-matching, NOT AllRAD.** A regular, evenly-spaced
+    array has no irregularity for AllRAD's virtual-array-plus-VBAP-remap
+    machinery to correct for -- that machinery exists specifically to
+    avoid coloration on IRREGULAR arrays (see the existing AllRAD entry
+    below). A plain SH-sampling decode straight to the real (already
+    regular) speakers is standard practice here, and is what
+    `AmbisonicsDecoder::buildCircularMatrix()` does (the same approach
+    `buildStereoMatrix()` already used for the 2-speaker case,
+    generalized to N) -- simpler, and at least as accurate, than routing
+    through AllRAD's extra machinery for a case it wasn't designed to
+    solve. Alias-free reconstruction for the fixed internal order-3
+    encode needs >= 7 speakers (standard circular-harmonic-sampling
+    result: an N-speaker ring exactly represents orders up to
+    floor((N-1)/2)) -- Octophonic (8) clears that; Circular Array with
+    fewer than 7 speakers still decodes correctly overall, just with
+    more spatial blur than a wider array would give for the same
+    order-3 source content, an inherent property of a small ring, not a
+    decoder bug (documented in the UI hint and README).
+  - **Horizontal-only**, like every other non-Atmos layout in this
+    decoder: a circular array of speakers cannot reproduce
+    elevation/height at all, regardless of decoder quality -- a property
+    of the array TYPE, called out explicitly in the UI/README so it
+    doesn't read as a bug.
+  - **Bus layout:** both use `discreteChannels()` (no JUCE-named
+    "circular array" layout exists). `CircularArray`'s channel count
+    varies with `numSpeakers`, so `isBusesLayoutSupported()` now accepts
+    any `discreteChannels(n)` for `n` in `[minCircularSpeakers,
+    maxCircularSpeakers]` (4..24) when that mode is selected, not just
+    one fixed layout per mode like every other entry -- the one real
+    tradeoff of a genuinely variable-channel-count mode. This range
+    includes 8, which is ALSO `Octophonic`'s own fixed channel count: an
+    accepted, documented overlap (a host can't tell which of the two an
+    8-channel bus "means" from the layout alone -- the plugin's own Mode
+    state, set via the Output Format control, is what actually decides
+    behavior). New "Circular Array: Speaker Count" control in the Output
+    category (always visible, only has an effect while Circular Array is
+    the active format -- same "control is a no-op outside the right
+    mode, said so rather than hidden" pattern as the Orbit category's
+    controls).
+  - `Tools/verify_ambisonics_decoder` gained metadata coverage for both
+    new modes (including `CircularArray`'s channel count/bus tracking
+    `numSpeakers`, with clamping at both ends of the 4..24 range) and
+    directional decode tests (Octophonic: a source at the front-left
+    speaker's own direction comes out strongest on that single channel;
+    CircularArray: same check at 6 speakers, plus a full 4..24 sweep
+    confirming every supported count decodes to a reasonable overall
+    level).
+- **Internal Ambisonics decoder: Stereo/Quad/5.1/7.1/Atmos-bed output
+  formats.** The plugin's output was previously always raw Ambisonics
+  B-format only. New `AmbisonicsDecoder` module sits between the encoder
+  and the output buffer, offering 11 mutually exclusive output formats
+  (new "Output" parameter category, `Output Format` dropdown): raw
+  Ambisonics (order 1/2/3, unchanged, zero added overhead -- see below),
+  Stereo, Quad, 5.1, 7.1, and four Dolby-Atmos-bed layouts (5.1.2, 5.1.4,
+  7.1.2, 7.1.4). Deliberately NOT a general "decode to any speaker array"
+  system -- only these fixed target formats (`SpeakerLayouts.h`).
+  Binaural/HRTF is intentionally NOT included yet (see below).
+  - **Bus architecture: one distinct output bus layout per mode**, not a
+    single fixed wide bus with unused channels padded silent. Each mode
+    declares its own `juce::AudioChannelSet` (named layouts --
+    `quadraphonic()`, `create5point1()`, `create5point1point4()`, etc. --
+    so hosts that understand named layouts show a sensible label, not
+    just a channel count) via `AmbisonicsDecoder::outputChannelSetFor()`.
+    Raw modes keep the plugin's pre-existing `discreteChannels(N)`
+    declaration exactly, so existing Reaper/Max-MSP routing and saved
+    sessions built around the old raw-B-format bus are unaffected.
+    Trade-off, chosen deliberately over the safer fixed-bus alternative:
+    switching modes is host-dependent to take effect live.
+    `KlangorbitProcessor::setDecoderMode()` calls `setBusesLayout()` and
+    `updateHostDisplay()` best-effort, but this JUCE version's VST3
+    wrapper has no dedicated "rescan my bus layout" restart flag a
+    plugin can raise on its own -- confirmed working live in Reaper;
+    other hosts may need the plugin removed and reinserted, or the
+    project reloaded, to pick up a new mode's channel count.
+  - **Decode method: AllRAD** (All-Round Ambisonic Decoding, Zotter &
+    Frank 2012) for every speaker-layout mode -- decode to a large,
+    densely/uniformly distributed VIRTUAL loudspeaker array (a Fibonacci
+    sphere lattice, 50 points; plain SH sampling decode reusing
+    `AmbisonicsEncoder::computeShCoefficients()`, not reimplemented),
+    then remap that virtual array onto the real sparse/irregular target
+    layout via VBAP (new `VBAP.h`/`.cpp` -- brute-force O(n^3)
+    convex-hull triangulation for layouts with height speakers, a
+    simpler 2D azimuth-pairwise fallback for horizontal-only layouts,
+    since a true 3D hull of coplanar points is degenerate). Stereo uses
+    a plain 2-point SH decode directly instead (two symmetric points
+    don't need AllRAD's machinery, and it is NOT the same code path as
+    Binaural -- no HRTF involved at all, see below).
+    - Two correctness fixes found and fixed while building this,
+      documented in `AmbisonicsDecoder.cpp` since they're not obvious
+      from AllRAD's usual textbook description: (1) **max-rE weighting**
+      (Daniel 2003) is required, not optional polish, on the
+      virtual-array decode step -- without it, a raw/un-windowed
+      order-limited SH decode's many small-but-numerous sidelobes swamp
+      the true on-axis peak once summed through the VBAP remap (a
+      straight-ahead 5.1 test source came out nearly EQUAL across all
+      five channels without this weighting). (2) **per-speaker density
+      compensation**: the ACN-0 (W/omni) coefficient is
+      direction-independent, so its contribution is proportional to how
+      much of the virtual array's surface each real speaker's VBAP
+      region covers -- uneven for an irregular layout (5.1's C is
+      flanked closely by L/R on both sides, so it structurally covers a
+      much narrower azimuth span than L or R do), which otherwise biases
+      every decode toward whichever speakers happen to have wider
+      coverage, independent of the actual source direction. Fixed by
+      normalizing each real speaker's decode row by its own omni
+      response before the final loudness calibration.
+    - Overall matrix loudness is calibrated pragmatically, not via a
+      strict SAD-theory-derived normalization constant: test-encode
+      plane waves from many directions, measure this matrix's average
+      output energy, scale the whole matrix so that average is
+      approximately unit energy (`calibrateDecodeMatrix()`) -- consistent
+      with this project's existing "practical approximation, documented
+      as such" philosophy (e.g. `PropagationProcessor`'s simplified air
+      absorption model).
+  - **LFE: silent by default, optional bass management.** Ambisonics
+    carries no dedicated LFE signal, so a synthesized one is a real,
+    audible addition to what was mixed -- opt-in
+    (`AmbisonicsDecoder::setBassManagementEnabled()`, "Bass Management
+    (LFE from W)" toggle in the Output category), not silently assumed.
+    When enabled, the LFE channel (modes 5.1/7.1/Atmos variants) carries
+    a one-pole low-pass (~120Hz, standard subwoofer crossover) of the W
+    (omnidirectional) Ambisonics channel -- the closest available proxy
+    for "the overall signal," since there is no real LFE bus to derive
+    one from. Quad and Stereo have no LFE channel at all.
+  - Angle sources, documented in `SpeakerLayouts.h`: ear-level speaker
+    angles (L/R/C/surrounds) from ITU-R BS.775-4; height/top-channel
+    angles for the Atmos-bed variants from ITU-R BS.2051-2, which
+    specifies these as permitted ANGLE SECTORS rather than single fixed
+    values -- the concrete angles chosen (top-front +-45 deg az/+45 deg
+    el, top-rear +-135 deg az/+45 deg el) sit within those sectors and
+    were cross-checked against Dolby's commonly published consumer
+    height-speaker placement guidance.
+  - Encoding stays at the fixed internal maximum (order 3) for every
+    decoded mode regardless of target speaker count, for the best
+    available spatial detail going into the decode; raw passthrough
+    modes still encode at their own selected order (1/2/3) exactly as
+    before. Raw modes bypass `AmbisonicsDecoder` entirely and encode
+    straight into the output buffer -- not just an identity decode
+    matrix, an actual skip -- so they have zero added overhead versus
+    before this feature existed.
+  - New `Tools/verify_ambisonics_decoder` (metadata consistency across
+    all 11 modes; raw passthrough's `decode()` is a safe no-op; Stereo
+    and AllRAD directional correctness for Quad/5.1/5.1.4; LFE
+    silent-by-default and bass-management behavior; overall calibrated
+    output level stays in a sane range across several source
+    directions) and `Tools/verify_vbap` (triangulation/gain correctness
+    for both the horizontal-pairwise and 3D-hull cases).
+  - Binaural/HRTF deliberately deferred to a follow-up: chosen approach
+    is bundling SADIE II's KU100 dummy-head SOFA measurement (Apache
+    2.0 licensed, University of York) as the default dataset, plus
+    user-supplied SOFA file import (same established pattern as IEM
+    Plugin Suite's own BinauralDecoder) -- not implemented in this pass,
+    which needs its own SOFA parsing and partitioned-convolution engine.
 - **Orbit-mode usage hint.** The Orbit parameter category now shows an
   inline reminder ("Set the Object's Mode to \"Orbit\" ... these
   settings have no effect otherwise") whenever the edited object's Mode

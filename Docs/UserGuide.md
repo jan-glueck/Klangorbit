@@ -3,10 +3,15 @@
 Klangorbit is an object-based Ambisonics spatializer built around a live
 physics engine: instead of automating position with envelopes or curves,
 you give sound objects mass, velocity, gravity, and momentum, and let
-their motion emerge from that. It outputs raw Ambisonics B-format
-(ACN/SN3D, AmbiX-compatible) -- it does **not** decode to speakers or
-headphones itself; feed its output into a decoder such as SPARTA
-(AmbiBIN/AmbiDEC) or the IEM Plugin Suite.
+their motion emerge from that. Its output format is selectable (Output
+category, section 12): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible
+-- still the default; feed it into an external decoder such as SPARTA
+AmbiBIN/AmbiDEC or the IEM Plugin Suite), or an internally decoded Stereo,
+Quad, 5.1, 7.1, Dolby-Atmos-bed (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a
+fixed 8-speaker circular array), or Circular Array (any speaker count 4-24)
+output, no external decoder needed. Binaural (HRTF-based headphone) output
+isn't available yet -- use Ambisonics with an external binaural decoder for
+now.
 
 This guide covers how to use the plugin. For build instructions and
 internal architecture notes, see `README.md` in the project root.
@@ -316,16 +321,64 @@ trajectory. Turn it on with **Enabled**.
   own position/velocity, so the actual pitch shift is genuinely
   different per grain even though they share that one strength knob.
 
-## 12. Presets
+## 12. Output format (parameter panel -> Output category)
+
+Chooses what the plugin's output bus actually carries -- this is a
+scene-wide setting (like Scene/Acoustics), not tied to any one object:
+
+- **Output Format** -- one of 13 mutually exclusive formats:
+  - **Ambisonics (Order 1/2/3)** -- the original raw B-format output
+    (ACN/SN3D), no decoding at all. Still the default; route it to an
+    external decoder (SPARTA AmbiBIN/AmbiDEC, IEM BinauralDecoder) as
+    before.
+  - **Stereo** -- a plain 2-speaker decode (+-30 deg), not the same
+    thing as binaural -- no HRTF/head-related processing, just two
+    virtual loudspeakers. Binaural output isn't available yet.
+  - **Quad / 5.1 / 7.1** -- standard loudspeaker layouts, ITU-R
+    BS.775-4 angles.
+  - **5.1.2 / 5.1.4 / 7.1.2 / 7.1.4** -- Dolby-Atmos-bed-style layouts
+    with height/top speakers, ITU-R BS.2051-2 angles.
+  - **Octophonic** -- a fixed, named 8-speaker circular array (45 deg
+    spacing, +-22.5 deg convention -- see the CHANGELOG for why).
+  - **Circular Array** -- a generic circular array for any speaker
+    count without an established naming convention; set **Circular
+    Array: Speaker Count** (4-24) to match your actual setup. That
+    control only has an effect while this format is selected --
+    harmless otherwise.
+
+  Octophonic and Circular Array are horizontal-only: a flat ring of
+  speakers cannot reproduce elevation/height at all, regardless of
+  decoder quality -- this is a property of the array itself, not a bug.
+  Circular Array also loses some spatial precision (more blur, not
+  wrong direction) below 7 speakers -- see the CHANGELOG for why.
+
+  Every non-Ambisonics format is decoded internally (AllRAD for the
+  irregular Quad/5.1/7.1/Atmos layouts, a simpler direct decode for
+  Stereo/Octophonic/Circular Array -- see the CHANGELOG for the method
+  and why it differs); there is no need to route to an external decoder
+  plugin for any of these. Switching formats (or changing Circular
+  Array's Speaker Count while it's active) changes the plugin's output
+  channel count -- most hosts (Reaper confirmed) pick this up live, some
+  need the plugin removed and reinserted, or the project reloaded, to
+  fully apply it.
+- **Bass Management (LFE from W)** -- off by default. Ambisonics has no
+  dedicated LFE signal, so this is a real, audible addition when
+  enabled: a low-passed (~120Hz) version of the omnidirectional (W)
+  channel is sent to the LFE channel, for the formats that have one
+  (5.1/7.1/Atmos variants -- Quad, Stereo, Octophonic, and Circular
+  Array have no LFE). Has no effect on any other format.
+
+## 13. Presets
 
 **Load Preset...** / **Save Preset...** in the toolbar save/load the
 entire scene (every active object, its mode and all parameters, scene
 settings, grains) as a `.json` file. Presets carry a schema
 version and are validated on load -- an incompatible or corrupted file
 is rejected with a clear error message instead of silently loading
-wrong.
+wrong. (Output Format/Bass Management are plugin-instance state, not
+part of the scene the preset saves -- see Presets/schema/README.md.)
 
-## 13. Keyboard shortcuts summary
+## 14. Keyboard shortcuts summary
 
 | Action | Shortcut |
 |---|---|
@@ -340,7 +393,7 @@ wrong.
 | Zoom the camera | Scroll wheel |
 | Clear selection | Click empty space |
 
-## 14. Tips for use with Reaper + SPARTA/IEM
+## 15. Tips for use with Reaper + SPARTA/IEM
 
 1. Route Klangorbit's Ambisonics output (ACN/SN3D) into a matching
    decoder (SPARTA AmbiDEC for speakers, AmbiBIN for headphones; IEM's

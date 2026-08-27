@@ -5,21 +5,28 @@
 #include "SoundObject.h"
 #include "TrajectoryEngine.h"
 #include "AmbisonicsEncoder.h"
+#include "AmbisonicsDecoder.h"
 #include "PropagationProcessor.h"
 #include "GrainCloud.h"
 
 /**
     Input:  N mono channels (N = SAPOC_MAX_LIVE_INPUTS, configurable), each
             assigned to one SoundObject.
-    Output: Ambisonics B-format, channel count = (order+1)^2, order
-            currently set via the SAPOC_DEFAULT_AMBI_ORDER constant
-            (runtime switching is prepared, see AmbisonicsEncoder::setOrder(),
-            but bus size is fixed per instance in the plugin context -- for
-            runtime order changes, the standalone case is easier since no
-            host bus contract exists there).
+    Output: one of AmbisonicsDecoder::Mode's fixed target formats -- raw
+            Ambisonics B-format (order 1/2/3, for further processing in a
+            DAW/with external tools like SPARTA/IEM Suite), Stereo, or one
+            of the AllRAD-decoded speaker layouts (Quad/5.1/7.1/Atmos-bed
+            variants), selected via setDecoderMode(). Each mode declares
+            its own output bus layout (see AmbisonicsDecoder::
+            outputChannelSetFor()) rather than one fixed wide bus -- an
+            exact channel count per mode, at the cost of mode switches
+            being host-dependent to take effect live (see
+            setDecoderMode()'s own comment).
 
-    No decoding here -- output is emitted as raw B-format and processed
-    further in a DAW/with external tools (SPARTA, IEM Suite).
+    Raw Ambisonics modes bypass AmbisonicsDecoder entirely and encode
+    straight into the output buffer, exactly as before this class existed
+    (zero added overhead). Every other mode encodes into an internal
+    ambiScratch bus first, then decodes that down to the real output.
 */
 class KlangorbitProcessor : public juce::AudioProcessor
 {
@@ -86,6 +93,24 @@ public:
     // comment above for why this exists now specifically.
     float getEstimatedCpuLoad() const { return processBlockLoadFraction.load (std::memory_order_relaxed); }
 
+    // --- Output decoder mode -------------------------------------------
+    AmbisonicsDecoder::Mode getDecoderMode() const { return decoder.getMode(); }
+    // Switches the active output format: re-orders the encoder, rebuilds
+    // the decode matrix, and (best-effort) asks the host to renegotiate
+    // the output bus to match -- see the .cpp for why that last part isn't
+    // guaranteed to take effect live in every host.
+    void setDecoderMode (AmbisonicsDecoder::Mode newMode);
+
+    bool isBassManagementEnabled() const { return decoder.isBassManagementEnabled(); }
+    void setBassManagementEnabled (bool shouldBeEnabled) { decoder.setBassManagementEnabled (shouldBeEnabled); }
+
+    // Only meaningful while getDecoderMode() == CircularArray -- see
+    // AmbisonicsDecoder::setCircularArraySpeakerCount()'s own comment.
+    // Stored regardless of the current mode, so switching into
+    // CircularArray later reuses whatever count was last configured.
+    int getCircularArraySpeakerCount() const { return decoder.getCircularArraySpeakerCount(); }
+    void setCircularArraySpeakerCount (int n);
+
 private:
     // BusesProperties is a protected nested type of juce::AudioProcessor --
     // only constructible via a method of the derived class, not via a free
@@ -109,6 +134,16 @@ private:
 
     TrajectoryEngine trajectoryEngine { numLiveInputs, grainPoolSizePerCloud };
     AmbisonicsEncoder encoder;
+    AmbisonicsDecoder decoder;
+
+    // Encode target for every non-raw-passthrough decoder mode -- always
+    // exactly 16 channels (order-3 Ambisonics, the fixed internal encode
+    // order for every decoded mode, see AmbisonicsDecoder::
+    // ambisonicsOrderFor()), regardless of which decoded mode is active.
+    // Raw passthrough modes bypass this and encode straight into the
+    // output buffer instead (see processBlock()).
+    juce::AudioBuffer<float> ambiScratch;
+    static constexpr int ambiScratchChannels = 16;
 
     // Per-object persistent gain state for zipper-free ramping
     std::vector<std::vector<float>> previousGainsPerObject;

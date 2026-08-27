@@ -76,6 +76,8 @@ target_sources(Klangorbit
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
         Source/AmbisonicsEncoder.cpp
+        Source/AmbisonicsDecoder.cpp
+        Source/VBAP.cpp
         Source/TrajectoryEngine.cpp
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
@@ -241,6 +243,54 @@ target_sources(verify_mute_solo
 target_link_libraries(verify_mute_solo
     PRIVATE
         juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- VBAP/triangulation verification ---------------------------------------
+# Runs VBAP::triangulate()/computeGains() (horizontal-ring pairwise case and
+# 3D convex-hull case) against known geometry -- gain at a speaker's own
+# direction, energy normalization, correct hull-face selection for layouts
+# with height speakers. No GUI/audio device needed.
+juce_add_console_app(verify_vbap
+    PRODUCT_NAME "verify_vbap"
+)
+
+target_sources(verify_vbap
+    PRIVATE
+        Tools/verify_vbap.cpp
+        Source/VBAP.cpp
+)
+
+target_link_libraries(verify_vbap
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Ambisonics decoder verification ---------------------------------------
+# Runs AmbisonicsDecoder's metadata helpers (channel counts/orders/LFE index
+# per mode) and its actual decode() output (Stereo and AllRAD-based Quad/
+# 5.1/Atmos decode, LFE bass-management on/off) against a real encoded test
+# source, via AmbisonicsEncoder -- no GUI/audio device needed.
+juce_add_console_app(verify_ambisonics_decoder
+    PRODUCT_NAME "verify_ambisonics_decoder"
+)
+
+target_sources(verify_ambisonics_decoder
+    PRIVATE
+        Tools/verify_ambisonics_decoder.cpp
+        Source/AmbisonicsDecoder.cpp
+        Source/AmbisonicsEncoder.cpp
+        Source/VBAP.cpp
+)
+
+target_link_libraries(verify_ambisonics_decoder
+    PRIVATE
+        juce::juce_audio_basics
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags

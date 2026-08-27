@@ -15,19 +15,32 @@ namespace
         azimuth  = std::atan2 (pos.y, pos.x);
         elevation = std::asin (juce::jlimit (-1.0f, 1.0f, pos.z / distance));
     }
+
+    // Maps SAPOC_DEFAULT_AMBI_ORDER to its raw-passthrough decoder mode --
+    // used at startup for both the declared bus layout and the decoder's
+    // own initial mode, so the two can never disagree if that build
+    // setting is ever changed away from its current default of 3.
+    AmbisonicsDecoder::Mode rawModeForOrder (int order)
+    {
+        using Mode = AmbisonicsDecoder::Mode;
+        if (order <= 1) return Mode::AmbisonicsRawOrder1;
+        if (order == 2) return Mode::AmbisonicsRawOrder2;
+        return Mode::AmbisonicsRawOrder3;
+    }
 }
 
 KlangorbitProcessor::BusesProperties KlangorbitProcessor::makeBusLayout()
 {
     return BusesProperties()
         .withInput  ("Live Inputs", juce::AudioChannelSet::discreteChannels (SAPOC_MAX_LIVE_INPUTS), true)
-        .withOutput ("Ambisonics", juce::AudioChannelSet::discreteChannels ((SAPOC_DEFAULT_AMBI_ORDER + 1) * (SAPOC_DEFAULT_AMBI_ORDER + 1)), true);
+        .withOutput ("Ambisonics", AmbisonicsDecoder::outputChannelSetFor (rawModeForOrder (SAPOC_DEFAULT_AMBI_ORDER)), true);
 }
 
 KlangorbitProcessor::KlangorbitProcessor()
     : juce::AudioProcessor (makeBusLayout())
 {
     encoder.setOrder (SAPOC_DEFAULT_AMBI_ORDER);
+    decoder.setMode (rawModeForOrder (SAPOC_DEFAULT_AMBI_ORDER));
 
     // Only object 0 starts active (input channel 0). Further objects are
     // added via the GUI (TrajectoryEngine::activateObject()) -- the input
@@ -55,6 +68,9 @@ void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
     encoder.prepare (sampleRate, samplesPerBlock);
+    decoder.prepare (sampleRate);
+
+    ambiScratch.setSize (ambiScratchChannels, samplesPerBlock);
 
     for (auto& g : previousGainsPerObject)
         g.assign ((size_t) encoder.getNumChannels(), 0.0f);
@@ -95,9 +111,100 @@ void KlangorbitProcessor::releaseResources() {}
 
 bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    // For the POC: fixed layouts as defined in makeBusLayout().
-    return layouts.getMainInputChannelSet()  == juce::AudioChannelSet::discreteChannels (numLiveInputs)
-        && layouts.getMainOutputChannelSet() == juce::AudioChannelSet::discreteChannels (encoder.getNumChannels());
+    // Input is always the fixed live-input bus. Output must match one of
+    // AmbisonicsDecoder::Mode's fixed target formats -- not the CURRENTLY
+    // active mode specifically, but any of them, so a host can propose
+    // switching modes via the normal checkBusesLayoutSupported/
+    // setBusesLayout negotiation (see setDecoderMode()'s own comment on
+    // why a plugin-initiated switch alone isn't reliably enough in every
+    // host).
+    if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::discreteChannels (numLiveInputs))
+        return false;
+
+    const auto outSet = layouts.getMainOutputChannelSet();
+    using Mode = AmbisonicsDecoder::Mode;
+    static constexpr Mode fixedModes[] = {
+        Mode::AmbisonicsRawOrder1, Mode::AmbisonicsRawOrder2, Mode::AmbisonicsRawOrder3,
+        Mode::Stereo, Mode::Quad, Mode::Surround5_1, Mode::Surround7_1,
+        Mode::Atmos5_1_2, Mode::Atmos5_1_4, Mode::Atmos7_1_2, Mode::Atmos7_1_4,
+        Mode::Octophonic,
+    };
+    for (auto m : fixedModes)
+        if (outSet == AmbisonicsDecoder::outputChannelSetFor (m))
+            return true;
+
+    // CircularArray: any channel count in its supported range, since the
+    // user picks numSpeakers independently of selecting the mode itself
+    // (see setCircularArraySpeakerCount()). Note this range includes 8,
+    // which is ALSO Octophonic's own (fixed) channel count -- an
+    // accepted, documented overlap, see AmbisonicsDecoder::
+    // outputChannelSetFor()'s own comment.
+    for (int n = AmbisonicsDecoder::minCircularSpeakers; n <= AmbisonicsDecoder::maxCircularSpeakers; ++n)
+        if (outSet == juce::AudioChannelSet::discreteChannels (n))
+            return true;
+
+    return false;
+}
+
+void KlangorbitProcessor::setDecoderMode (AmbisonicsDecoder::Mode newMode)
+{
+    if (newMode == decoder.getMode())
+        return;
+
+    encoder.setOrder (AmbisonicsDecoder::ambisonicsOrderFor (newMode));
+    decoder.setMode (newMode);
+
+    // A changed Ambisonics order invalidates any in-flight gain ramp
+    // target -- reset rather than resize-and-keep.
+    for (auto& g : previousGainsPerObject)
+        g.assign ((size_t) encoder.getNumChannels(), 0.0f);
+    for (auto& perObject : grainAudioState)
+        for (auto& state : perObject)
+            state.previousChannelGains.assign ((size_t) encoder.getNumChannels(), 0.0f);
+
+    // Best-effort request for the host to renegotiate the output bus to
+    // match. This JUCE version's VST3 wrapper has no dedicated "please
+    // rescan my bus layout" restart flag a plugin can raise on its own
+    // (Vst::kIoChanged is never sent) -- updateHostDisplay() below can at
+    // most mark the plugin's non-parameter state dirty, which some hosts
+    // (Reaper, confirmed) use as a cue to recheck buses live; others will
+    // only pick up the new layout the next time they call
+    // checkBusesLayoutSupported() themselves (e.g. on project reload, or
+    // after the plugin is removed and reinserted). Calling setBusesLayout()
+    // here still matters even then: it keeps this AudioProcessor's own
+    // reported bus layout consistent with the active decode mode, so a
+    // host that DOES rescan sees the right answer immediately. This
+    // tradeoff (per-mode bus layouts, live-switch reliability varies by
+    // host) was chosen deliberately over a fixed always-16-channel bus --
+    // see CHANGELOG.
+    auto layouts = getBusesLayout();
+    if (! layouts.outputBuses.isEmpty())
+        layouts.outputBuses.getReference (0) = AmbisonicsDecoder::outputChannelSetFor (newMode, decoder.getCircularArraySpeakerCount());
+    setBusesLayout (layouts);
+    updateHostDisplay (juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged (true));
+}
+
+void KlangorbitProcessor::setCircularArraySpeakerCount (int n)
+{
+    const int clamped = juce::jlimit (AmbisonicsDecoder::minCircularSpeakers, AmbisonicsDecoder::maxCircularSpeakers, n);
+    if (clamped == decoder.getCircularArraySpeakerCount())
+        return;
+
+    decoder.setCircularArraySpeakerCount (clamped); // rebuilds the decode matrix live if CircularArray is already active
+
+    // Only CircularArray's own output channel count depends on this --
+    // the encoder side (ambiScratch, gain-ramp state) stays fixed at
+    // order 3 regardless, so unlike setDecoderMode() above there is no
+    // ramp state to reset here.
+    if (decoder.getMode() != AmbisonicsDecoder::Mode::CircularArray)
+        return;
+
+    // Same best-effort bus renegotiation as setDecoderMode() -- see its comment.
+    auto layouts = getBusesLayout();
+    if (! layouts.outputBuses.isEmpty())
+        layouts.outputBuses.getReference (0) = juce::AudioChannelSet::discreteChannels (clamped);
+    setBusesLayout (layouts);
+    updateHostDisplay (juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged (true));
 }
 
 void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -116,6 +223,16 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         inputCopy.copyFrom (ch, 0, buffer, ch, 0, numSamples);
 
     buffer.clear();
+
+    // Raw passthrough modes encode straight into the output buffer, exactly
+    // as before this decoder feature existed (zero added overhead, see
+    // AmbisonicsDecoder's class comment). Every other mode encodes into
+    // ambiScratch instead, decoded down to the real output once both
+    // rendering passes below are done.
+    const bool rawPassthrough = AmbisonicsDecoder::isRawPassthrough (decoder.getMode());
+    juce::AudioBuffer<float>& encodeTarget = rawPassthrough ? buffer : ambiScratch;
+    if (! rawPassthrough)
+        ambiScratch.clear();
 
     std::vector<TrajectoryEngine::Snapshot> snapshot;
     trajectoryEngine.getSnapshot (snapshot);
@@ -234,7 +351,7 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                               numSamples,
                               azimuth, elevation, distance,
                               obj.gain * directivityGain * ramp * sourceRamp,
-                              buffer,
+                              encodeTarget,
                               previousGainsPerObject[(size_t) objIdx]);
     }
 
@@ -321,9 +438,15 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             cartesianToSpherical (snap.position, azimuth, elevation, distance);
 
             encoder.encodeBlock (grainOut, numSamples, azimuth, elevation, distance,
-                                  obj.gain * muteRamp, buffer, state.previousChannelGains);
+                                  obj.gain * muteRamp, encodeTarget, state.previousChannelGains);
         }
     }
+
+    // Decode ambiScratch down to the real output bus -- skipped entirely
+    // for raw passthrough modes, which already wrote straight into buffer
+    // above.
+    if (! rawPassthrough)
+        decoder.decode (ambiScratch, buffer, numSamples);
 
     // Real, measured CPU-load estimate -- see maxConcurrentGrainsGlobal's
     // comment in the header for why this exists (128 concurrent grains is

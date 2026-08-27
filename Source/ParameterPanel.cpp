@@ -1,5 +1,6 @@
 #include "ParameterPanel.h"
 #include "UiTheme.h"
+#include "PluginProcessor.h"
 #include <cmath>
 
 namespace
@@ -147,6 +148,8 @@ void ToggleRowComponent::setValueQuiet (bool v)
 
 bool ParameterPanel::categoryRequiresObject (Category category)
 {
+    // Output (like Scene/Acoustics) is scene-wide, not per-object -- its
+    // controls live on the processor itself, see setProcessor().
     return category == Category::Object || category == Category::Attraction
         || category == Category::Orbit || category == Category::Doppler
         || category == Category::GrainCloud;
@@ -164,6 +167,7 @@ ParameterPanel::ParameterPanel()
 
     addCategoryButton ("Scene", Category::Scene);
     addCategoryButton ("Acoustics", Category::Acoustics);
+    addCategoryButton ("Output", Category::Output);
     addCategoryButton ("Object", Category::Object);
     addCategoryButton ("Attraction", Category::Attraction);
     addCategoryButton ("Orbit", Category::Orbit);
@@ -205,6 +209,83 @@ ParameterPanel::ParameterPanel()
     addSceneFloatRow ("Relative Humidity (%)", &SceneSettings::relativeHumidity, 0.0, 100.0, 1.0, Category::Acoustics);
     addSceneFloatRow ("Atmospheric Pressure (kPa)", &SceneSettings::atmosphericPressure, 80.0, 110.0, 0.1, Category::Acoustics);
     addSceneVec3Row ("Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1, Category::Acoustics);
+
+    // --- Output ---------------------------------------------------------
+    styleRowLabel (decoderModeHintLabel,
+                    "Switching output format changes the plugin's output "
+                    "channel count. Most hosts pick this up live; some need "
+                    "the plugin removed and reinserted (or the project "
+                    "reloaded) to fully apply it.", 12.5f, UiColours::textDisabled());
+    decoderModeHintLabel.setJustificationType (juce::Justification::topLeft);
+    content.addAndMakeVisible (decoderModeHintLabel);
+    addToLayout (decoderModeHintLabel, 56, Category::Output);
+
+    decoderModeRow = std::make_unique<ComboRowComponent> ("Output Format");
+    // Order matches AmbisonicsDecoder::Mode exactly -- combo item POSITION
+    // (0-based, from getSelectedItemIndex() below) is cast directly to the
+    // enum, same pattern as modeRow/directivityRow above. addItem()'s IDs
+    // (1, 2, 3, ...) are just JUCE's required 1-based ComboBox item IDs,
+    // unrelated to the enum's own values.
+    decoderModeRow->combo.addItem ("Ambisonics (Order 1, 4ch)", 1);
+    decoderModeRow->combo.addItem ("Ambisonics (Order 2, 9ch)", 2);
+    decoderModeRow->combo.addItem ("Ambisonics (Order 3, 16ch)", 3);
+    decoderModeRow->combo.addItem ("Stereo", 4);
+    decoderModeRow->combo.addItem ("Quad", 5);
+    decoderModeRow->combo.addItem ("5.1", 6);
+    decoderModeRow->combo.addItem ("7.1", 7);
+    decoderModeRow->combo.addItem ("5.1.2 (Atmos)", 8);
+    decoderModeRow->combo.addItem ("5.1.4 (Atmos)", 9);
+    decoderModeRow->combo.addItem ("7.1.2 (Atmos)", 10);
+    decoderModeRow->combo.addItem ("7.1.4 (Atmos)", 11);
+    decoderModeRow->combo.addItem ("Octophonic (8ch circular)", 12);
+    decoderModeRow->combo.addItem ("Circular Array (adjustable)", 13);
+    decoderModeRow->onSelected = [this] (int index)
+    {
+        if (decoderProcessor != nullptr)
+            decoderProcessor->setDecoderMode ((AmbisonicsDecoder::Mode) index);
+    };
+    content.addAndMakeVisible (*decoderModeRow);
+    addToLayout (*decoderModeRow, ComboRowComponent::preferredHeight, Category::Output);
+
+    // Only meaningful while Output Format == Circular Array (silently
+    // ignored otherwise, including by the fixed Octophonic preset -- see
+    // AmbisonicsDecoder::setCircularArraySpeakerCount()). Kept always
+    // visible (like the Orbit-mode-hint pattern above, not hidden/shown
+    // per mode) since it's a single row, not worth the extra state.
+    circularSpeakerCountRow = std::make_unique<FloatRowComponent> (
+        "Circular Array: Speaker Count", (double) AmbisonicsDecoder::minCircularSpeakers,
+        (double) AmbisonicsDecoder::maxCircularSpeakers, 1.0);
+    circularSpeakerCountRow->onValueChanged = [this] (float v)
+    {
+        if (decoderProcessor != nullptr)
+            decoderProcessor->setCircularArraySpeakerCount ((int) std::round (v));
+    };
+    content.addAndMakeVisible (*circularSpeakerCountRow);
+    addToLayout (*circularSpeakerCountRow, FloatRowComponent::preferredHeight, Category::Output);
+
+    styleRowLabel (circularArrayHintLabel,
+                    "Octophonic/Circular Array are horizontal-only -- a "
+                    "circular array of speakers cannot reproduce elevation, "
+                    "regardless of decoder quality. Circular Array with "
+                    "fewer than 7 speakers will show extra spatial blur, an "
+                    "unavoidable property of a small ring at this internal "
+                    "Ambisonics order.", 12.5f, UiColours::textDisabled());
+    circularArrayHintLabel.setJustificationType (juce::Justification::topLeft);
+    content.addAndMakeVisible (circularArrayHintLabel);
+    addToLayout (circularArrayHintLabel, 64, Category::Output);
+
+    // Default off -- Ambisonics has no dedicated LFE signal, so this is a
+    // real, audible addition (a low-passed W channel) to what was mixed,
+    // not something to silently turn on. Only affects modes with an LFE
+    // channel (5.1/7.1/Atmos variants); harmless no-op otherwise.
+    bassManagementRow = std::make_unique<ToggleRowComponent> ("Bass Management (LFE from W)");
+    bassManagementRow->onToggled = [this] (bool v)
+    {
+        if (decoderProcessor != nullptr)
+            decoderProcessor->setBassManagementEnabled (v);
+    };
+    content.addAndMakeVisible (*bassManagementRow);
+    addToLayout (*bassManagementRow, ToggleRowComponent::preferredHeight, Category::Output);
 
     // --- Object -------------------------------------------------------------
     // Mute/Solo (SoundObject::muted/soloed) are deliberately NOT exposed
@@ -503,6 +584,11 @@ void ParameterPanel::setSceneSettings (SceneSettings* settings)
     sceneSettings = settings;
 }
 
+void ParameterPanel::setProcessor (KlangorbitProcessor* proc)
+{
+    decoderProcessor = proc;
+}
+
 void ParameterPanel::rebuildOrbitReferenceItems (int numObjects, int selfId)
 {
     auto& combo = orbitRefRow->combo;
@@ -581,6 +667,13 @@ void ParameterPanel::setEditedGrainCloud (GrainCloudSettings* settings)
 
 void ParameterPanel::refreshFromModel()
 {
+    if (decoderProcessor != nullptr)
+    {
+        decoderModeRow->combo.setSelectedItemIndex ((int) decoderProcessor->getDecoderMode(), juce::dontSendNotification);
+        circularSpeakerCountRow->setValueQuiet ((float) decoderProcessor->getCircularArraySpeakerCount());
+        bassManagementRow->setValueQuiet (decoderProcessor->isBassManagementEnabled());
+    }
+
     if (sceneSettings != nullptr)
     {
         for (auto& b : sceneFloatRows)

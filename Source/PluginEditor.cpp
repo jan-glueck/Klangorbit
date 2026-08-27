@@ -236,6 +236,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     cpuLoadLabel.setJustificationType (juce::Justification::centredLeft);
 
     parameterPanel.setSceneSettings (&audioProcessor.getTrajectoryEngine().getSceneSettings());
+    parameterPanel.setProcessor (&audioProcessor);
     parameterPanel.refreshFromModel(); // show scene defaults (roomSize etc.) right away
     objectListPanel.refresh (audioProcessor.getTrajectoryEngine());
     selectObject (-1);                 // initializes panel enablement + object count label consistently

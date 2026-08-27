@@ -243,9 +243,12 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
 
     setSize (700 + objectListWidth + parameterPanelWidth, 700 + toolbarHeight);
     setWantsKeyboardFocus (true);
-    lastTimerMs = juce::Time::getMillisecondCounter();
-    startTimerHz (90); // control rate for the TrajectoryEngine
-
+    // View-side concerns only now (trails, sling-gesture modifier polling,
+    // CPU-load readout, repaint) -- TrajectoryEngine/GrainCloud updates
+    // run from KlangorbitProcessor's own timer, see this class's header
+    // comment. Same rate as before, so trail capture/repaint smoothness
+    // is unchanged.
+    startTimerHz (90);
 }
 
 KlangorbitEditor::~KlangorbitEditor()
@@ -256,37 +259,16 @@ KlangorbitEditor::~KlangorbitEditor()
 
 void KlangorbitEditor::timerCallback()
 {
-    const auto now = juce::Time::getMillisecondCounter();
-    const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastTimerMs) / 1000.0); // clamp against outliers
-    lastTimerMs = now;
-
     // Polled here (not from mouseDrag) so a Ctrl/Alt press registers
     // immediately even while the mouse isn't currently moving.
     updateSlingModifiers();
 
-    auto& engine = audioProcessor.getTrajectoryEngine();
-    engine.update (dt);
-
-    // GrainCloud: control-rate update, same loop/rate as TrajectoryEngine
-    // above. A single global spawn budget is shared across all clouds so
-    // the total number of simultaneously active grains never exceeds
-    // KlangorbitProcessor::maxConcurrentGrainsGlobal, no matter how
-    // many objects are granulating at once -- each active grain costs a
-    // full Ambisonics encode pass in PluginProcessor::processBlock.
-    int globalGrainBudget = KlangorbitProcessor::maxConcurrentGrainsGlobal;
-    for (int i = 0; i < engine.getNumGrainClouds(); ++i)
-        globalGrainBudget -= engine.getGrainCloud (i).getNumActiveGrains();
-
-    for (int i = 0; i < engine.getNumGrainClouds(); ++i)
-    {
-        auto& obj = engine.getObject (i);
-        if (obj.inputChannel < 0)
-            continue; // no active parent -- freeze this cloud instead of updating it with a meaningless position
-
-        auto& cloud = engine.getGrainCloud (i);
-        cloud.setRingBufferContext (audioProcessor.getGrainRingBufferWriteHead (i), audioProcessor.getSampleRate());
-        cloud.update (dt, obj.position, obj.velocity, globalGrainBudget, grainRandom);
-    }
+    // TrajectoryEngine::update()/GrainCloud::update() moved to
+    // KlangorbitProcessor's own timer -- see this class's own comment and
+    // PluginProcessor.h for why (keeps the simulation running with this
+    // editor closed). This timer only reads the results now, via
+    // updateTrails()/repaint() below, same as everything else in this
+    // class already reads TrajectoryEngine's live state without owning it.
 
     updateTrails();
 
@@ -876,6 +858,12 @@ void KlangorbitEditor::removeObjectClicked()
 void KlangorbitEditor::selectObject (int index)
 {
     selectedObjectIndex = index;
+    // The editor's own copy above is purely for rendering (selection
+    // highlight, panel enablement) -- the processor's copy is the actual
+    // source of truth ParameterRegistry::Scope::SelectedObject parameters
+    // resolve against, and keeps working even without an editor open (see
+    // KlangorbitProcessor::getSelectedObjectIndex()'s own comment).
+    audioProcessor.setSelectedObjectIndex (index);
     auto& engine = audioProcessor.getTrajectoryEngine();
 
     if (index < 0)

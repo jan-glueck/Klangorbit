@@ -60,9 +60,63 @@ KlangorbitProcessor::KlangorbitProcessor()
 
     for (auto& wh : grainRingBufferWriteHead)
         wh.store (0, std::memory_order_relaxed);
+
+    buildParameterRegistry();
+
+    // Starts the control-rate simulation loop -- see the class comment in
+    // PluginProcessor.h for why this runs from here rather than the
+    // editor. 90Hz matches the rate the editor's own timer previously
+    // drove TrajectoryEngine/GrainCloud updates at.
+    lastControlRateTimerMs = juce::Time::getMillisecondCounter();
+    startTimerHz (90);
 }
 
-KlangorbitProcessor::~KlangorbitProcessor() = default;
+KlangorbitProcessor::~KlangorbitProcessor()
+{
+    // Explicit, before any other member starts tearing down -- same
+    // ordering reasoning KlangorbitEditor's own destructor already
+    // established for its (now editor-only) timer. juce::Timer's own
+    // destructor would stop it safely too, but stopping it first here
+    // means timerCallback() can never fire mid-teardown of this class's
+    // own members (trajectoryEngine, grainRandom, etc.).
+    stopTimer();
+}
+
+void KlangorbitProcessor::timerCallback()
+{
+    // Moved verbatim from what used to be KlangorbitEditor::timerCallback()
+    // (see the class comment in PluginProcessor.h for why) -- same two
+    // calls, same control rate, same dt clamping. The editor's own timer
+    // (still running, at the same rate, when an editor exists) no longer
+    // touches TrajectoryEngine/GrainCloud at all -- only this one does now,
+    // so there is no double-update.
+    const auto now = juce::Time::getMillisecondCounter();
+    const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastControlRateTimerMs) / 1000.0); // clamp against outliers
+    lastControlRateTimerMs = now;
+
+    trajectoryEngine.update (dt);
+
+    // GrainCloud: control-rate update, same loop/rate as TrajectoryEngine
+    // above. A single global spawn budget is shared across all clouds so
+    // the total number of simultaneously active grains never exceeds
+    // maxConcurrentGrainsGlobal, no matter how many objects are
+    // granulating at once -- each active grain costs a full Ambisonics
+    // encode pass in processBlock() below.
+    int globalGrainBudget = maxConcurrentGrainsGlobal;
+    for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
+        globalGrainBudget -= trajectoryEngine.getGrainCloud (i).getNumActiveGrains();
+
+    for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
+    {
+        auto& obj = trajectoryEngine.getObject (i);
+        if (obj.inputChannel < 0)
+            continue; // no active parent -- freeze this cloud instead of updating it with a meaningless position
+
+        auto& cloud = trajectoryEngine.getGrainCloud (i);
+        cloud.setRingBufferContext (getGrainRingBufferWriteHead (i), getSampleRate());
+        cloud.update (dt, obj.position, obj.velocity, globalGrainBudget, grainRandom);
+    }
+}
 
 void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
@@ -462,6 +516,350 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     constexpr float smoothing = 0.9f;
     const float previousLoad = processBlockLoadFraction.load (std::memory_order_relaxed);
     processBlockLoadFraction.store (previousLoad * smoothing + instantLoad * (1.0f - smoothing), std::memory_order_relaxed);
+}
+
+// --- Parameter registry ---------------------------------------------------
+// See ParameterRegistry.h for the "why not juce::AudioProcessorParameter"
+// reasoning, and PluginProcessor.h for what each helper below does. Every
+// field registered here is one that already had a slider/toggle in
+// ParameterPanel -- pure runtime physics STATE (position, velocity,
+// orbitPhase, etc.) is deliberately excluded, same scope ParameterPanel
+// itself already draws the line at.
+
+void KlangorbitProcessor::registerObjectFloatParam (const juce::String& key, const juce::String& displayName,
+                                                      const juce::String& category, float SoundObject::* member,
+                                                      float minValue, float maxValue, ParameterRegistry::Polarity polarity)
+{
+    for (int i = 0; i < trajectoryEngine.getNumObjects(); ++i)
+    {
+        parameterRegistry.registerParameter ({
+            "object." + juce::String (i) + "." + key, displayName, category, minValue, maxValue, polarity,
+            ParameterRegistry::Scope::SpecificObject, i,
+            [this, member, i] { return trajectoryEngine.getObject (i).*member; },
+            [this, member, i] (float v) { trajectoryEngine.getObject (i).*member = v; }
+        });
+    }
+
+    parameterRegistry.registerParameter ({
+        "selectedObject." + key, displayName, category, minValue, maxValue, polarity,
+        ParameterRegistry::Scope::SelectedObject, -1,
+        [this, member]
+        {
+            const int idx = selectedObjectIndex;
+            return (idx >= 0 && idx < trajectoryEngine.getNumObjects()) ? trajectoryEngine.getObject (idx).*member : 0.0f;
+        },
+        [this, member] (float v)
+        {
+            const int idx = selectedObjectIndex;
+            if (idx >= 0 && idx < trajectoryEngine.getNumObjects())
+                trajectoryEngine.getObject (idx).*member = v;
+        }
+    });
+}
+
+void KlangorbitProcessor::registerObjectBoolParam (const juce::String& key, const juce::String& displayName,
+                                                     const juce::String& category, bool SoundObject::* member)
+{
+    for (int i = 0; i < trajectoryEngine.getNumObjects(); ++i)
+    {
+        parameterRegistry.registerParameter ({
+            "object." + juce::String (i) + "." + key, displayName, category, 0.0f, 1.0f, ParameterRegistry::Polarity::Unipolar,
+            ParameterRegistry::Scope::SpecificObject, i,
+            [this, member, i] { return trajectoryEngine.getObject (i).*member ? 1.0f : 0.0f; },
+            [this, member, i] (float v) { trajectoryEngine.getObject (i).*member = (v >= 0.5f); }
+        });
+    }
+
+    parameterRegistry.registerParameter ({
+        "selectedObject." + key, displayName, category, 0.0f, 1.0f, ParameterRegistry::Polarity::Unipolar,
+        ParameterRegistry::Scope::SelectedObject, -1,
+        [this, member]
+        {
+            const int idx = selectedObjectIndex;
+            return (idx >= 0 && idx < trajectoryEngine.getNumObjects()) ? (trajectoryEngine.getObject (idx).*member ? 1.0f : 0.0f) : 0.0f;
+        },
+        [this, member] (float v)
+        {
+            const int idx = selectedObjectIndex;
+            if (idx >= 0 && idx < trajectoryEngine.getNumObjects())
+                trajectoryEngine.getObject (idx).*member = (v >= 0.5f);
+        }
+    });
+}
+
+namespace
+{
+    // One entry per Vec3 axis -- shared by registerObjectVec3Param() and
+    // registerSceneVec3Param() below. idSuffix/labelSuffix append onto the
+    // field's own key/displayName (e.g. key "orbitCenter" + this ->
+    // "orbitCenter.x" / "Orbit Center X"), field is the pointer-to-member
+    // used to read/write that one axis of a Vec3 already reached via
+    // another pointer-to-member (obj.*vec3Member).*field -- see the
+    // callers below for why two chained pointer-to-member dereferences are
+    // needed here.
+    struct Vec3AxisField { const char* idSuffix; const char* labelSuffix; float Vec3::* field; };
+    constexpr Vec3AxisField vec3Axes[] = {
+        { "x", " X", &Vec3::x },
+        { "y", " Y", &Vec3::y },
+        { "z", " Z", &Vec3::z },
+    };
+}
+
+void KlangorbitProcessor::registerObjectVec3Param (const juce::String& key, const juce::String& displayName,
+                                                     const juce::String& category, Vec3 SoundObject::* member,
+                                                     float minValue, float maxValue, ParameterRegistry::Polarity polarity)
+{
+    for (auto& axis : vec3Axes)
+    {
+        for (int i = 0; i < trajectoryEngine.getNumObjects(); ++i)
+        {
+            parameterRegistry.registerParameter ({
+                "object." + juce::String (i) + "." + key + "." + axis.idSuffix, displayName + axis.labelSuffix, category,
+                minValue, maxValue, polarity, ParameterRegistry::Scope::SpecificObject, i,
+                [this, member, field = axis.field, i] { return (trajectoryEngine.getObject (i).*member).*field; },
+                [this, member, field = axis.field, i] (float v) { (trajectoryEngine.getObject (i).*member).*field = v; }
+            });
+        }
+
+        parameterRegistry.registerParameter ({
+            "selectedObject." + key + "." + axis.idSuffix, displayName + axis.labelSuffix, category,
+            minValue, maxValue, polarity, ParameterRegistry::Scope::SelectedObject, -1,
+            [this, member, field = axis.field]
+            {
+                const int idx = selectedObjectIndex;
+                return (idx >= 0 && idx < trajectoryEngine.getNumObjects()) ? (trajectoryEngine.getObject (idx).*member).*field : 0.0f;
+            },
+            [this, member, field = axis.field] (float v)
+            {
+                const int idx = selectedObjectIndex;
+                if (idx >= 0 && idx < trajectoryEngine.getNumObjects())
+                    (trajectoryEngine.getObject (idx).*member).*field = v;
+            }
+        });
+    }
+}
+
+void KlangorbitProcessor::registerGrainFloatParam (const juce::String& key, const juce::String& displayName,
+                                                     const juce::String& category, float GrainCloudSettings::* member,
+                                                     float minValue, float maxValue, ParameterRegistry::Polarity polarity)
+{
+    for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
+    {
+        parameterRegistry.registerParameter ({
+            "object." + juce::String (i) + ".grain." + key, displayName, category, minValue, maxValue, polarity,
+            ParameterRegistry::Scope::SpecificObject, i,
+            [this, member, i] { return trajectoryEngine.getGrainCloud (i).getSettings().*member; },
+            [this, member, i] (float v) { trajectoryEngine.getGrainCloud (i).getSettings().*member = v; }
+        });
+    }
+
+    parameterRegistry.registerParameter ({
+        "selectedObject.grain." + key, displayName, category, minValue, maxValue, polarity,
+        ParameterRegistry::Scope::SelectedObject, -1,
+        [this, member]
+        {
+            const int idx = selectedObjectIndex;
+            return (idx >= 0 && idx < trajectoryEngine.getNumGrainClouds()) ? trajectoryEngine.getGrainCloud (idx).getSettings().*member : 0.0f;
+        },
+        [this, member] (float v)
+        {
+            const int idx = selectedObjectIndex;
+            if (idx >= 0 && idx < trajectoryEngine.getNumGrainClouds())
+                trajectoryEngine.getGrainCloud (idx).getSettings().*member = v;
+        }
+    });
+}
+
+void KlangorbitProcessor::registerGrainBoolParam (const juce::String& key, const juce::String& displayName,
+                                                    const juce::String& category, bool GrainCloudSettings::* member)
+{
+    for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
+    {
+        parameterRegistry.registerParameter ({
+            "object." + juce::String (i) + ".grain." + key, displayName, category, 0.0f, 1.0f, ParameterRegistry::Polarity::Unipolar,
+            ParameterRegistry::Scope::SpecificObject, i,
+            [this, member, i] { return trajectoryEngine.getGrainCloud (i).getSettings().*member ? 1.0f : 0.0f; },
+            [this, member, i] (float v) { trajectoryEngine.getGrainCloud (i).getSettings().*member = (v >= 0.5f); }
+        });
+    }
+
+    parameterRegistry.registerParameter ({
+        "selectedObject.grain." + key, displayName, category, 0.0f, 1.0f, ParameterRegistry::Polarity::Unipolar,
+        ParameterRegistry::Scope::SelectedObject, -1,
+        [this, member]
+        {
+            const int idx = selectedObjectIndex;
+            return (idx >= 0 && idx < trajectoryEngine.getNumGrainClouds()) ? (trajectoryEngine.getGrainCloud (idx).getSettings().*member ? 1.0f : 0.0f) : 0.0f;
+        },
+        [this, member] (float v)
+        {
+            const int idx = selectedObjectIndex;
+            if (idx >= 0 && idx < trajectoryEngine.getNumGrainClouds())
+                trajectoryEngine.getGrainCloud (idx).getSettings().*member = (v >= 0.5f);
+        }
+    });
+}
+
+void KlangorbitProcessor::registerGrainIntParam (const juce::String& key, const juce::String& displayName,
+                                                   const juce::String& category, int GrainCloudSettings::* member,
+                                                   float minValue, float maxValue)
+{
+    for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
+    {
+        parameterRegistry.registerParameter ({
+            "object." + juce::String (i) + ".grain." + key, displayName, category, minValue, maxValue, ParameterRegistry::Polarity::Unipolar,
+            ParameterRegistry::Scope::SpecificObject, i,
+            [this, member, i] { return (float) (trajectoryEngine.getGrainCloud (i).getSettings().*member); },
+            [this, member, i] (float v) { trajectoryEngine.getGrainCloud (i).getSettings().*member = (int) std::round (v); }
+        });
+    }
+
+    parameterRegistry.registerParameter ({
+        "selectedObject.grain." + key, displayName, category, minValue, maxValue, ParameterRegistry::Polarity::Unipolar,
+        ParameterRegistry::Scope::SelectedObject, -1,
+        [this, member]
+        {
+            const int idx = selectedObjectIndex;
+            return (idx >= 0 && idx < trajectoryEngine.getNumGrainClouds()) ? (float) (trajectoryEngine.getGrainCloud (idx).getSettings().*member) : 0.0f;
+        },
+        [this, member] (float v)
+        {
+            const int idx = selectedObjectIndex;
+            if (idx >= 0 && idx < trajectoryEngine.getNumGrainClouds())
+                trajectoryEngine.getGrainCloud (idx).getSettings().*member = (int) std::round (v);
+        }
+    });
+}
+
+void KlangorbitProcessor::registerSceneFloatParam (const juce::String& key, const juce::String& displayName,
+                                                     const juce::String& category, float SceneSettings::* member,
+                                                     float minValue, float maxValue, ParameterRegistry::Polarity polarity)
+{
+    parameterRegistry.registerParameter ({
+        "scene." + key, displayName, category, minValue, maxValue, polarity, ParameterRegistry::Scope::Global, -1,
+        [this, member] { return trajectoryEngine.getSceneSettings().*member; },
+        [this, member] (float v) { trajectoryEngine.getSceneSettings().*member = v; }
+    });
+}
+
+void KlangorbitProcessor::registerSceneBoolParam (const juce::String& key, const juce::String& displayName,
+                                                    const juce::String& category, bool SceneSettings::* member)
+{
+    parameterRegistry.registerParameter ({
+        "scene." + key, displayName, category, 0.0f, 1.0f, ParameterRegistry::Polarity::Unipolar, ParameterRegistry::Scope::Global, -1,
+        [this, member] { return trajectoryEngine.getSceneSettings().*member ? 1.0f : 0.0f; },
+        [this, member] (float v) { trajectoryEngine.getSceneSettings().*member = (v >= 0.5f); }
+    });
+}
+
+void KlangorbitProcessor::registerSceneVec3Param (const juce::String& key, const juce::String& displayName,
+                                                    const juce::String& category, Vec3 SceneSettings::* member,
+                                                    float minValue, float maxValue, ParameterRegistry::Polarity polarity)
+{
+    for (auto& axis : vec3Axes)
+    {
+        parameterRegistry.registerParameter ({
+            "scene." + key + "." + axis.idSuffix, displayName + axis.labelSuffix, category,
+            minValue, maxValue, polarity, ParameterRegistry::Scope::Global, -1,
+            [this, member, field = axis.field] { return (trajectoryEngine.getSceneSettings().*member).*field; },
+            [this, member, field = axis.field] (float v) { (trajectoryEngine.getSceneSettings().*member).*field = v; }
+        });
+    }
+}
+
+void KlangorbitProcessor::buildParameterRegistry()
+{
+    // Ranges/categories mirror ParameterPanel's own rows exactly (see
+    // ParameterPanel.cpp) -- both are meant to describe the same set of
+    // "things a user/controller can dial in," just through two different
+    // control surfaces (mouse-driven sliders vs. this registry's
+    // controller-mapping consumers). orbitOrientation is the one
+    // exception: it's a real, already-existing SoundObject field with a
+    // well-defined range that ParameterPanel's own UI happens not to
+    // expose a slider for yet -- included here anyway so a future mapping
+    // consumer isn't missing a parameter that genuinely already exists.
+    //
+    // Deliberately excluded: pure runtime physics STATE (position,
+    // velocity, orbitPhase, attractionPulsePhase, orbitRadiusNoiseSmoothed,
+    // slingshotTargetId/Strength) and every enum-valued field (SoundObject
+    // ::mode/directivityPattern, GrainCloudSettings::windowShape/
+    // movementMode/grainReadDepthDistribution, SceneSettings::
+    // boundaryBehavior) -- a single float range doesn't naturally fit a
+    // fixed choice of N discrete options; see the class comment.
+
+    // --- Scene (Global scope) -------------------------------------------
+    registerSceneFloatParam ("roomSize", "Room Size", "Global", &SceneSettings::roomSize, 0.0f, 50.0f);
+    registerSceneBoolParam ("showRoomBoundary", "Show Boundary", "Global", &SceneSettings::showRoomBoundary);
+    registerSceneVec3Param ("globalField", "Global Field", "Global", &SceneSettings::globalField, -20.0f, 20.0f);
+    registerSceneFloatParam ("timeScale", "Time Scale", "Global", &SceneSettings::timeScale, 0.05f, 5.0f);
+    registerSceneFloatParam ("speedOfSound", "Speed of Sound", "Global", &SceneSettings::speedOfSound, 1.0f, 400.0f);
+    registerSceneFloatParam ("temperature", "Temperature", "Global", &SceneSettings::temperature, -20.0f, 45.0f);
+    registerSceneFloatParam ("relativeHumidity", "Relative Humidity", "Global", &SceneSettings::relativeHumidity, 0.0f, 100.0f);
+    registerSceneFloatParam ("atmosphericPressure", "Atmospheric Pressure", "Global", &SceneSettings::atmosphericPressure, 80.0f, 110.0f);
+    registerSceneVec3Param ("windVector", "Wind", "Global", &SceneSettings::windVector, -50.0f, 50.0f);
+
+    // --- Object physics ---------------------------------------------------
+    registerObjectFloatParam ("mass", "Mass", "Object Physics", &SoundObject::mass, 0.01f, 20.0f);
+    registerObjectFloatParam ("gain", "Gain", "Object Physics", &SoundObject::gain, 0.0f, 2.0f);
+    registerObjectFloatParam ("damping", "Damping", "Object Physics", &SoundObject::damping, 0.0f, 1.0f);
+    registerObjectFloatParam ("maxVelocity", "Max Velocity", "Object Physics", &SoundObject::maxVelocity, 0.0f, 30.0f);
+    registerObjectFloatParam ("dragCoefficient", "Drag Coefficient", "Object Physics", &SoundObject::dragCoefficient, 0.0f, 10.0f);
+    registerObjectFloatParam ("restitution", "Restitution", "Object Physics", &SoundObject::restitution, 0.0f, 1.0f);
+    registerObjectFloatParam ("velocitySnapThreshold", "Stop Threshold", "Object Physics", &SoundObject::velocitySnapThreshold, 0.0f, 1.0f);
+    registerObjectBoolParam ("muted", "Mute", "Object Physics", &SoundObject::muted);
+    registerObjectBoolParam ("soloed", "Solo", "Object Physics", &SoundObject::soloed);
+
+    // --- Attraction ---------------------------------------------------------
+    registerObjectFloatParam ("attractionStrength", "Attraction Strength", "Attraction", &SoundObject::attractionStrength, -10.0f, 10.0f, ParameterRegistry::Polarity::Bipolar);
+    registerObjectFloatParam ("forceExponent", "Force Exponent", "Attraction", &SoundObject::forceExponent, 1.0f, 3.0f);
+    registerObjectFloatParam ("minDistance", "Min. Distance", "Attraction", &SoundObject::minDistance, 0.01f, 2.0f);
+    registerObjectFloatParam ("maxRange", "Max. Range", "Attraction", &SoundObject::maxRange, 0.0f, 20.0f);
+    registerObjectFloatParam ("attractionPulseRate", "Pulse Rate", "Attraction", &SoundObject::attractionPulseRate, 0.0f, 5.0f);
+    registerObjectFloatParam ("attractionPulseDepth", "Pulse Depth", "Attraction", &SoundObject::attractionPulseDepth, 0.0f, 1.0f);
+
+    // --- Orbit ----------------------------------------------------------
+    registerObjectVec3Param ("orbitCenter", "Orbit Center", "Orbit", &SoundObject::orbitCenter, -20.0f, 20.0f);
+    registerObjectFloatParam ("orbitRadius", "Orbit Radius", "Orbit", &SoundObject::orbitRadius, 0.05f, 10.0f);
+    registerObjectFloatParam ("orbitAngularSpeed", "Orbit Angular Speed", "Orbit", &SoundObject::orbitAngularSpeed, -10.0f, 10.0f, ParameterRegistry::Polarity::Bipolar);
+    registerObjectVec3Param ("orbitPlaneNormal", "Orbit Plane Normal", "Orbit", &SoundObject::orbitPlaneNormal, -1.0f, 1.0f);
+    registerObjectFloatParam ("orbitEccentricity", "Orbit Eccentricity", "Orbit", &SoundObject::orbitEccentricity, 0.0f, 0.95f);
+    registerObjectFloatParam ("orbitOrientation", "Orbit Orientation", "Orbit", &SoundObject::orbitOrientation, 0.0f, juce::MathConstants<float>::twoPi);
+    registerObjectFloatParam ("orbitDecay", "Orbit Decay", "Orbit", &SoundObject::orbitDecay, -2.0f, 2.0f, ParameterRegistry::Polarity::Bipolar);
+    registerObjectFloatParam ("orbitRadiusBaseline", "Radius Baseline", "Orbit", &SoundObject::orbitRadiusBaseline, 0.05f, 10.0f);
+    registerObjectFloatParam ("orbitRadiusReversionRate", "Radius Reversion Rate", "Orbit", &SoundObject::orbitRadiusReversionRate, 0.0f, 5.0f);
+    registerObjectFloatParam ("orbitRadiusNoiseAmplitude", "Radius Noise Amplitude", "Orbit", &SoundObject::orbitRadiusNoiseAmplitude, 0.0f, 5.0f);
+    registerObjectFloatParam ("orbitRadiusNoiseSmoothing", "Radius Noise Smoothing", "Orbit", &SoundObject::orbitRadiusNoiseSmoothing, 0.0f, 5.0f);
+
+    // --- Doppler ----------------------------------------------------------
+    registerObjectFloatParam ("dopplerFactor", "Doppler Factor", "Doppler", &SoundObject::dopplerFactor, 0.0f, 5.0f);
+    registerObjectFloatParam ("dopplerSmoothing", "Doppler Smoothing", "Doppler", &SoundObject::dopplerSmoothing, 0.0f, 2.0f);
+    registerObjectVec3Param ("sourceOrientation", "Source Orientation", "Doppler", &SoundObject::sourceOrientation, -1.0f, 1.0f);
+
+    // --- Grain Cloud ------------------------------------------------------
+    registerGrainBoolParam ("enabled", "Enabled", "Grain Cloud", &GrainCloudSettings::enabled);
+    registerGrainBoolParam ("sourceMuted", "Isolate Grains", "Grain Cloud", &GrainCloudSettings::sourceMuted);
+    registerGrainBoolParam ("dopplerEnabled", "Doppler", "Grain Cloud", &GrainCloudSettings::dopplerEnabled);
+    registerGrainFloatParam ("grainRate", "Grain Rate", "Grain Cloud", &GrainCloudSettings::grainRate, 0.1f, GrainLimits::maxGrainRate);
+    registerGrainFloatParam ("grainRateJitter", "Grain Rate Jitter", "Grain Cloud", &GrainCloudSettings::grainRateJitter, 0.0f, 1.0f);
+    registerGrainFloatParam ("grainDuration", "Grain Duration", "Grain Cloud", &GrainCloudSettings::grainDuration, 0.01f, GrainLimits::maxGrainDuration);
+    registerGrainFloatParam ("grainDurationJitter", "Grain Duration Jitter", "Grain Cloud", &GrainCloudSettings::grainDurationJitter, 0.0f, 1.0f);
+    registerGrainFloatParam ("pitchJitter", "Pitch Jitter", "Grain Cloud", &GrainCloudSettings::pitchJitter, 0.0f, 1.0f);
+    registerGrainFloatParam ("positionJitterInBuffer", "Position Jitter In Buffer", "Grain Cloud", &GrainCloudSettings::positionJitterInBuffer, 0.0f, GrainLimits::maxPositionJitterInBuffer);
+    registerGrainFloatParam ("grainReadDepthRangeMin", "Read Depth Min", "Grain Cloud", &GrainCloudSettings::grainReadDepthRangeMin, 0.0f, GrainLimits::maxGrainReadDepthRange);
+    registerGrainFloatParam ("grainReadDepthRangeMax", "Read Depth Max", "Grain Cloud", &GrainCloudSettings::grainReadDepthRangeMax, 0.0f, GrainLimits::maxGrainReadDepthRange);
+    registerGrainIntParam ("maxConcurrentGrains", "Max Concurrent Grains", "Grain Cloud", &GrainCloudSettings::maxConcurrentGrains, 1.0f, 256.0f);
+    registerGrainFloatParam ("randomWalkSpeed", "Random Walk Speed", "Grain Cloud", &GrainCloudSettings::randomWalkSpeed, 0.0f, 10.0f);
+    registerGrainFloatParam ("boundaryRadius", "Boundary Radius", "Grain Cloud", &GrainCloudSettings::boundaryRadius, 0.05f, 5.0f);
+    registerGrainFloatParam ("boundaryRadiusJitter", "Boundary Radius Jitter", "Grain Cloud", &GrainCloudSettings::boundaryRadiusJitter, 0.0f, 1.0f);
+    registerGrainFloatParam ("restitution", "Restitution", "Grain Cloud", &GrainCloudSettings::restitution, 0.0f, 1.0f);
+    registerGrainFloatParam ("initialSpeed", "Initial Speed", "Grain Cloud", &GrainCloudSettings::initialSpeed, 0.0f, 20.0f);
+    registerGrainFloatParam ("initialSpeedJitter", "Initial Speed Jitter", "Grain Cloud", &GrainCloudSettings::initialSpeedJitter, 0.0f, 1.0f);
+    registerGrainFloatParam ("acceleration", "Acceleration", "Grain Cloud", &GrainCloudSettings::acceleration, -20.0f, 20.0f, ParameterRegistry::Polarity::Bipolar);
+    registerGrainFloatParam ("orbitRadius", "Orbit Radius", "Grain Cloud", &GrainCloudSettings::orbitRadius, 0.05f, 5.0f);
+    registerGrainFloatParam ("orbitRadiusJitter", "Orbit Radius Jitter", "Grain Cloud", &GrainCloudSettings::orbitRadiusJitter, 0.0f, 1.0f);
+    registerGrainFloatParam ("orbitAngularSpeed", "Orbit Angular Speed", "Grain Cloud", &GrainCloudSettings::orbitAngularSpeed, -10.0f, 10.0f, ParameterRegistry::Polarity::Bipolar);
+    registerGrainFloatParam ("orbitSphereSpread", "Orbit Sphere Spread", "Grain Cloud", &GrainCloudSettings::orbitSphereSpread, 0.0f, 1.0f);
+    registerGrainFloatParam ("attractionStrength", "Attraction Strength", "Grain Cloud", &GrainCloudSettings::attractionStrength, -10.0f, 10.0f, ParameterRegistry::Polarity::Bipolar);
 }
 
 juce::AudioProcessorEditor* KlangorbitProcessor::createEditor()

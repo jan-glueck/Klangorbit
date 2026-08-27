@@ -17,6 +17,13 @@ horizontal-only -- a circular array of speakers cannot reproduce
 elevation/height at all, a property of the array type, not a decoder
 limitation.
 
+The whole simulation -- physics, panning, grain spawning, everything at
+control rate -- runs from a timer owned by `KlangorbitProcessor` itself,
+independent of whether an editor window is open. Closing the editor
+(Standalone minimized, VST3 window closed in a host, or the plugin just
+loaded on a track with no editor ever opened) does not pause anything;
+only audio callbacks pausing (a host bypassing/disabling the track) would.
+
 ## Signal flow
 
 ```
@@ -26,7 +33,9 @@ Live input (up to 8 mono channels)
         v                                                   v
 [SoundObject 0..7]  <-- position/motion            [ring buffer per object]
    from TrajectoryEngine                             (continuously filled,
-   (control rate, ~90 Hz)                             see GrainCloud below)
+   (control rate, ~90 Hz, driven by                   see GrainCloud below)
+    KlangorbitProcessor's own timer,
+    not the editor's -- see below)
         |                                                   |
         v                                                   v
 [PropagationProcessor]  -- per-object              [GrainCloud, if enabled]
@@ -711,8 +720,14 @@ Docs/WORKFLOW.md.
   (see "3D camera view" above) -- there's no way to drag an object's
   height directly with the mouse yet (it still only changes through
   physics: orbit planes, global field, n-body forces, etc.).
-- **No MIDI mapping.** The `InputMapper` module from the architecture
-  sketch isn't implemented yet; MIDI CC on object parameters is missing.
+- **No gamepad/MIDI/OSC control yet.** `Source/ParameterRegistry.h/.cpp`
+  now exists (see CHANGELOG) -- every controllable object/grain-cloud/
+  scene parameter is registered there, ready for a mapping layer to bind
+  against -- but no actual controller driver or mapping UI is built yet.
+  Planned as a sequence of further branches (canonical controller-input
+  abstraction, a gamepad driver via Apple's GameController framework,
+  then a Learn-mode mapping UI); MIDI/OSC drivers on top of the same
+  abstraction are intended too but not yet scheduled.
 - **Output format switching is host-dependent to take effect live.**
   `KlangorbitProcessor::setDecoderMode()` (Output category's "Output
   Format" dropdown) DOES change the encoder order, rebuild the decode

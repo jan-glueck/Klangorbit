@@ -224,7 +224,7 @@ Apply to the whole scene, not one object:
 - **Time Scale** -- slows down (< 1) or speeds up (> 1) the whole
   simulation.
 
-## 10. Acoustic simulation (parameter panel -> Acoustics category, and per-object Doppler)
+## 10. Acoustic simulation (parameter panel -> Scene category, Acoustics section, and per-object Doppler)
 
 Klangorbit doesn't just move objects visually -- distance, speed, and
 direction genuinely affect the sound:
@@ -324,7 +324,7 @@ trajectory. Turn it on with **Enabled**.
 ## 12. Output format (parameter panel -> Output category)
 
 Chooses what the plugin's output bus actually carries -- this is a
-scene-wide setting (like Scene/Acoustics), not tied to any one object:
+scene-wide setting (like the Scene category), not tied to any one object:
 
 - **Output Format** -- one of 13 mutually exclusive formats:
   - **Ambisonics (Order 1/2/3)** -- the original raw B-format output

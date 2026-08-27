@@ -81,16 +81,28 @@ public:
 };
 
 /**
-    Side panel: a fixed row of category buttons at the top (Scene,
-    Acoustics, Object, Attraction, Orbit, Doppler), and a scrollable area
-    below showing only the currently selected category's parameters --
-    not one long list.
+    Side panel: a fixed row of category buttons at the top, grouped into
+    two visually distinct sections (see resized()) -- "Scene / Output"
+    (Scene, which now also holds the former separate Acoustics fields --
+    speed of sound, temperature, humidity, pressure, wind -- room/global-
+    field/time-scale settings and per-object acoustic-propagation
+    settings both being "not a single object's own property" is exactly
+    the distinction ParameterRegistry's own category strings already draw
+    (both register under "Global", see PluginProcessor.cpp's
+    buildParameterRegistry()) -- and Output) above "Selected Object"
+    (Object, Attraction, Orbit, Doppler, Grains) below -- and a scrollable
+    area beneath showing only the currently selected category's
+    parameters, not one long list.
 
-    Categories Object/Attraction/Orbit/Doppler need a selected object;
-    their buttons are disabled without one, and the panel force-switches
-    away from them back to Scene if the selection is cleared while one of
-    them is showing (so the panel never gets stuck showing a page with
-    nothing behind it).
+    Categories Object/Attraction/Orbit/Doppler/GrainCloud need a selected
+    object; their buttons are disabled without one, and the panel force-
+    switches away from them back to Scene if the selection is cleared
+    while one of them is showing (so the panel never gets stuck showing a
+    page with nothing behind it). categoryRequiresObject() is also what
+    resized() uses to sort a button into the "Scene / Output" group vs.
+    the "Selected Object" group -- one boolean partition serves both
+    purposes, rather than tracking group membership as separate state
+    that could drift out of sync with it.
 
     Writes directly to the SoundObject and SceneSettings pointers passed
     in -- same access rules as everywhere else in the GUI (message thread).
@@ -103,7 +115,7 @@ public:
 class ParameterPanel : public juce::Component
 {
 public:
-    enum class Category { Scene, Acoustics, Output, Object, Attraction, Orbit, Doppler, GrainCloud };
+    enum class Category { Scene, Output, Object, Attraction, Orbit, Doppler, GrainCloud };
 
     ParameterPanel();
 
@@ -201,6 +213,14 @@ private:
     std::vector<GrainIntBinding> grainIntRows;
 
     juce::Label objectHeaderLabel;
+    // Sit above the (scrollable) category-button groups, see resized() --
+    // small, dim section labels, not part of the scrollable content.
+    juce::Label sceneGroupLabel;
+    juce::Label objectGroupLabel;
+    // Sits WITHIN the scrollable Scene page's content, between the
+    // room/time-scale rows and the former-Acoustics-category rows now
+    // folded into the same page -- see the class comment.
+    juce::Label acousticsSectionLabel;
     juce::Label orbitModeHintLabel; // see updateOrbitModeHintVisibility()
     juce::Label decoderModeHintLabel;
     std::unique_ptr<ComboRowComponent> decoderModeRow;

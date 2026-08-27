@@ -1337,6 +1337,32 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
+- **Parameter panel reorganized: scene/output settings visually
+  separated from selected-object settings, and the Acoustics category
+  folded into Scene.** The category-button row (`ParameterPanel`) is now
+  two clearly labeled groups instead of one flat row of eight -- "SCENE /
+  OUTPUT" (Scene, Output) above "SELECTED OBJECT" (Object, Attraction,
+  Orbit, Doppler, Grains) below, each under its own small section label.
+  The grouping reuses `categoryRequiresObject()`'s existing boolean
+  partition (already used to disable/force-switch away from
+  object-scoped categories with nothing selected) rather than tracking
+  group membership as separate state that could drift out of sync with
+  it.
+  - **Acoustics is no longer its own top-level tab** -- speed of sound,
+    temperature, relative humidity, atmospheric pressure, and wind are
+    now part of the Scene page itself, under a small "ACOUSTICS" section
+    label, alongside room size/global field/time scale. This was purely
+    a `ParameterPanel`-side split to begin with: `ParameterRegistry`'s
+    own category string for both groups was already the same
+    (`"Global"`, see `PluginProcessor.cpp`'s `buildParameterRegistry()`)
+    -- both are scene-wide settings, not one object's own property, and
+    the panel's own tab boundary is now consistent with that instead of
+    drawing a distinction the rest of the architecture never made.
+  - `ParameterPanel::Category::Acoustics` removed (its rows now register
+    under `Category::Scene`); no other code referenced it.
+  - Docs (`README.md`, `Docs/UserGuide.md`, `Source/HelpContent.h`)
+    updated everywhere they pointed at "the Acoustics category" to say
+    "the Scene category's Acoustics section" instead.
 - **Objects are now numbered from 1 instead of 0 everywhere they're
   displayed** -- the object list sidebar, the parameter panel's object
   header, the Orbit Reference Object dropdown, and the sling gesture's

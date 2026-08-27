@@ -148,8 +148,10 @@ void ToggleRowComponent::setValueQuiet (bool v)
 
 bool ParameterPanel::categoryRequiresObject (Category category)
 {
-    // Output (like Scene/Acoustics) is scene-wide, not per-object -- its
-    // controls live on the processor itself, see setProcessor().
+    // Output (like Scene) is scene-wide, not per-object -- its controls
+    // live on the processor itself, see setProcessor(). Also doubles as
+    // resized()'s own "Scene / Output" vs. "Selected Object" button-group
+    // partition, see the class comment.
     return category == Category::Object || category == Category::Attraction
         || category == Category::Orbit || category == Category::Doppler
         || category == Category::GrainCloud;
@@ -161,12 +163,24 @@ ParameterPanel::ParameterPanel()
     objectHeaderLabel.setFont (juce::Font (juce::FontOptions (15.0f, juce::Font::bold)).withExtraKerningFactor (0.03f));
     addAndMakeVisible (objectHeaderLabel);
 
+    auto styleGroupLabel = [] (juce::Label& l, const juce::String& text)
+    {
+        styleRowLabel (l, text, 11.0f, UiColours::textDisabled());
+        l.setFont (l.getFont().withExtraKerningFactor (0.08f));
+    };
+    styleGroupLabel (sceneGroupLabel, "SCENE / OUTPUT");
+    addAndMakeVisible (sceneGroupLabel);
+    styleGroupLabel (objectGroupLabel, "SELECTED OBJECT");
+    addAndMakeVisible (objectGroupLabel);
+
     addAndMakeVisible (viewport);
     viewport.setViewedComponent (&content, false);
     viewport.setScrollBarsShown (true, false);
 
+    // Call order doesn't affect layout (resized() partitions by
+    // categoryRequiresObject(), see the class comment) -- kept in the same
+    // visual order the two groups render in purely for readability here.
     addCategoryButton ("Scene", Category::Scene);
-    addCategoryButton ("Acoustics", Category::Acoustics);
     addCategoryButton ("Output", Category::Output);
     addCategoryButton ("Object", Category::Object);
     addCategoryButton ("Attraction", Category::Attraction);
@@ -203,12 +217,20 @@ ParameterPanel::ParameterPanel()
 
     addSceneFloatRow ("Time Scale (timeScale)", &SceneSettings::timeScale, 0.05, 5.0, 0.01, Category::Scene);
 
-    // --- Acoustics ----------------------------------------------------------
-    addSceneFloatRow ("Speed of Sound (m/s)", &SceneSettings::speedOfSound, 1.0, 400.0, 1.0, Category::Acoustics);
-    addSceneFloatRow ("Temperature (C)", &SceneSettings::temperature, -20.0, 45.0, 0.5, Category::Acoustics);
-    addSceneFloatRow ("Relative Humidity (%)", &SceneSettings::relativeHumidity, 0.0, 100.0, 1.0, Category::Acoustics);
-    addSceneFloatRow ("Atmospheric Pressure (kPa)", &SceneSettings::atmosphericPressure, 80.0, 110.0, 0.1, Category::Acoustics);
-    addSceneVec3Row ("Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1, Category::Acoustics);
+    // --- Acoustics (part of the Scene page, not its own category -- see
+    // the class comment: these are scene-wide settings exactly like
+    // roomSize/timeScale above, just a visually distinct group of rows
+    // within the same page rather than a separate tab) --------------------
+    styleRowLabel (acousticsSectionLabel, "ACOUSTICS", 11.0f, UiColours::textDisabled());
+    acousticsSectionLabel.setFont (acousticsSectionLabel.getFont().withExtraKerningFactor (0.08f));
+    content.addAndMakeVisible (acousticsSectionLabel);
+    addToLayout (acousticsSectionLabel, 22, Category::Scene);
+
+    addSceneFloatRow ("Speed of Sound (m/s)", &SceneSettings::speedOfSound, 1.0, 400.0, 1.0, Category::Scene);
+    addSceneFloatRow ("Temperature (C)", &SceneSettings::temperature, -20.0, 45.0, 0.5, Category::Scene);
+    addSceneFloatRow ("Relative Humidity (%)", &SceneSettings::relativeHumidity, 0.0, 100.0, 1.0, Category::Scene);
+    addSceneFloatRow ("Atmospheric Pressure (kPa)", &SceneSettings::atmosphericPressure, 80.0, 110.0, 0.1, Category::Scene);
+    addSceneVec3Row ("Wind (m/s)", &SceneSettings::windVector, -50.0, 50.0, 0.1, Category::Scene);
 
     // --- Output ---------------------------------------------------------
     styleRowLabel (decoderModeHintLabel,
@@ -739,21 +761,43 @@ void ParameterPanel::resized()
 
     constexpr int buttonHeight = 32;
     constexpr int buttonsPerRow = 2;
-    const int numRows = (int) std::ceil ((double) categoryButtons.size() / (double) buttonsPerRow);
+    constexpr int groupLabelHeight = 18;
 
-    auto buttonGrid = bounds.removeFromTop (numRows * buttonHeight).reduced (UiSpacing::s, 0);
-    for (int r = 0; r < numRows; ++r)
+    // Two visually distinct groups (see the class comment): "Scene /
+    // Output" (categoryRequiresObject() == false) above "Selected Object"
+    // (== true) below, each under its own small section label. Rebuilt
+    // from categoryButtons every call rather than cached -- cheap (at most
+    // a handful of buttons), and the button set itself never changes after
+    // construction, so this is really just reusing the one partition
+    // categoryRequiresObject() already defines instead of tracking group
+    // membership as separate, driftable state.
+    std::vector<CategoryButton*> sceneGroup, objectGroup;
+    for (auto& cb : categoryButtons)
+        (categoryRequiresObject (cb.category) ? objectGroup : sceneGroup).push_back (&cb);
+
+    auto layoutButtonGroup = [&] (juce::Label& groupLabel, std::vector<CategoryButton*>& buttons)
     {
-        auto row = buttonGrid.removeFromTop (buttonHeight);
-        const int buttonWidth = row.getWidth() / buttonsPerRow;
-        for (int c = 0; c < buttonsPerRow; ++c)
+        groupLabel.setBounds (bounds.removeFromTop (groupLabelHeight).reduced (UiSpacing::s, 0));
+
+        const int numRows = (int) std::ceil ((double) buttons.size() / (double) buttonsPerRow);
+        auto buttonGrid = bounds.removeFromTop (numRows * buttonHeight).reduced (UiSpacing::s, 0);
+        for (int r = 0; r < numRows; ++r)
         {
-            const size_t idx = (size_t) (r * buttonsPerRow + c);
-            if (idx >= categoryButtons.size())
-                break;
-            categoryButtons[idx].button->setBounds (row.removeFromLeft (buttonWidth).reduced (UiSpacing::xs));
+            auto row = buttonGrid.removeFromTop (buttonHeight);
+            const int buttonWidth = row.getWidth() / buttonsPerRow;
+            for (int c = 0; c < buttonsPerRow; ++c)
+            {
+                const size_t idx = (size_t) (r * buttonsPerRow + c);
+                if (idx >= buttons.size())
+                    break;
+                buttons[idx]->button->setBounds (row.removeFromLeft (buttonWidth).reduced (UiSpacing::xs));
+            }
         }
-    }
+        bounds.removeFromTop (UiSpacing::xs);
+    };
+
+    layoutButtonGroup (sceneGroupLabel, sceneGroup);
+    layoutButtonGroup (objectGroupLabel, objectGroup);
 
     bounds.removeFromTop (UiSpacing::s);
 

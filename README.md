@@ -1,8 +1,21 @@
 # Klangorbit
 
-Object-based Ambisonics encoder with a trajectory/physics engine.
-No decoding -- output is raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible),
-to be processed further in SPARTA (AmbiBIN/AmbiDEC) or the IEM Plugin Suite.
+Object-based Ambisonics encoder with a trajectory/physics engine, and an
+internal decoder to a selectable output format (Output category, "Output
+Format"): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible, order 1-3 --
+still the default, for further processing in SPARTA (AmbiBIN/AmbiDEC) or the
+IEM Plugin Suite), Stereo, Quad, 5.1, 7.1, one of four Dolby-Atmos-bed
+layouts (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a fixed, named 8-speaker
+circular array), or Circular Array (a generic circular array, adjustable
+`numSpeakers` 4-24, for array sizes that have no established naming
+convention). Not a general "decode to any speaker array" tool -- only these
+fixed target formats. See `AmbisonicsDecoder.h` and the CHANGELOG entry for
+the decode method (AllRAD for irregular layouts, plain mode-matching for the
+regular circular ones), LFE handling, and bus-layout details. Binaural
+(HRTF-based) is not implemented yet. Octophonic and Circular Array are
+horizontal-only -- a circular array of speakers cannot reproduce
+elevation/height at all, a property of the array type, not a decoder
+limitation.
 
 ## Signal flow
 
@@ -26,17 +39,43 @@ Live input (up to 8 mono channels)
         v                                                   v
         +-------------------------> [AmbisonicsEncoder] <---+
                                        generic SH computation (Legendre
-                                       recursion), arbitrary order, currently
-                                       3rd order = 16 channels. Each
-                                       SoundObject and each active grain is
-                                       encoded as its own mono source with
-                                       its own ramped gains.
+                                       recursion). Order 1-3 when the output
+                                       format IS raw Ambisonics; fixed at
+                                       order 3 (16ch) for every OTHER format,
+                                       regardless of its own final channel
+                                       count. Each SoundObject and each
+                                       active grain is encoded as its own
+                                       mono source with its own ramped gains.
                                             |
                                             v
-                              Ambisonics output (16 channels at order 3)
+                              Ambisonics B-format (4/9/16 channels)
                                             |
                                             v
-                     DAW / SPARTA / IEM Suite -> decoding (binaural or loudspeakers)
+                          Output Format == raw Ambisonics?
+                             |                        |
+                            yes                        no
+                             |                        v
+                             |            [AmbisonicsDecoder]
+                             |               AllRAD (virtual dense array +
+                             |               VBAP remap) for IRREGULAR
+                             |               speaker layouts (Quad/5.1/7.1/
+                             |               Atmos), plain mode-matching SH
+                             |               decode straight to the real
+                             |               speakers for Stereo AND for
+                             |               REGULAR circular arrays
+                             |               (Octophonic/Circular Array --
+                             |               no irregularity for AllRAD to
+                             |               correct for there). Built once
+                             |               per mode switch, not per block.
+                             |                        |
+                             v                        v
+                     plugin output bus, channel count/layout per the
+                     selected Output Format (see AmbisonicsDecoder::
+                     outputChannelSetFor()) -- raw Ambisonics modes bypass
+                     AmbisonicsDecoder entirely (zero added overhead)
+                                            |
+                                            v
+        DAW / Max/MSP / SPARTA / IEM Suite, or straight to speakers/headphones
 ```
 
 Note: grains skip `PropagationProcessor` (no per-grain Doppler/delay/air
@@ -72,8 +111,13 @@ the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
 
 1. Start the plugin/standalone app, connect a live input (microphone or
    audio interface channel) to Input 0.
-2. Route the Ambisonics output (16 channels) to a bus with AmbiBIN (SPARTA)
-   or the IEM BinauralDecoder.
+2. With the default Output Format (Ambisonics, Order 3, 16ch -- see the
+   Output parameter category to change it), route the output to a bus with
+   AmbiBIN (SPARTA) or the IEM BinauralDecoder. Switching Output Format to
+   Stereo/Quad/5.1/7.1/an Atmos-bed variant instead sends already-decoded
+   audio straight to that many channels, no external decoder plugin needed
+   -- but changing modes live may need the plugin removed and reinserted in
+   some hosts, see the CHANGELOG.
 3. Drag object 0 in the scene view with the mouse -> the position change
    should show up as a change in direction in the binaural playback.
 4. Double-clicking an object starts an orbit motion around the origin
@@ -669,12 +713,35 @@ Docs/WORKFLOW.md.
   physics: orbit planes, global field, n-body forces, etc.).
 - **No MIDI mapping.** The `InputMapper` module from the architecture
   sketch isn't implemented yet; MIDI CC on object parameters is missing.
-- **Ambisonics order is fixed per instance.** `AmbisonicsEncoder::setOrder()`
-  exists, but the output bus is fixed at prepare/construction time (VST3
-  buses aren't trivially reconfigurable at runtime). For runtime order
-  switching: easier to implement in the standalone case than in the plugin
-  context, since no host bus contract exists there -- possibly extend the
-  standalone case first.
+- **Output format switching is host-dependent to take effect live.**
+  `KlangorbitProcessor::setDecoderMode()` (Output category's "Output
+  Format" dropdown) DOES change the encoder order, rebuild the decode
+  matrix, and request a host bus-layout renegotiation at runtime -- but
+  VST3's mechanism for a PLUGIN-initiated bus change is weaker than a
+  host-initiated one (this JUCE version's wrapper has no dedicated
+  "rescan my bus layout" restart flag). Confirmed working live in Reaper;
+  other hosts may only pick up a new mode's channel count after the
+  plugin is removed and reinserted, or the project reloaded. See the
+  CHANGELOG entry for why this bus-per-mode approach was chosen anyway
+  over a fixed always-16-channel bus. The same applies to changing
+  Circular Array's Speaker Count while that format is already active --
+  it's a channel-count change too, `KlangorbitProcessor::
+  setCircularArraySpeakerCount()` requests the same best-effort
+  renegotiation.
+- **Circular arrays (Octophonic, Circular Array) are horizontal-only.**
+  Neither can reproduce elevation/height content at all -- a property of
+  a flat ring of speakers, not something a better decoder could fix.
+  Circular Array additionally loses some spatial precision (more blur,
+  not incorrect direction) below 7 speakers, since the fixed internal
+  order-3 encode needs at least 7 evenly-spaced speakers for alias-free
+  circular-harmonic reconstruction -- see the CHANGELOG entry.
+- **Binaural (HRTF-based) output is not implemented yet.** The chosen
+  approach (bundling SADIE II's KU100 SOFA measurement, Apache 2.0
+  licensed, plus user-supplied SOFA import) is documented in the
+  CHANGELOG but deferred to a follow-up -- needs its own SOFA parsing and
+  partitioned-convolution engine. For binaural today, use the Ambisonics
+  output format with an external decoder (SPARTA AmbiBIN, IEM
+  BinauralDecoder) as before.
 - **Air absorption is a simplified approximation, not ISO 9613-1
   accurate.** See "Acoustic propagation" above -- captures the general
   distance/humidity/temperature trends via cheap closed-form curves, not

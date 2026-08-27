@@ -169,6 +169,27 @@ defaults for everything new.
 }
 ```
 
+## Output format is deliberately NOT part of the schema
+
+`AmbisonicsDecoder::Mode` (the "Output Format" dropdown, Output parameter
+category) and bass management are intentionally excluded from the preset
+JSON, unlike everything else in `scene`/`objects`. Reasoning: output
+format is a property of how the plugin instance is PATCHED into a
+session -- which bus layout the host has actually negotiated -- not of
+the scene being composed. Saving it into a preset and having a later
+`loadPreset()` silently request a different output channel count than
+what the host currently has wired up would either silently fail (most
+hosts don't renegotiate buses outside of their own explicit request-and-
+respond flow, see `KlangorbitProcessor::setDecoderMode()`) or, worse,
+briefly present the wrong channel layout to the host's already-connected
+routing. A scene preset should move objects/physics/acoustics around
+freely between an Ambisonics-in-Reaper session and a 5.1-in-a-different-
+session setup without also trying to drag the second session's channel
+count along with it. If this changes (e.g. output format becomes a real
+per-project setting worth recalling), it should be a new, its own
+schemaVersion bump with an explicit migration decision for existing
+presets, not a silent addition.
+
 ## Storage
 
 - `Presets/factory/` -- checked-in, curated example scenes. These are part

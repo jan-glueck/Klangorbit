@@ -19,10 +19,13 @@ namespace HelpContent
 Klangorbit is an object-based Ambisonics spatializer driven by a live
 physics engine: give sound objects mass, velocity, gravity, and
 momentum, and let their motion emerge from that instead of automating
-position by hand. Output is raw Ambisonics B-format (ACN/SN3D,
-AmbiX-compatible) -- feed it into a decoder such as SPARTA (AmbiDEC/
-AmbiBIN) or the IEM Plugin Suite; Klangorbit itself does not decode to
-speakers/headphones.
+position by hand. Output format is selectable (panel -> Output,
+section 11): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible --
+still the default; feed it into a decoder such as SPARTA AmbiDEC/
+AmbiBIN or the IEM Plugin Suite), or an internally decoded Stereo,
+Quad, 5.1, 7.1, Dolby-Atmos-bed, Octophonic, or Circular Array output,
+no external decoder needed. Binaural (HRTF headphone) output isn't
+available yet.
 
 A fuller version of this guide lives in Docs/UserGuide.md in the
 project folder.
@@ -244,16 +247,53 @@ that object's live input. Turn on with Enabled.
                                   shift genuinely differs per grain.
 
 
-== 11. PRESETS ==
+== 11. OUTPUT FORMAT (panel -> Output) ==
+
+Scene-wide, not tied to any one object:
+
+  Output Format          one of 11 mutually exclusive formats:
+                           Ambisonics Order 1/2/3 -- raw B-format, no
+                            decoding (still the default)
+                           Stereo -- plain 2-speaker decode, NOT
+                            binaural (no HRTF)
+                           Quad / 5.1 / 7.1 -- standard loudspeaker
+                            layouts (ITU-R BS.775-4 angles)
+                           5.1.2 / 5.1.4 / 7.1.2 / 7.1.4 -- Dolby-
+                            Atmos-bed layouts with height speakers
+                            (ITU-R BS.2051-2 angles)
+                           Octophonic -- fixed, named 8-speaker
+                            circular array (45deg spacing)
+                           Circular Array -- generic circular array,
+                            any speaker count 4-24 (own slider below)
+                          Octophonic/Circular Array are HORIZONTAL ONLY
+                          -- a flat speaker ring cannot reproduce
+                          elevation, regardless of decoder quality.
+                          Every non-Ambisonics format decodes
+                          internally -- no external decoder plugin
+                          needed. Switching changes the plugin's output
+                          channel count; most hosts pick this up live,
+                          some need the plugin removed/reinserted or
+                          the project reloaded.
+  Circular Array:         4-24, only has an effect while Output Format
+   Speaker Count           is "Circular Array" (harmless otherwise)
+  Bass Management         off by default. When on, sends a low-passed
+   (LFE from W)            (~120Hz) version of the omnidirectional (W)
+                          channel to the LFE channel, for formats that
+                          have one (5.1/7.1/Atmos variants). No effect
+                          on Ambisonics/Stereo/Quad.
+
+
+== 12. PRESETS ==
 
 "Load Preset..." / "Save Preset..." in the toolbar save/load the whole
 scene (every object, mode, all parameters, scene settings, grain
 clouds) as a .json file. Presets are schema-versioned and validated on
 load -- an incompatible/corrupted file is rejected with a clear error
-instead of silently loading wrong.
+instead of silently loading wrong. (Output Format/Bass Management are
+plugin-instance state, not part of what a preset saves.)
 
 
-== 12. KEYBOARD SHORTCUTS ==
+== 13. KEYBOARD SHORTCUTS ==
 
   Select an object                    left-click it
   Manual move / plain throw            left-click + drag, release

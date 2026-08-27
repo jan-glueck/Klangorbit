@@ -6,6 +6,9 @@
 #include "SoundObject.h"
 #include "SceneSettings.h"
 #include "Grain.h"
+#include "AmbisonicsDecoder.h"
+
+class KlangorbitProcessor;
 
 /**
     A row widget: label + a slider, with a generic onValueChanged callback.
@@ -100,12 +103,18 @@ public:
 class ParameterPanel : public juce::Component
 {
 public:
-    enum class Category { Scene, Acoustics, Object, Attraction, Orbit, Doppler, GrainCloud };
+    enum class Category { Scene, Acoustics, Output, Object, Attraction, Orbit, Doppler, GrainCloud };
 
     ParameterPanel();
 
     // Set once by the editor (never null again afterwards).
     void setSceneSettings (SceneSettings* settings);
+
+    // Set once by the editor (never null again afterwards) -- for the
+    // Output category's decoder-mode/bass-management controls, which live
+    // on the processor itself rather than a settings struct (see
+    // KlangorbitProcessor::setDecoderMode()).
+    void setProcessor (KlangorbitProcessor* proc);
 
     // nullptr = no selection. numObjects for the reference-object combo (orbit).
     void setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects);
@@ -163,6 +172,7 @@ private:
     SceneSettings* sceneSettings = nullptr;
     SoundObject* editedObject = nullptr;
     GrainCloudSettings* editedGrainCloud = nullptr;
+    KlangorbitProcessor* decoderProcessor = nullptr;
 
     Category currentCategory = Category::Scene;
     struct CategoryButton { std::unique_ptr<juce::TextButton> button; Category category; };
@@ -192,6 +202,11 @@ private:
 
     juce::Label objectHeaderLabel;
     juce::Label orbitModeHintLabel; // see updateOrbitModeHintVisibility()
+    juce::Label decoderModeHintLabel;
+    std::unique_ptr<ComboRowComponent> decoderModeRow;
+    std::unique_ptr<FloatRowComponent> circularSpeakerCountRow;
+    juce::Label circularArrayHintLabel;
+    std::unique_ptr<ToggleRowComponent> bassManagementRow;
     std::unique_ptr<ComboRowComponent> modeRow;
     std::unique_ptr<ComboRowComponent> boundaryRow;
     std::unique_ptr<ToggleRowComponent> showRoomBoundaryRow;

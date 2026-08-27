@@ -558,6 +558,8 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         obj.velocity = {};
         obj.slingshotTargetId = -1;
         obj.slingshotStrength = 0.0f;
+        obj.manualVelocityActive = false;
+        obj.manualVelocity = {};
     }
 
     return juce::Result::ok();

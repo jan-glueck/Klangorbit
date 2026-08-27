@@ -408,3 +408,22 @@ part of the scene the preset saves -- see Presets/schema/README.md.)
    many objects at once -- it's a real measured load, not an estimate, so
    amber/red means audible dropouts are actually likely, not just
    theoretical.
+
+## 16. Gamepad control
+
+Connect a game controller (Xbox/PlayStation-style, wired or Bluetooth --
+macOS's GameController framework covers most modern ones) and select an
+object. The **left stick** then rate-controls that object's position on
+the ground plane: deflection sets its current velocity continuously;
+centering the stick (its own spring-back is enough) stops the object
+exactly where it is, immediately, with no drift and no snap-back.
+Touching the stick switches the selected object into Manual mode
+automatically (the same mode a mouse drag uses) and it stays there until
+you select a different object.
+
+This is a fixed, built-in default for now -- there's no remapping UI
+yet, only the left stick has an effect, and only one controller is read
+at a time. It keeps working with the editor window closed, since the
+whole simulation runs independent of it. An optional inertia mode
+(movement continues after release, decelerating like a thrown object)
+exists but has no UI toggle yet.

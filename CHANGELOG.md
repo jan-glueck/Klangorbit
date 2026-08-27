@@ -7,6 +7,87 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Gamepad control -- the selected object moves with a connected
+  controller's left stick.** First concrete driver on the canonical
+  input layer (see below): `GamepadBridge` (`Source/GamepadBridge.h/
+  .mm`, a thin Objective-C++ bridge to Apple's GameController framework
+  -- `GCController`/`GCExtendedGamepad`, macOS-only) + `GamepadDriver`
+  (`Source/GamepadDriver.h/.cpp`), owned and polled by
+  `KlangorbitProcessor` at control rate (~90Hz, the same timer driving
+  `TrajectoryEngine::update()` -- NOT `processBlock()`/the audio thread,
+  since GameController framework calls aren't real-time-safe). Exactly
+  one gamepad at a time (whichever controller is first in
+  `GCController.controllers` with an `extendedGamepad` profile); not
+  architected to make multi-controller support impossible later, but not
+  built here either.
+  - **Movement is rate-control by default**, not an absolute target
+    position and not an accumulating/persisting force: stick deflection
+    continuously sets the selected object's CURRENT velocity while
+    deflected; centering the stick (including via the stick's own
+    spring-back) sets that velocity to exactly zero immediately -- the
+    object stops exactly where it is, does not keep moving, and does not
+    return to its starting point. Implemented via a new
+    `SoundObject::manualVelocity`/`manualVelocityActive` pair:
+    `TrajectoryEngine::integrate()`'s `Manual` mode case (previously a
+    complete no-op -- "position set externally via `dragTo()`") now
+    integrates position from `manualVelocity` whenever
+    `manualVelocityActive` is true. Mouse dragging
+    (`TrajectoryEngine::dragTo()`) never sets that flag, so it stays
+    false throughout a pure mouse interaction and this addition is a
+    verified no-op for that path -- important, because `dragTo()`
+    already sets its own rough velocity estimate for Doppler purposes,
+    which an earlier, unconditional version of this change would have
+    silently overwritten every control-rate tick. Caught and fixed
+    before landing; regression-guarded by a new
+    `Tools/verify_orbit` test.
+  - **Separate, off-by-default inertia mode**
+    (`GamepadDriver::setInertiaModeEnabled()`): while held, the stick
+    instead nudges the object's REAL `Impulse`-mode velocity
+    (`obj.velocity += stickDirection * inertiaAcceleration * dt`); once
+    released, `TrajectoryEngine::integrate()`'s existing `Impulse` case
+    (damping, `dragCoefficient`, `maxVelocity` clamp, room-boundary
+    bounce -- all already there) decelerates it naturally. Reuses real,
+    existing physics rather than a second, scripted inertia model.
+  - **Deadzone + exponential response curve**, extracted into their own
+    small, reusable, protocol-neutral header (`Source/AxisShaping.h`,
+    `shapeAxis (raw, deadzone, curveExponent)`) rather than a
+    `GamepadDriver`-private method, specifically so it's testable without
+    real hardware and reusable by a future MIDI/OSC driver wanting the
+    same shaping for its own continuous controllers. Deadzone default
+    8% (within the requested 5-10%), rescaled so there's no output jump
+    right past the boundary; response curve `output = sign(x) *
+    rescaled^exponent`, default exponent 2.0, giving fine control near
+    center and reserving full speed for a more deliberate deflection.
+    Both tunable (`GamepadDriver::setDeadzone()`/`setCurveExponent()`).
+    Deliberately applied only when this driver interprets the stick for
+    its own movement behavior above -- the raw, unshaped stick value is
+    what gets dispatched to the canonical input hub (see below), so a
+    future mapping consumer binding it to something else entirely isn't
+    forced through movement-specific shaping.
+  - Also dispatches a `CanonicalInputEvent` (see the canonical-input
+    entry below) for every axis/button that changes between polls --
+    both sticks, both triggers, the four face buttons, both shoulder
+    buttons, and the D-pad (`sourceId`s like `"Gamepad0.LeftStick.X"`,
+    `"Gamepad0.ButtonA"`) -- change-detected so an untouched gamepad
+    doesn't flood the hub every tick. No consumer exists yet (that's the
+    Learn-mode mapping branch); this is purely producer-side.
+  - New `Tools/verify_axis_shaping` (deadzone clamping at/inside the
+    boundary, no jump just past it, full-scale endpoints always +-1
+    regardless of tuning, sign symmetry, exponent ordering, monotonicity)
+    and two new `Tools/verify_orbit` cases (rate-control moves at exactly
+    the set velocity and stops with zero drift when centered; the mouse-
+    drag no-regression guard above). `GamepadBridge`'s actual hardware
+    polling isn't testable headlessly (no gamepad connected in this
+    environment) -- verified instead by full build/link (including the
+    `GameController` framework) and a Standalone launch/stability check,
+    consistent with how this project verifies that class of integration
+    elsewhere.
+  - Not verified against real gamepad hardware in this environment (none
+    available) -- the world-space stick-to-movement mapping (stick "up"
+    = object moves further away/+X, stick "right" = object moves right/
+    -Y in this project's own y=left-positive convention) is a reasonable,
+    documented, but UNVERIFIED-by-eye choice, same caveat this project's
+    README already carries for the camera drag/zoom sign convention.
 - **Canonical controller-input layer -- protocol-neutral abstraction for
   gamepad/MIDI/OSC, no driver or consumer yet.** New `CanonicalInputEvent`
   + `CanonicalInputHub` (`Source/CanonicalInput.h/.cpp`), owned by

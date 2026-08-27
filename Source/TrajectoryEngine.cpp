@@ -252,8 +252,28 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
     switch (obj.mode)
     {
         case SoundObject::Mode::Static:
-        case SoundObject::Mode::Manual:
             // Position is set externally (dragTo), nothing to do here.
+            break;
+
+        case SoundObject::Mode::Manual:
+            // Two different external drivers share this one mode: mouse
+            // dragging (TrajectoryEngine::dragTo()) sets obj.position (and
+            // its own rough velocity estimate) directly every call and
+            // leaves manualVelocityActive false; a gamepad's rate-control
+            // movement (see GamepadDriver) sets manualVelocityActive true
+            // for as long as it's driving this object and continuously
+            // updates manualVelocity, letting THIS integration step move
+            // it instead -- deliberately simple Euler integration with no
+            // damping/momentum of its own, see SoundObject::
+            // manualVelocity's own comment for why that's the actual
+            // intended rate-control behavior, not a simplification of it.
+            if (obj.manualVelocityActive)
+            {
+                obj.position += obj.manualVelocity * fdt;
+                obj.velocity = obj.manualVelocity; // so Doppler/velocity-dependent effects react correctly, same reasoning as Orbit/Impulse below
+            }
+            // else: position (and velocity, for Doppler) set externally by
+            // a mouse drag -- nothing to do here, unchanged prior behavior.
             break;
 
         case SoundObject::Mode::Orbit:

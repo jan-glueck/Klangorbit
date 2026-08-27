@@ -479,6 +479,61 @@ int main()
                "orbitRadiusNoiseSmoothing still lets the radius change at all (not frozen)");
     }
 
+    // --- Manual mode rate-control (SoundObject::manualVelocity/
+    //     manualVelocityActive, see GamepadDriver): a nonzero
+    //     manualVelocity moves the object at exactly that rate; setting it
+    //     back to zero stops the object EXACTLY where it is, with no
+    //     drift and no spring-back -- the core requirement for gamepad
+    //     rate-control movement. ---
+    {
+        TrajectoryEngine engine (1);
+        engine.activateObject (0);
+        auto& obj = engine.getObject (0);
+        obj.mode = SoundObject::Mode::Manual;
+        obj.position = { 0.0f, 0.0f, 0.0f };
+        obj.manualVelocityActive = true;
+        obj.manualVelocity = { 2.0f, 0.0f, 0.0f }; // 2 m/s along +X
+
+        engine.update (0.5); // half a second at 2 m/s -> +1m along X
+        const Vec3 afterMoving = engine.getObject (0).position;
+        check (approxEqual (afterMoving.x, 1.0f, 0.01f) && approxEqual (afterMoving.y, 0.0f) && approxEqual (afterMoving.z, 0.0f),
+               "Manual rate-control: a nonzero manualVelocity moves the object at exactly that rate");
+        check (approxEqual (engine.getObject (0).velocity.x, 2.0f),
+               "Manual rate-control: obj.velocity reflects manualVelocity (for Doppler/velocity-dependent effects)");
+
+        engine.getObject (0).manualVelocity = { 0.0f, 0.0f, 0.0f }; // stick released back to center
+        engine.update (0.5); // another half second -- should NOT move at all now
+        const Vec3 afterStopping = engine.getObject (0).position;
+        check (approxEqual (afterStopping.x, afterMoving.x) && approxEqual (afterStopping.y, afterMoving.y) && approxEqual (afterStopping.z, afterMoving.z),
+               "Manual rate-control: zeroing manualVelocity stops the object exactly where it was, no drift");
+        check (approxEqual (engine.getObject (0).velocity.length(), 0.0f),
+               "Manual rate-control: obj.velocity also returns to exactly 0 once manualVelocity is zeroed");
+    }
+
+    // --- Manual mode with manualVelocityActive == false (a plain mouse
+    //     drag, TrajectoryEngine::dragTo(), never sets this flag) must be a
+    //     complete no-op in integrate() -- confirms the gamepad rate-
+    //     control addition doesn't regress mouse-drag Doppler, which
+    //     relies on dragTo()'s own velocity estimate surviving untouched. ---
+    {
+        TrajectoryEngine engine (1);
+        engine.activateObject (0);
+        engine.beginDrag (0); // sets mode = Manual, manualVelocityActive stays false (default)
+        engine.dragTo (0, { 3.0f, 4.0f, 0.0f }); // sets position directly + its own velocity estimate
+
+        const Vec3 positionAfterDrag = engine.getObject (0).position;
+        const Vec3 velocityAfterDrag = engine.getObject (0).velocity;
+
+        engine.update (0.1); // a control-rate tick, as if nothing else changed since the drag
+
+        check (approxEqual (engine.getObject (0).position.x, positionAfterDrag.x)
+                   && approxEqual (engine.getObject (0).position.y, positionAfterDrag.y),
+               "Manual mouse-drag (manualVelocityActive=false): integrate() doesn't move the object -- dragTo() alone controls position");
+        check (approxEqual (engine.getObject (0).velocity.x, velocityAfterDrag.x)
+                   && approxEqual (engine.getObject (0).velocity.y, velocityAfterDrag.y),
+               "Manual mouse-drag (manualVelocityActive=false): integrate() doesn't overwrite dragTo()'s own velocity estimate (Doppler regression guard)");
+    }
+
     std::printf ("\n%s (%d failures)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

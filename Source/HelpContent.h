@@ -305,5 +305,21 @@ plugin-instance state, not part of what a preset saves.)
   Orbit the camera                      drag empty space
   Zoom the camera                       scroll wheel
   Clear selection                       click empty space
+
+
+== 14. GAMEPAD CONTROL ==
+
+Connect a game controller and select an object -- the LEFT STICK then
+rate-controls that object's position: deflection sets its velocity
+continuously, centering the stick (its own spring-back is enough) stops
+it exactly where it is, immediately, no drift, no snap-back. Touching
+the stick switches the selected object into Manual mode (same mode a
+mouse drag uses) and it stays there until you select a different object.
+
+Fixed default for now, no remapping UI yet -- only the left stick has
+an effect, only one controller read at a time. Keeps working with the
+editor closed, since the whole simulation runs independent of it. An
+optional inertia mode exists (movement continues after release,
+decelerating like a thrown object) but has no UI toggle yet.
 )HELPTEXT";
 }

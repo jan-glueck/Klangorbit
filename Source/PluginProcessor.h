@@ -10,6 +10,7 @@
 #include "GrainCloud.h"
 #include "ParameterRegistry.h"
 #include "CanonicalInput.h"
+#include "GamepadDriver.h"
 
 /**
     Input:  N mono channels (N = SAPOC_MAX_LIVE_INPUTS, configurable), each
@@ -163,6 +164,27 @@ public:
     // exist yet in this branch.
     CanonicalInputHub& getCanonicalInputHub() { return canonicalInputHub; }
 
+    // --- Gamepad driver -----------------------------------------------------
+    // See GamepadDriver.h for what it does. Polled from this processor's
+    // own timerCallback() below (control rate, ~90Hz) -- per the project's
+    // own requirement that gamepad polling live in the AudioProcessor, not
+    // the editor, so control keeps working with no editor window open.
+    // Currently drives the SELECTED object's movement directly as its own
+    // built-in default behavior (see the class comment on GamepadDriver)
+    // -- there is no generic Learn-mode mapping system yet.
+    bool isGamepadConnected() const { return gamepadDriver.isConnected(); }
+
+    void setGamepadDeadzone (float newDeadzone) { gamepadDriver.setDeadzone (newDeadzone); }
+    float getGamepadDeadzone() const { return gamepadDriver.getDeadzone(); }
+    void setGamepadCurveExponent (float newExponent) { gamepadDriver.setCurveExponent (newExponent); }
+    float getGamepadCurveExponent() const { return gamepadDriver.getCurveExponent(); }
+    void setGamepadMaxSpeed (float newMaxSpeed) { gamepadDriver.setMaxSpeed (newMaxSpeed); }
+    float getGamepadMaxSpeed() const { return gamepadDriver.getMaxSpeed(); }
+    void setGamepadInertiaModeEnabled (bool shouldBeEnabled) { gamepadDriver.setInertiaModeEnabled (shouldBeEnabled); }
+    bool isGamepadInertiaModeEnabled() const { return gamepadDriver.isInertiaModeEnabled(); }
+    void setGamepadInertiaAcceleration (float newAccel) { gamepadDriver.setInertiaAcceleration (newAccel); }
+    float getGamepadInertiaAcceleration() const { return gamepadDriver.getInertiaAcceleration(); }
+
 private:
     // The control-rate simulation loop -- see the class comment above for
     // why this lives here instead of the editor. 90Hz, same rate the
@@ -246,12 +268,13 @@ private:
     AmbisonicsDecoder decoder;
 
     // See getParameterRegistry()/getSelectedObjectIndex() above. Message-
-    // thread state only (GUI selection changes, mapping-consumer reads in
-    // a later branch) -- not read from processBlock() by anything in this
-    // branch, so no audio-thread synchronization concern yet; a later
-    // branch consuming this from the audio thread (e.g. a gamepad driver
-    // polling from processBlock(), per the user's own stated requirement)
-    // will need to revisit that.
+    // thread state only -- GUI selection changes, and now also read every
+    // tick by gamepadDriver.poll() below, called from timerCallback() on
+    // the same message thread (NOT processBlock()/the audio thread --
+    // GameController framework calls aren't real-time-safe, so polling
+    // happens from the same message-thread timer that already drives
+    // TrajectoryEngine::update(), not the audio callback). No audio-thread
+    // synchronization concern as a result.
     ParameterRegistry parameterRegistry;
     int selectedObjectIndex = -1;
 
@@ -259,6 +282,11 @@ private:
     // locked and safe to post to/listen on from any thread, so this
     // member itself needs no extra synchronization here.
     CanonicalInputHub canonicalInputHub;
+
+    // See isGamepadConnected()/setGamepadDeadzone() etc. above. Polled
+    // from timerCallback() below, message-thread only (see the comment on
+    // selectedObjectIndex above for why not the audio thread).
+    GamepadDriver gamepadDriver { trajectoryEngine };
 
     // Control-rate timer state -- see timerCallback(). Moved here from
     // what used to be KlangorbitEditor::lastTimerMs/grainRandom (same

@@ -31,12 +31,33 @@ struct SoundObject
     enum class Mode
     {
         Static,       // stays at position (e.g. dragged by mouse)
-        Manual,       // currently being moved live via mouse/MIDI, no physics
+        Manual,       // currently being moved live via mouse/MIDI/gamepad rate-control, no physics
         Orbit,        // circles around orbitCenter with orbitRadius/orbitSpeed
         Impulse,      // was "thrown", moves freely under velocity + force field
         Attracted     // subject to n-body forces from other objects/points
     };
     Mode mode = Mode::Static;
+
+    // True while a rate-control driver (a gamepad, see GamepadDriver) is
+    // actively setting manualVelocity below every tick -- lets
+    // TrajectoryEngine::integrate() distinguish gamepad rate-control from
+    // a plain mouse drag (TrajectoryEngine::dragTo()), which sets position
+    // (and its own rough velocity estimate, for Doppler) directly and
+    // must NOT have that overwritten here. Mouse dragging never touches
+    // this flag, so it stays false throughout a pure mouse interaction --
+    // integrate()'s Manual case is then a complete no-op, exactly as
+    // before this field existed. Runtime state, reset on preset load.
+    bool manualVelocityActive = false;
+    // Manual mode's own per-tick velocity target, continuously set by
+    // whatever is currently driving it while manualVelocityActive is true.
+    // TrajectoryEngine::integrate()'s Manual case integrates position from
+    // this every tick and then holds it exactly at 0 the instant the
+    // driver stops setting a nonzero value -- unlike Impulse mode, there
+    // is deliberately no damping/momentum here: this IS the "position
+    // holds exactly where released, no drift" rate-control behavior, not
+    // an approximation of it. Runtime state, not a preset-authored
+    // starting parameter -- reset on preset load like orbitPhase/velocity.
+    Vec3 manualVelocity { 0.0f, 0.0f, 0.0f };
 
     // Orbit mode parameters
     Vec3 orbitCenter { 0.0f, 0.0f, 0.0f };

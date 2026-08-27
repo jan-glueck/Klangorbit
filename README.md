@@ -24,6 +24,12 @@ independent of whether an editor window is open. Closing the editor
 loaded on a track with no editor ever opened) does not pause anything;
 only audio callbacks pausing (a host bypassing/disabling the track) would.
 
+A connected gamepad's left stick rate-controls the selected object's
+movement (see "Gamepad control" below) -- the first step of a broader,
+protocol-neutral controller-mapping architecture (`ParameterRegistry` +
+`CanonicalInputHub`, see the CHANGELOG) meant to also carry MIDI/OSC and
+a Learn-mode remapping UI later, neither of which exists yet.
+
 ## Signal flow
 
 ```
@@ -439,6 +445,49 @@ fast the mouse happened to move.
     established -- the preview only ever describes the parent object's
     own upcoming motion, never the grains'.
 
+## Gamepad control
+
+Connect a controller (macOS's GameController framework -- this covers
+most modern game controllers, e.g. Xbox/PlayStation controllers paired
+over Bluetooth or USB) and select an object (click it in the scene view
+or the object list). The **left stick** then rate-controls that object's
+position on the ground plane: deflection sets its current velocity
+continuously, in whichever direction you push; centering the stick (its
+own spring-back is enough) stops the object exactly where it is --
+immediately, with no drift and no snapping back to where it started.
+Touching the stick switches the selected object into Manual mode
+automatically, the same mode a mouse drag uses, and it stays there
+(picking a different object hands control to that one instead and
+leaves the previous object exactly where it was left).
+
+This runs independent of the editor window (see "Runs whole simulation
+in the background" note near the top) and independent of any DAW
+automation -- it's a live, always-on control path, not a recordable
+parameter. No detection UI yet: there's currently no on-screen
+indicator for whether a controller is connected (`KlangorbitProcessor::
+isGamepadConnected()` exists for a future indicator to read).
+
+- **Only the left stick has a built-in effect right now.** The right
+  stick, triggers, face buttons, shoulder buttons, and D-pad are all
+  already read and dispatched internally (see the CHANGELOG's
+  canonical-input-layer entries), but nothing is bound to them yet --
+  no Learn-mode/remapping UI exists. Only one controller is read at a
+  time (whichever the OS reports first).
+- **Optional inertia mode** (off by default,
+  `KlangorbitProcessor::setGamepadInertiaModeEnabled()`, no UI toggle
+  yet): instead of stopping instantly, the object keeps moving after
+  the stick is released and decelerates under the same physics an
+  ordinary thrown object uses (damping/drag), rather than snapping to a
+  stop.
+- **Deadzone and response curve** are tuned to reasonable defaults (8%
+  deadzone, exponent-2 curve -- fine control near center, full speed
+  needs a deliberate push) but have no UI to adjust yet
+  (`KlangorbitProcessor::setGamepadDeadzone()`/
+  `setGamepadCurveExponent()`).
+- The stick-to-movement direction convention hasn't been confirmed
+  against real hardware in this environment -- see "Known limitations"
+  below if it feels inverted.
+
 ## Acoustic propagation: Doppler, delay, air absorption, directivity
 
 Runs in `PropagationProcessor` (`Source/PropagationProcessor.h/.cpp`), on
@@ -720,16 +769,24 @@ Docs/WORKFLOW.md.
   (see "3D camera view" above) -- there's no way to drag an object's
   height directly with the mouse yet (it still only changes through
   physics: orbit planes, global field, n-body forces, etc.).
-- **No gamepad/MIDI/OSC control yet.** `Source/ParameterRegistry.h/.cpp`
-  (every controllable object/grain-cloud/scene parameter, ready for a
-  mapping layer to bind against) and `Source/CanonicalInput.h/.cpp` (a
-  protocol-neutral "one control changed" event + broadcast hub any
-  driver can post to) both exist now (see CHANGELOG) -- but no actual
-  controller driver or mapping UI is built yet, so nothing posts to or
-  listens on that hub. Planned next: a gamepad driver via Apple's
-  GameController framework, then a Learn-mode mapping UI. MIDI/OSC
-  drivers on top of the same canonical layer are intended too but not
-  yet scheduled.
+- **Gamepad movement is a fixed, built-in default, not yet remappable.**
+  The left stick always rate-controls whichever object is currently
+  selected (see "Gamepad control" below) -- there is no Learn-mode/
+  mapping UI yet to bind it to something else, or to a specific object
+  regardless of selection. `Source/ParameterRegistry.h/.cpp` (every
+  controllable parameter) and `Source/CanonicalInput.h/.cpp` (the
+  protocol-neutral event/hub `GamepadDriver` already posts to) both
+  exist and are ready for that layer, but nothing consumes the hub yet.
+  Planned next: a Learn-mode mapping UI. MIDI/OSC drivers on top of the
+  same canonical layer are intended too but not yet scheduled.
+- **Gamepad stick-to-movement mapping direction is unverified against
+  real hardware.** No gamepad was available to test with in this
+  environment -- the world-space convention (stick "up" moves the
+  object further away, stick "right" moves it right) is a reasonable,
+  documented choice, not a confirmed-by-eye one. See
+  `GamepadDriver::driveSelectedObjectMovement()`'s own comment; a
+  one-line sign flip if it turns out inverted, same situation as the
+  camera drag/zoom convention above.
 - **Output format switching is host-dependent to take effect live.**
   `KlangorbitProcessor::setDecoderMode()` (Output category's "Output
   Format" dropdown) DOES change the encoder order, rebuild the decode

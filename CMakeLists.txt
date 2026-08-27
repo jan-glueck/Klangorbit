@@ -80,6 +80,8 @@ target_sources(Klangorbit
         Source/VBAP.cpp
         Source/ParameterRegistry.cpp
         Source/CanonicalInput.cpp
+        Source/GamepadBridge.mm
+        Source/GamepadDriver.cpp
         Source/TrajectoryEngine.cpp
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
@@ -95,6 +97,10 @@ target_link_libraries(Klangorbit
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp
+        # GameController framework -- Source/GamepadBridge.mm's bridge to
+        # Apple's GCController/GCExtendedGamepad API. macOS-only, matching
+        # this project's own scope (see PROJECT_BRIEF.md).
+        "-framework GameController"
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -322,6 +328,35 @@ target_sources(verify_canonical_input
 )
 
 target_link_libraries(verify_canonical_input
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Gamepad axis-shaping verification --------------------------------------
+# Runs shapeAxis() (Source/AxisShaping.h -- deadzone rescale + exponential
+# response curve for a bipolar control axis) against known math: deadzone
+# clamping at/inside the boundary, no jump just past the boundary,
+# full-scale endpoints always map to +-1 regardless of tuning, sign
+# preservation/symmetry, exponent ordering (higher exponent -> smaller
+# output at a fixed rescaled input), and monotonicity across the whole
+# range. Pure math, no gamepad hardware needed -- GamepadDriver's actual
+# hardware polling (Source/GamepadBridge.mm, GCController) isn't testable
+# headlessly and is instead verified by full build + Standalone launch
+# stability, consistent with how this project verifies that class of
+# integration elsewhere.
+juce_add_console_app(verify_axis_shaping
+    PRODUCT_NAME "verify_axis_shaping"
+)
+
+target_sources(verify_axis_shaping
+    PRIVATE
+        Tools/verify_axis_shaping.cpp
+)
+
+target_link_libraries(verify_axis_shaping
     PRIVATE
         juce::juce_core
     PUBLIC

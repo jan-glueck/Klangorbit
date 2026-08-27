@@ -94,6 +94,13 @@ void KlangorbitProcessor::timerCallback()
     const double dt = juce::jlimit (0.0, 0.1, (double) (now - lastControlRateTimerMs) / 1000.0); // clamp against outliers
     lastControlRateTimerMs = now;
 
+    // Polled BEFORE trajectoryEngine.update() below, so this same tick's
+    // integration step already reflects the freshly-read stick position
+    // (lowest latency, one control-rate tick) rather than lagging by one.
+    // See GamepadDriver's own class comment for why this happens here
+    // (message-thread timer) and not processBlock().
+    gamepadDriver.poll (canonicalInputHub, selectedObjectIndex, dt);
+
     trajectoryEngine.update (dt);
 
     // GrainCloud: control-rate update, same loop/rate as TrajectoryEngine

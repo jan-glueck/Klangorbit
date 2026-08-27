@@ -81,6 +81,21 @@ void GamepadDriver::driveSelectedObjectMovement (int selectedObjectIndex, double
     if (obj.inputChannel < 0)
         return; // selected slot isn't an active object -- stay defensive
 
+    if (isSourceOverridden
+        && (isSourceOverridden ("Gamepad0.LeftStick.X") || isSourceOverridden ("Gamepad0.LeftStick.Y")))
+    {
+        // A MappingEngine binding now explicitly claims (at least) one
+        // axis -- hand full control to that mapping rather than also
+        // applying built-in movement on top of it. See
+        // setLeftStickOverrideQuery()'s own comment on why either axis
+        // being claimed suppresses both (avoids a half-working movement
+        // feel from an axis rebound alone). Still release any object
+        // this driver was previously holding, so it doesn't drift
+        // forever at a stale velocity nobody updates anymore.
+        releaseControlledObject();
+        return;
+    }
+
     const float shapedX = shapeAxis (lastState.leftStickX, deadzone, curveExponent);
     const float shapedY = shapeAxis (lastState.leftStickY, deadzone, curveExponent);
 

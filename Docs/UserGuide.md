@@ -421,9 +421,34 @@ Touching the stick switches the selected object into Manual mode
 automatically (the same mode a mouse drag uses) and it stays there until
 you select a different object.
 
-This is a fixed, built-in default for now -- there's no remapping UI
-yet, only the left stick has an effect, and only one controller is read
-at a time. It keeps working with the editor window closed, since the
-whole simulation runs independent of it. An optional inertia mode
-(movement continues after release, decelerating like a thrown object)
-exists but has no UI toggle yet.
+This is the left stick's own built-in default -- see section 17 to bind
+it (or any other control) to something else via Learn mode. Only one
+controller is read at a time. It keeps working with the editor window
+closed, since the whole simulation runs independent of it. An optional
+inertia mode (movement continues after release, decelerating like a
+thrown object) exists but has no UI toggle yet.
+
+## 17. Controller mapping (toolbar -> Mappings...)
+
+Bind any gamepad control to any parameter: pick a **Target parameter**
+from the dropdown, press **Learn**, then move the stick/trigger/button
+you want -- the next control that changes gets bound automatically. The
+list below shows every current binding, each with its own **Remove**.
+**Load Profile...**/**Save Profile...** save the whole binding set (plus
+the paging modifier) as its own file, completely separate from scene
+presets.
+
+The target-parameter dropdown only offers scene-wide parameters and
+"whichever object is currently selected" parameters -- not one specific
+object regardless of selection (possible by hand-editing a saved mapping
+profile's JSON, but not through this picker).
+
+**Paging**: hold the control shown next to "Paging modifier" (right
+shoulder button by default) to unlock a second layer of bindings -- the
+same stick can drive one parameter normally and a different one while
+the modifier is held. Learn a binding while holding the modifier to
+place it in that second layer.
+
+Binding either of the left stick's axes here takes over the built-in
+rate-control movement (section 16) completely for that axis pair --
+the object it was moving just stays where it is.

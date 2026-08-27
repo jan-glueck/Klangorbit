@@ -206,3 +206,15 @@ interaction that can't be reconstructed purely from the JSON file (e.g.
 because you intervened live during playback), the description of that
 finding belongs in an experiment log, not in the preset -- see
 Docs/experiments/README.md.
+
+## Relation to MappingProfiles/schema/
+
+Controller-mapping profiles (which gamepad/MIDI/OSC input drives which
+parameter, see `Source/MappingEngine.h`) are a completely SEPARATE
+schema, with their own `schemaVersion` counter, own file format, and own
+storage tree (`MappingProfiles/factory/`, `MappingProfiles/user/`) --
+see `MappingProfiles/schema/README.md`. A mapping profile never appears
+inside a preset's own JSON, and a preset's `schemaVersion` bumping has no
+effect on mapping-profile compatibility, or vice versa: which controller
+drives which parameter is independent of which scene happens to be
+loaded.

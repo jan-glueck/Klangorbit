@@ -11,6 +11,7 @@
 #include "ParameterRegistry.h"
 #include "CanonicalInput.h"
 #include "GamepadDriver.h"
+#include "MappingEngine.h"
 
 /**
     Input:  N mono channels (N = SAPOC_MAX_LIVE_INPUTS, configurable), each
@@ -169,9 +170,10 @@ public:
     // own timerCallback() below (control rate, ~90Hz) -- per the project's
     // own requirement that gamepad polling live in the AudioProcessor, not
     // the editor, so control keeps working with no editor window open.
-    // Currently drives the SELECTED object's movement directly as its own
-    // built-in default behavior (see the class comment on GamepadDriver)
-    // -- there is no generic Learn-mode mapping system yet.
+    // Drives the SELECTED object's movement directly as its own built-in
+    // default behavior, unless mappingEngine below has an explicit
+    // binding claiming the left stick (see GamepadDriver::
+    // setLeftStickOverrideQuery(), wired up in the constructor).
     bool isGamepadConnected() const { return gamepadDriver.isConnected(); }
 
     void setGamepadDeadzone (float newDeadzone) { gamepadDriver.setDeadzone (newDeadzone); }
@@ -184,6 +186,16 @@ public:
     bool isGamepadInertiaModeEnabled() const { return gamepadDriver.isInertiaModeEnabled(); }
     void setGamepadInertiaAcceleration (float newAccel) { gamepadDriver.setInertiaAcceleration (newAccel); }
     float getGamepadInertiaAcceleration() const { return gamepadDriver.getInertiaAcceleration(); }
+
+    // --- Controller-mapping engine (Learn mode) ---------------------------
+    // See MappingEngine.h. Registered as a CanonicalInputHub listener in
+    // the constructor, so it sees every event any driver (currently just
+    // GamepadDriver) posts. Loads MappingProfiles/factory/default.json at
+    // startup if present (see the .cpp) -- ships empty by design (see
+    // that file's own comment): the left stick's rate-control movement
+    // already works out of the box via GamepadDriver's own built-in
+    // behavior, with no binding required.
+    MappingEngine& getMappingEngine() { return mappingEngine; }
 
 private:
     // The control-rate simulation loop -- see the class comment above for
@@ -287,6 +299,12 @@ private:
     // from timerCallback() below, message-thread only (see the comment on
     // selectedObjectIndex above for why not the audio thread).
     GamepadDriver gamepadDriver { trajectoryEngine };
+
+    // See getMappingEngine() above. Constructed after parameterRegistry
+    // (declared earlier in this class) since it holds a reference to it;
+    // registered as a canonicalInputHub listener and wired into
+    // gamepadDriver's override query in the constructor (.cpp).
+    MappingEngine mappingEngine { parameterRegistry };
 
     // Control-rate timer state -- see timerCallback(). Moved here from
     // what used to be KlangorbitEditor::lastTimerMs/grainRandom (same

@@ -3,6 +3,7 @@
 #include "GrainRenderer.h"
 #include "GrainDoppler.h"
 #include "MuteSoloLogic.h"
+#include "MappingProfileManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -63,6 +64,32 @@ KlangorbitProcessor::KlangorbitProcessor()
 
     buildParameterRegistry();
 
+    // Wires the mapping engine into the canonical input hub (so it sees
+    // every event any driver posts -- currently just gamepadDriver) and
+    // gives gamepadDriver a way to ask "is the left stick explicitly
+    // bound right now?" (see GamepadDriver::setLeftStickOverrideQuery()'s
+    // own comment on why this exists).
+    canonicalInputHub.addListener (&mappingEngine);
+    gamepadDriver.setLeftStickOverrideQuery ([this] (const juce::String& sourceId)
+    {
+        return mappingEngine.hasBindingFor (sourceId, mappingEngine.getCurrentBank());
+    });
+
+    // Best-effort: load the shipped factory default mapping profile if
+    // this build has one (see SAPOC_MAPPING_PROFILES_FACTORY_DIR's own
+    // comment in CMakeLists.txt -- a local-dev-only convenience path, not
+    // present in an installed plugin). Ships empty by design (see
+    // MappingProfiles/factory/default.json's own comment) -- absence or
+    // failure to load is silently fine, mappingEngine simply starts with
+    // no bindings either way, same end state.
+   #if defined (SAPOC_MAPPING_PROFILES_FACTORY_DIR)
+    {
+        const juce::File defaultProfile = juce::File (SAPOC_MAPPING_PROFILES_FACTORY_DIR).getChildFile ("default.json");
+        if (defaultProfile.existsAsFile())
+            MappingProfileManager::loadFile (defaultProfile, mappingEngine);
+    }
+   #endif
+
     // Starts the control-rate simulation loop -- see the class comment in
     // PluginProcessor.h for why this runs from here rather than the
     // editor. 90Hz matches the rate the editor's own timer previously
@@ -80,6 +107,15 @@ KlangorbitProcessor::~KlangorbitProcessor()
     // means timerCallback() can never fire mid-teardown of this class's
     // own members (trajectoryEngine, grainRandom, etc.).
     stopTimer();
+
+    // Explicit, before mappingEngine itself is destroyed below (member
+    // destruction order), so canonicalInputHub never holds a dangling
+    // listener pointer even for the brief window between the two
+    // members' destructors -- nothing would actually dereference it
+    // there (the timer is already stopped, nothing else calls dispatch()
+    // during teardown), but there's no reason to leave a dangling
+    // pointer sitting around when removing it costs nothing.
+    canonicalInputHub.removeListener (&mappingEngine);
 }
 
 void KlangorbitProcessor::timerCallback()

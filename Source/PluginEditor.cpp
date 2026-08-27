@@ -197,6 +197,50 @@ namespace
         float ageFraction = 0.0f;  // grains only
         Camera3D::Projection projection;
     };
+
+    // Small fixed-size orientation gizmo, bottom-left of the 3D viewport --
+    // three short arms in the world X/Y/Z directions, so a rotated view is
+    // still easy to read at a glance. Deliberately NOT drawn via
+    // Camera3D::project() (which needs a real world position and applies
+    // perspective/distance scaling) -- this only needs the camera's
+    // ROTATION, so each world axis direction is projected straight through
+    // camera.getRight()/getUp() the same way project() derives its x/y
+    // (see Camera3D::project()'s own dot products), then drawn as a fixed
+    // pixel-length arm from a fixed screen anchor, independent of zoom or
+    // where the camera is actually looking.
+    void drawAxisGizmo (juce::Graphics& g, const Camera3D& camera, juce::Rectangle<int> viewport)
+    {
+        constexpr float armLength = 22.0f;
+        constexpr float margin = 34.0f;
+        const juce::Point<float> anchor { (float) viewport.getX() + margin, (float) viewport.getBottom() - margin };
+
+        struct Axis { Vec3 direction; juce::Colour colour; const char* label; };
+        const Axis axes[] = {
+            { { 1.0f, 0.0f, 0.0f }, juce::Colour (0xffef5350), "X" }, // front (this project's own +X convention, see SoundObject.h)
+            { { 0.0f, 1.0f, 0.0f }, juce::Colour (0xff66bb6a), "Y" }, // left
+            { { 0.0f, 0.0f, 1.0f }, juce::Colour (0xff42a5f5), "Z" }, // up
+        };
+
+        g.setColour (UiColours::textSecondary().withAlpha (0.6f));
+        g.fillEllipse (anchor.x - 2.0f, anchor.y - 2.0f, 4.0f, 4.0f); // origin dot
+
+        for (auto& axis : axes)
+        {
+            // Same dot-product projection Camera3D::project() uses for its
+            // own x/y (rel.dot(right), -rel.dot(up)) -- just applied to a
+            // unit world-space direction instead of a world position
+            // relative to the camera, since only rotation matters here.
+            const juce::Point<float> screenDir { axis.direction.dot (camera.getRight()), -axis.direction.dot (camera.getUp()) };
+            const auto tip = anchor + screenDir * armLength;
+
+            g.setColour (axis.colour);
+            g.drawLine ({ anchor, tip }, 2.0f);
+
+            g.setFont (11.0f);
+            g.drawText (axis.label, juce::Rectangle<float> (tip.x - 8.0f, tip.y - 8.0f, 16.0f, 16.0f),
+                        juce::Justification::centred);
+        }
+    }
 }
 
 KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
@@ -707,6 +751,12 @@ void KlangorbitEditor::paint (juce::Graphics& g)
         }
     }
 
+    // Orientation gizmo, bottom-left of the viewport -- see its own
+    // comment. The centred bottom hint text drawn just below doesn't
+    // overlap it (that text is horizontally centred, leaving the corners
+    // free).
+    drawAxisGizmo (g, camera, viewArea);
+
     // Persistent on-screen reminder of the two modifier-key mouse gestures
     // (orbit, sling launch) -- both are otherwise fully hidden (no button,
     // no menu entry), so without this a first-time user has no way to
@@ -738,7 +788,12 @@ void KlangorbitEditor::resized()
     auto toolbar = bounds.removeFromTop (toolbarHeight).reduced (UiSpacing::m, 0);
 
     auto row1 = toolbar.removeFromTop (38); // toolbarHeight (76) split into two even 38px rows
+    // Right-to-left: "?" in the far corner, Output/Mappings just left of
+    // it -- all three open their own OS-level window (see the class
+    // comment), grouped together for that reason.
     helpButton.setBounds (row1.removeFromRight (32).reduced (UiSpacing::xs));
+    outputButton.setBounds (row1.removeFromRight (110).reduced (UiSpacing::xs));
+    mappingButton.setBounds (row1.removeFromRight (130).reduced (UiSpacing::xs));
     loadPresetButton.setBounds (row1.removeFromLeft (140).reduced (UiSpacing::xs));
     row1.removeFromLeft (UiSpacing::s);
     savePresetButton.setBounds (row1.removeFromLeft (140).reduced (UiSpacing::xs));
@@ -753,10 +808,6 @@ void KlangorbitEditor::resized()
     objectCountLabel.setBounds (row2.removeFromLeft (120).reduced (UiSpacing::xs));
     row2.removeFromLeft (UiSpacing::m);
     cpuLoadLabel.setBounds (row2.removeFromLeft (140).reduced (UiSpacing::xs));
-    row2.removeFromLeft (UiSpacing::m);
-    mappingButton.setBounds (row2.removeFromLeft (130).reduced (UiSpacing::xs));
-    row2.removeFromLeft (UiSpacing::s);
-    outputButton.setBounds (row2.removeFromLeft (110).reduced (UiSpacing::xs));
 
     parameterPanel.setBounds (bounds.removeFromRight (parameterPanelWidth));
     objectListPanel.setBounds (bounds.removeFromLeft (objectListWidth));

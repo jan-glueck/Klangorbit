@@ -7,6 +7,66 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Camera orientation gizmo, bottom-left of the 3D viewport.** A small
+  fixed-size red/green/blue arm indicator (`KlangorbitEditor::
+  drawAxisGizmo()`) showing the world X/Y/Z directions as the camera's
+  own rotation currently sees them -- projects each unit axis through
+  `Camera3D::getRight()`/`getUp()` the same dot-product formula
+  `Camera3D::project()` uses for its own x/y, but applied to a
+  direction instead of a world position, so it needs only the camera's
+  rotation, not a full perspective projection -- then draws it at a
+  fixed screen anchor/length, independent of zoom or where the camera
+  is actually looking. An axis pointing straight at/away from the
+  camera correctly foreshortens to a point (e.g. Z in the default
+  top-down view, since that view looks straight down the Z axis) --
+  expected behavior for any such gizmo, not a bug.
+- **Double-click any parameter slider to reset it to its default
+  value.** Every `FloatRowComponent`/`Vec3RowComponent` slider across
+  every category now has a default wired up
+  (`FloatRowComponent::setDefaultValue()`/`Vec3RowComponent::
+  setDefaultValue()`, thin wrappers around `juce::Slider`'s own
+  built-in `setDoubleClickReturnValue()` -- no custom mouse handling
+  needed). Each `ParameterPanel::add*Row()` helper computes its row's
+  default by reading the member off a fresh, default-constructed
+  instance of the owning struct (`SceneSettings{}.*member`,
+  `SoundObject{}.*member`, `GrainCloudSettings{}.*member`) rather than
+  needing a separate default value threaded through every call site --
+  the schema's own default member initializer IS the reset target.
+- **Grain "Movement Mode" now only shows the parameters that apply to
+  the currently selected mode.** Previously all ~13 mode-specific rows
+  (Random Walk Speed, Boundary Radius/Jitter/Restitution for Bounce,
+  Initial Speed/Jitter/Acceleration for Radial Explosion, Orbit
+  Radius/Jitter/Angular Speed/Sphere Spread for Orbit Around Parent,
+  Attraction Strength for Attract/Repel Siblings) were always visible
+  at once regardless of which mode was active, most of them inert.
+  `ParameterPanel::addToLayout()`/`addGrainFloatRow()` gained an
+  optional `requiredMovementMode` tag; `updateGrainMovementModeVisibility()`
+  (new, called alongside `updateOrbitModeHintVisibility()`'s own
+  trigger points -- category switch, selection/preset change, and the
+  Movement Mode combo's own `onSelected`) hides any tagged row whose
+  mode doesn't match `editedGrainCloud->movementMode`, on top of the
+  existing per-category visibility pass.
+- **Doppler Enabled toggle, top of the (per-object) Doppler category.**
+  New `SoundObject::dopplerEnabled` (default `true`) -- a quick on/off
+  switch that doesn't touch the `dopplerFactor` dial below it:
+  `PropagationProcessor` now treats the AC (pitch-shift-driving)
+  contribution as 0 whenever `dopplerEnabled` is false, regardless of
+  the stored `dopplerFactor` value, so turning it back on restores
+  whatever was actually dialed in rather than needing to remember and
+  re-type a value that was overwritten to 0. Mirrors
+  `GrainCloudSettings::dopplerEnabled`'s already-existing role for
+  grains (that one defaults off, matching Doppler being an optional
+  add-on for grains specifically; this one defaults on, matching the
+  object's own Doppler being on by default already). Registered in
+  `ParameterRegistry` (id `"dopplerEnabled"`, same as the grain-level
+  one -- no collision, since grain ids carry a `.grain.` infix) and
+  serialized in presets (`PresetManager.cpp`, optional/backward-
+  compatible -- an old preset without the field simply gets the
+  default `true`, matching pre-existing behavior exactly). New
+  `Tools/verify_propagation` case confirms `dopplerEnabled=false`
+  suppresses the pitch shift independent of `dopplerFactor` (still at
+  its default 1.0), and that the toggle never touches the stored
+  `dopplerFactor` value itself.
 - **Output Format/Bass Management/Circular Array speaker count moved to
   their own "Output..." toolbar window.** New `OutputPanel`/
   `OutputWindow` (mirroring `MappingPanel`/`MappingWindow`'s own
@@ -1349,6 +1409,40 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
+- **Parameter panel polish, following up on the reorganization below.**
+  - `objectHeaderLabel` (which object is selected) now shares the
+    "OBJECT SETTINGS" label's own row, right-aligned, instead of
+    costing a row of its own below the button group -- less wasted
+    vertical space.
+  - "Mappings.../Output..." moved from the toolbar's second row to its
+    first, next to "?" -- all three open their own OS-level window, so
+    now they're grouped together for that reason.
+  - Scene category: **Show Boundary** moved above **Boundary Size**
+    (was "Room Size", see below) -- "do I even see this?" is the more
+    natural first question before tuning the boundary itself.
+  - **"Room Size" renamed to "Boundary Size"** -- it's a physics
+    boundary (reflect/wrap/absorb), not an acoustic "room" in any
+    sense (no reverb/reflection processing is tied to it). Underlying
+    field name (`roomSize`) unchanged -- display-string rename only,
+    no preset/schema impact. `ParameterRegistry`'s own display name for
+    the same field (id `"roomSize"`) updated to match; the id itself
+    (used by saved mapping profiles) is untouched.
+  - **"Global Field (Wind/Gravity)" renamed to "Force Field
+    (Wind/Gravity)", and "Wind (m/s)" renamed to "Propagation Wind
+    (m/s)"** -- these are two functionally distinct scene-wide settings
+    that happened to both read as "wind" in their old names: Force
+    Field (`SceneSettings::globalField`) is a real physical force that
+    pushes moving objects around (Impulse/Attracted modes); Propagation
+    Wind (`SceneSettings::windVector`) only shifts the effective speed
+    of sound for propagation delay/Doppler and never touches object
+    motion at all. Considered moving Propagation Wind into the
+    (per-object) Doppler category since it only affects sound -- not
+    done, since both fields are scene-wide (`Scope::Global`, not tied
+    to any object), and Doppler lives under "OBJECT SETTINGS" (disabled/
+    hidden with nothing selected) -- moving a global setting there would
+    misrepresent it as object-scoped. Both stay in Scene, renamed
+    instead. `ParameterRegistry`'s own display names (ids `"globalField"`/
+    `"windVector"`) updated to match; the ids themselves are untouched.
 - **Parameter panel reorganized: Scene settings visually separated from
   Object settings, the Acoustics category folded into Scene, and Output
   moved out into its own window entirely.** (This entry describes the

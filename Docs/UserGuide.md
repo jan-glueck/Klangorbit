@@ -32,6 +32,13 @@ internal architecture notes, see `README.md` in the project root.
    on a small reference circle around the origin.
 5. Click and drag it around to hear it move in the decoded output.
 
+Two things worth knowing right away: **double-clicking any slider in the
+parameter panel resets it to its default value** (every slider, in every
+category -- JUCE's own standard double-click-to-reset behavior); and
+**Mappings.../Output...** each open their own small window (top-right,
+next to the **?** help button) rather than living in the parameter panel
+itself, since neither is tied to the scene or any one object.
+
 ## 2. The scene view
 
 The scene view is a live 3D view of your objects, looking down at the
@@ -57,6 +64,12 @@ your viewpoint, not the listener's.
 Small, paler dots drifting around an object are its **grains** (see
 section 11) -- optional granular-synthesis "sound dust", if enabled for
 that object.
+
+A small red/green/blue axis gizmo in the bottom-left corner shows the
+current camera orientation (X/Y/Z, matching this project's own front/
+left/up convention) -- handy after rotating the view to tell which way
+is which. It's a fixed-size on-screen indicator, not a 3D object in the
+scene, so it doesn't move or scale with zoom.
 
 ## 3. The object list (left sidebar)
 
@@ -211,16 +224,25 @@ object will react to, not just a single thrown object.
 
 Apply to the whole scene, not one object:
 
-- **Room Size** -- radius (meters) of an invisible spherical boundary
-  around the origin. 0 disables it (objects can drift unbounded).
+- **Show Boundary** -- purely visual; the boundary still applies
+  physically even if hidden. Sits above Boundary Size/Behavior below --
+  the natural first question ("do I even see this?") before tuning the
+  boundary itself.
+- **Boundary Size** (formerly "Room Size") -- radius (meters) of an
+  invisible spherical boundary around the origin. 0 disables it (objects
+  can drift unbounded). Renamed since it's a physics boundary
+  (reflect/wrap/absorb), not an acoustic "room" -- no reverb or
+  reflection processing is tied to it.
 - **Boundary Behavior** -- what happens when an object reaches that
   boundary: **Reflect** (bounces back, strength set by that object's
   Restitution), **Wrap** (reappears on the opposite side), or
   **Absorb** (stops there and goes silent).
-- **Show Boundary** -- purely visual; the boundary still applies
-  physically even if hidden.
-- **Global Field (Wind/Gravity)** -- a constant force/mass applied to
-  every Impulse/Attracted object, like a directional wind or gravity.
+- **Force Field (Wind/Gravity)** (formerly "Global Field") -- a constant
+  force/mass applied to every Impulse/Attracted object, like a
+  directional wind or gravity -- genuinely pushes objects around. Not
+  the same thing as Propagation Wind below, which only affects sound,
+  never movement -- renamed specifically to stop the two from reading as
+  duplicates.
 - **Time Scale** -- slows down (< 1) or speeds up (> 1) the whole
   simulation.
 
@@ -237,9 +259,19 @@ direction genuinely affect the sound:
 - **Temperature / Relative Humidity / Atmospheric Pressure** -- feed a
   simplified air-absorption model (a gentle lowpass that gets stronger
   with distance); not ISO-9613-1 accurate, but directionally correct.
-- **Wind (m/s)** -- a directional vector that shifts the effective
-  speed of sound (tailwind speeds up arrival, headwind slows/attenuates
-  it) -- both a physically real effect and a distinct creative tool.
+- **Propagation Wind (m/s)** (formerly "Wind") -- a directional vector
+  that shifts the effective speed of sound (tailwind speeds up arrival,
+  headwind slows/attenuates it) -- both a physically real effect and a
+  distinct creative tool. Renamed to make clear it only affects
+  *sound propagation*, never how objects actually move (that's Force
+  Field above) -- both are scene-wide settings, not tied to any one
+  object, which is why both stay in Scene rather than moving into the
+  (per-object) Doppler category below.
+- **Doppler Enabled** (per object, top of the Doppler category) -- on by
+  default. A quick on/off switch that doesn't touch the Doppler Factor
+  dial below it -- turning it back on restores whatever factor was
+  actually set, instead of needing to remember and re-type a value that
+  was overwritten to 0.
 - **Doppler Factor** (per object, Doppler category) -- 0 = no pitch
   shift, 1 = physically correct, > 1 = exaggerated. The propagation
   delay itself always stays physically anchored to real distance
@@ -294,10 +326,12 @@ trajectory. Turn it on with **Enabled**.
   starting exactly on schedule. The trade-off: under heavy overlap, some
   individual grains end up a bit shorter than the Duration you set,
   rather than new grains simply failing to start on time.
-- **Movement Mode** -- how each grain moves during its short life, each
-  with its own **Jitter** slider directly below the relevant parameter
-  (0..1, random +/- variation per spawn, all independently usable at
-  once):
+- **Movement Mode** -- how each grain moves during its short life. The
+  panel only shows the parameters that actually do something for
+  whichever mode is currently selected (switching modes swaps the
+  visible rows below instantly) -- each with its own **Jitter** slider
+  directly below the relevant parameter (0..1, random +/- variation per
+  spawn, all independently usable at once):
   - *Random Walk* -- smoothed random drift.
   - *Bounce* -- elastic reflection inside a small sphere around its
     spawn point (**Boundary Radius Jitter** varies that sphere's size).

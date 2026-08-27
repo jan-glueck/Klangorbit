@@ -207,9 +207,12 @@ the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
   rotatable major axis (`orbitOrientation`), shrinking/growing orbits
   (`orbitDecay`), orbiting around another, itself-moving object instead of
   just a fixed point (`orbitReferenceObjectId`).
-- **Global field & time scale:** `SceneSettings::globalField` (constant
-  force/mass, like wind/gravity, affects Impulse/Attracted objects) and
-  `timeScale` (fast-forward/slow-motion for the whole simulation).
+- **Force field & time scale:** `SceneSettings::globalField` (shown in
+  the panel as "Force Field" -- constant force/mass, like wind/gravity,
+  affects Impulse/Attracted objects; not the same thing as
+  `windVector`/"Propagation Wind" below, which only affects sound
+  propagation, never actual object movement) and `timeScale`
+  (fast-forward/slow-motion for the whole simulation).
 - **Parameter panel** (right side of the editor window): shows/edits all
   parameters of the object selected in the scene view, as well as the
   scene parameters. Writes directly to the engine, no preset file needed
@@ -588,6 +591,12 @@ the mono source signal before Ambisonics encoding, per active object.
   `dopplerFactor`, so long-term latency can't drift away from reality.
   `dopplerSmoothing` (seconds) smooths the pitch effect against abrupt
   direction changes (e.g. a bounce off the room boundary).
+  `SoundObject::dopplerEnabled` (default true, "Doppler Enabled" at the
+  top of the Doppler category) is a separate on/off gate that short-
+  circuits the AC contribution to 0 without touching the stored
+  `dopplerFactor` value itself -- re-enabling restores whatever factor
+  was actually dialed in, rather than needing to remember and re-type a
+  value that was overwritten to 0.
 - **`SceneSettings::speedOfSound`** (m/s, default 343) is deliberately kept
   independent of `temperature` rather than computed from it -- letting it
   drift from the physical value (e.g. down to 50 m/s) is an intentional
@@ -601,7 +610,10 @@ the mono source signal before Ambisonics encoding, per active object.
   mid/high frequencies, lower at both extremes) but is explicitly **not**
   an implementation of the full ISO 9613-1 relaxation-frequency model.
   Good enough for sound design, not for acoustic measurement.
-- **Wind** (`SceneSettings::windVector`, m/s) shifts the effective speed of
+- **Propagation Wind** (`SceneSettings::windVector`, m/s -- shown in the
+  panel as "Propagation Wind", not just "Wind", to keep it from reading
+  as a duplicate of "Force Field"/`globalField` above: this one only
+  affects sound, never object movement) shifts the effective speed of
   sound in the propagation direction (source -> listener) -- a tailwind
   speeds up arrival, a headwind slows it down. Feeds into the same delay
   line as `speedOfSound`, so it affects both latency and Doppler together,

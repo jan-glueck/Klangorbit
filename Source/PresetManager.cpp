@@ -413,6 +413,7 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         objVar->setProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
         // Acoustic propagation (optional, see SoundObject.h)
+        objVar->setProperty ("dopplerEnabled", obj.dopplerEnabled);
         objVar->setProperty ("dopplerFactor", (double) obj.dopplerFactor);
         objVar->setProperty ("dopplerSmoothing", (double) obj.dopplerSmoothing);
         objVar->setProperty ("directivityPattern", directivityPatternToString (obj.directivityPattern));
@@ -532,6 +533,7 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         obj.orbitReferenceObjectId = (int) element.getProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
         // Acoustic propagation (optional, default from SoundObject{})
+        obj.dopplerEnabled   = (bool) element.getProperty ("dopplerEnabled", obj.dopplerEnabled);
         obj.dopplerFactor    = (float) element.getProperty ("dopplerFactor", (double) obj.dopplerFactor);
         obj.dopplerSmoothing = (float) element.getProperty ("dopplerSmoothing", (double) obj.dopplerSmoothing);
 

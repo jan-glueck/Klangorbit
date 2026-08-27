@@ -321,10 +321,11 @@ trajectory. Turn it on with **Enabled**.
   own position/velocity, so the actual pitch shift is genuinely
   different per grain even though they share that one strength knob.
 
-## 12. Output format (parameter panel -> Output category)
+## 12. Output format (toolbar -> Output...)
 
-Chooses what the plugin's output bus actually carries -- this is a
-scene-wide setting (like the Scene category), not tied to any one object:
+Chooses what the plugin's output bus actually carries -- a plugin-wide
+setting, not tied to the scene or any object, so it lives in its own
+window (toolbar -> **Output...**) rather than the parameter panel:
 
 - **Output Format** -- one of 13 mutually exclusive formats:
   - **Ambisonics (Order 1/2/3)** -- the original raw B-format output

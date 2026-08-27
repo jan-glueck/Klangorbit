@@ -214,6 +214,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     addAndMakeVisible (objectCountLabel);
     addAndMakeVisible (cpuLoadLabel);
     addAndMakeVisible (mappingButton);
+    addAndMakeVisible (outputButton);
     addAndMakeVisible (helpButton);
     addAndMakeVisible (objectListPanel);
     addAndMakeVisible (parameterPanel);
@@ -228,6 +229,8 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     helpButton.setTooltip ("Help -- every feature and parameter explained");
     mappingButton.onClick = [this] { showMappingClicked(); };
     mappingButton.setTooltip ("Controller mapping -- Learn mode, current bindings, mapping profiles");
+    outputButton.onClick = [this] { showOutputClicked(); };
+    outputButton.setTooltip ("Output format, bass management, circular array speaker count");
 
     presetStatusLabel.setText (currentPresetName, juce::dontSendNotification);
     presetStatusLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
@@ -240,7 +243,6 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     cpuLoadLabel.setJustificationType (juce::Justification::centredLeft);
 
     parameterPanel.setSceneSettings (&audioProcessor.getTrajectoryEngine().getSceneSettings());
-    parameterPanel.setProcessor (&audioProcessor);
     parameterPanel.refreshFromModel(); // show scene defaults (roomSize etc.) right away
     objectListPanel.refresh (audioProcessor.getTrajectoryEngine());
     lastKnownActiveObjectCount = audioProcessor.getTrajectoryEngine().getNumActiveObjects(); // matches the refresh() just above -- avoids a redundant one on the first timer tick
@@ -753,6 +755,8 @@ void KlangorbitEditor::resized()
     cpuLoadLabel.setBounds (row2.removeFromLeft (140).reduced (UiSpacing::xs));
     row2.removeFromLeft (UiSpacing::m);
     mappingButton.setBounds (row2.removeFromLeft (130).reduced (UiSpacing::xs));
+    row2.removeFromLeft (UiSpacing::s);
+    outputButton.setBounds (row2.removeFromLeft (110).reduced (UiSpacing::xs));
 
     parameterPanel.setBounds (bounds.removeFromRight (parameterPanelWidth));
     objectListPanel.setBounds (bounds.removeFromLeft (objectListWidth));
@@ -766,6 +770,15 @@ void KlangorbitEditor::showHelpClicked()
 
     helpWindow->setVisible (true); // in case a previous close just hid it
     helpWindow->toFront (true);
+    // Deferred second attempt -- see showMappingClicked()'s own comment on
+    // why a synchronous toFront() right here isn't always enough in every
+    // DAW host. SafePointer (not a raw pointer): callAsync()'s callback
+    // runs on a LATER message-loop iteration, by which point the user
+    // could conceivably have already closed this editor (and with it,
+    // helpWindow, which this editor owns) -- SafePointer becomes null
+    // automatically in that case instead of leaving a dangling pointer.
+    juce::Component::SafePointer<HelpWindow> window (helpWindow.get());
+    juce::MessageManager::callAsync ([window] { if (window != nullptr) window->toFront (true); });
 }
 
 void KlangorbitEditor::showMappingClicked()
@@ -775,6 +788,29 @@ void KlangorbitEditor::showMappingClicked()
 
     mappingWindow->setVisible (true); // in case a previous close just hid it
     mappingWindow->toFront (true);
+    // Deferred second attempt: the host's own window can still win the
+    // initial ordering race in some DAWs (Reaper, per a user report) even
+    // with MappingWindow's own setAlwaysOnTop(true) -- re-asserting
+    // toFront() one message-loop iteration later, after the OS has fully
+    // realized the window's peer, reliably wins where the synchronous call
+    // right above sometimes doesn't. SafePointer, not a raw pointer -- see
+    // showHelpClicked()'s identical pattern for why.
+    juce::Component::SafePointer<MappingWindow> window (mappingWindow.get());
+    juce::MessageManager::callAsync ([window] { if (window != nullptr) window->toFront (true); });
+}
+
+void KlangorbitEditor::showOutputClicked()
+{
+    if (outputWindow == nullptr)
+        outputWindow = std::make_unique<OutputWindow> (audioProcessor); // constructor already makes it visible
+
+    outputWindow->setVisible (true); // in case a previous close just hid it
+    outputWindow->refreshFromModel(); // pick up any change made elsewhere (e.g. a preset load) since it was last shown
+    outputWindow->toFront (true);
+    // Deferred second attempt -- see showMappingClicked()'s identical
+    // comment for why, and why SafePointer rather than a raw pointer.
+    juce::Component::SafePointer<OutputWindow> window (outputWindow.get());
+    juce::MessageManager::callAsync ([window] { if (window != nullptr) window->toFront (true); });
 }
 
 void KlangorbitEditor::showPresetError (const juce::String& title, const juce::String& message)

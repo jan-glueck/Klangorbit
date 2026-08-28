@@ -126,15 +126,20 @@ void ObjectListPanel::resized()
 {
     auto bounds = getLocalBounds();
     titleLabel.setBounds (bounds.removeFromTop (headerHeight));
-
-    // + Object / - Remove Object, stacked full-width -- side by side
-    // doesn't reliably fit both labels in this panel's narrow width
-    // (objectListWidth, see PluginEditor.h).
-    auto buttonArea = bounds.removeFromTop (2 * addRemoveButtonHeight + UiSpacing::xs).reduced (sidePadding, 0);
-    addButton.setBounds (buttonArea.removeFromTop (addRemoveButtonHeight));
-    buttonArea.removeFromTop (UiSpacing::xs);
-    removeButton.setBounds (buttonArea.removeFromTop (addRemoveButtonHeight));
     bounds.removeFromTop (UiSpacing::xs);
+
+    // "+"/"-" side by side, one row -- short enough now (see the class
+    // comment on why they're bare symbols, not "+ Object"/"- Remove
+    // Object") to fit comfortably even in this panel's narrow width.
+    auto buttonArea = bounds.removeFromTop (addRemoveButtonHeight).reduced (sidePadding, 0);
+    const int buttonWidth = (buttonArea.getWidth() - UiSpacing::xs) / 2;
+    addButton.setBounds (buttonArea.removeFromLeft (buttonWidth));
+    buttonArea.removeFromLeft (UiSpacing::xs);
+    removeButton.setBounds (buttonArea);
+
+    // Explicit spacer/padding before the object row list -- see
+    // addRemoveToListGap's own comment.
+    bounds.removeFromTop (addRemoveToListGap);
 
     bounds.removeFromLeft (sidePadding);
     bounds.removeFromRight (sidePadding);

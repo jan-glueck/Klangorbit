@@ -1409,6 +1409,16 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     always-finite behavior (30/30 checks passing).
 
 ### Changed
+- **Object list's add/remove buttons unified to bare "+"/"-", side by
+  side in one row, with an explicit spacer before the object row list.**
+  Follow-up to the toolbar-relocation entry below: "+ Object"/
+  "- Remove Object" were two differently-phrased labels for what's
+  really one symmetric pair of actions, and didn't fit side by side at
+  their old lengths (hence the earlier stacked layout) -- bare symbols
+  read as a matched pair and fit comfortably in one row in this panel's
+  narrow width. `ObjectListPanel::addRemoveToListGap` (new, 14px) adds
+  visible breathing room between that row and the object rows below it,
+  instead of the list starting right under the buttons.
 - **Toolbar simplified to a single row; "+ Object"/"- Remove Object" and
   the "Objects: N / M" count moved to the object list sidebar.**
   `KlangorbitEditor::toolbarHeight` reduced from 76 (two rows) to 38 (one)

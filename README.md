@@ -116,17 +116,43 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . --config Release
 ```
 
-Result: `Klangorbit.vst3` and the standalone app in the build directory
-(`Klangorbit_artefacts/`). The VST3 is also automatically copied to the
-system plugin folder (`COPY_PLUGIN_AFTER_BUILD TRUE`).
+Result: `Klangorbit.vst3`, `Klangorbit.component` (AU, macOS only), and the
+standalone app in the build directory (`Klangorbit_artefacts/`). The VST3
+is automatically copied to the system plugin folder
+(`COPY_PLUGIN_AFTER_BUILD TRUE`, `VST3_COPY_DIR` overridden to the
+system-wide `/Library/Audio/Plug-Ins/VST3` -- world-writable on this Mac,
+no sudo needed); the AU component copies to the standard per-user
+`~/Library/Audio/Plug-Ins/Components/` (JUCE's own default -- the
+system-wide Components folder is root-owned/not world-writable on this
+Mac, unlike the VST3 one, so a per-user install avoids needing sudo).
+Logic Pro/GarageBand/other AU hosts scan both locations.
+
+AU format: classic AU v2 (Component Manager, `.component` bundle) --
+deliberately NOT AUv3 (a different, app-extension-based packaging model,
+unneeded for a Mac-only, non-sandboxed plugin like this one). Registers as
+a "Music Effect" (`kAudioUnitType_MusicEffect`, 4-char type `aumf`) --
+JUCE infers this automatically from `NEEDS_MIDI_INPUT TRUE` + `IS_SYNTH
+FALSE` (an audio effect that also accepts MIDI, matching the Mappings/
+MIDI-CC control surface -- see "Controller mapping"/"MIDI / OSC control"
+below), set explicitly in `CMakeLists.txt` (`AU_MAIN_TYPE`) rather than
+left as an undocumented inferred default. Validated with Apple's own
+`auval` tool after every build touching the AU target:
+```bash
+auval -v aumf Klor Jgck
+```
+(`Klor`/`Jgck` are this plugin's `PLUGIN_CODE`/`PLUGIN_MANUFACTURER_CODE`
+from `CMakeLists.txt`.) `auval` isn't run automatically as part of the
+CMake build -- run it manually after building/reinstalling the AU, or
+whenever `Klangorbit_AU` changes.
 
 App/plugin icon and vendor name: `Assets/AppIcon.png` (1024x1024, source
-vector at `Assets/AppIcon.svg`) is baked into a proper `.icns` for both the
-Standalone `.app` and the VST3 bundle at build time by JUCE's own icon
+vector at `Assets/AppIcon.svg`) is baked into a proper `.icns` for the
+Standalone `.app`, VST3, and AU bundles at build time by JUCE's own icon
 tooling (`ICON_BIG`/`ICON_SMALL` in `CMakeLists.txt`) -- the `.icns` itself
 isn't checked in, it's regenerated every build. `COMPANY_NAME "Jan Glueck"`
-in the same `juce_add_plugin()` call is what a host like Reaper shows as
-the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
+in the same `juce_add_plugin()` call is what a host like Reaper/Logic shows
+as the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`/the
+AU's "Manufacturer String").
 
 ## Testing with Reaper + SPARTA/IEM
 

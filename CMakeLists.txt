@@ -109,7 +109,22 @@ juce_add_plugin(Klangorbit
     # future edits; the .icns itself is baked at build time, not checked in.
     ICON_BIG "${CMAKE_SOURCE_DIR}/Assets/AppIcon.png"
     ICON_SMALL "${CMAKE_SOURCE_DIR}/Assets/AppIcon.png"
-    FORMATS VST3 Standalone
+    # Classic AU (Component Manager, .component bundle) for Logic Pro/
+    # GarageBand/other AU hosts, alongside the existing VST3/Standalone --
+    # NOT AUv3 (a completely different app-extension packaging model,
+    # unneeded here). "Music Effect" (aumf), not plain "Effect" (aufx):
+    # NEEDS_MIDI_INPUT TRUE + IS_SYNTH FALSE above already makes JUCE infer
+    # this exact category by default (see JUCEUtils.cmake's own AU_MAIN_TYPE
+    # inference) -- set explicitly here so the choice is documented rather
+    # than relying on an inferred default a reader would have to trace
+    # through JUCE's own CMake logic to discover. AU components are
+    # installed to the per-user ~/Library/Audio/Plug-Ins/Components/ (JUCE's
+    # own default, no override here) -- Logic scans both the per-user and
+    # system-wide Components folders, and unlike VST3_COPY_DIR's system-wide
+    # override above, the system folder here is root-owned/not
+    # world-writable on this Mac, so a per-user install avoids needing sudo.
+    AU_MAIN_TYPE "kAudioUnitType_MusicEffect"
+    FORMATS VST3 Standalone AU
     PRODUCT_NAME "Klangorbit"
 )
 

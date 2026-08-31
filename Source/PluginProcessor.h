@@ -6,6 +6,8 @@
 #include "TrajectoryEngine.h"
 #include "AmbisonicsEncoder.h"
 #include "AmbisonicsDecoder.h"
+#include "HrtfDataset.h"
+#include "BinauralDecoder.h"
 #include "PropagationProcessor.h"
 #include "GrainCloud.h"
 #include "ParameterRegistry.h"
@@ -138,6 +140,34 @@ public:
     // CircularArray later reuses whatever count was last configured.
     int getCircularArraySpeakerCount() const { return decoder.getCircularArraySpeakerCount(); }
     void setCircularArraySpeakerCount (int n);
+
+    // --- Binaural (HRTF) dataset selection --------------------------------
+    // Only meaningful while getDecoderMode() == Mode::Binaural -- stored
+    // regardless of the current mode (same "remember it for later" pattern
+    // as circularSpeakerCount above), so switching into Binaural later
+    // reuses whatever was last configured. Kemar/SadieD1 are bundled (see
+    // BinaryData::kemar_44100_sofa/sadie_d1_44100_sofa, written once to a
+    // cached temp file since libmysofa needs a real filesystem path, see
+    // the .cpp); CustomFile is loaded from a user-chosen SOFA file via
+    // loadCustomSofaFile(). "A as default, B as an additional option" --
+    // see the original decoder-feature brief.
+    enum class BinauralDatasetSource { Kemar, SadieD1, CustomFile };
+    BinauralDatasetSource getBinauralDatasetSource() const { return binauralDatasetSource; }
+    // Switches the active dataset and rebuilds binauralDecoder's decode
+    // matrix/convolution engines immediately (same "rebuild now, not per
+    // block" idiom as setDecoderMode()/setCircularArraySpeakerCount()). A
+    // no-op if newSource == CustomFile and no custom file has been loaded
+    // yet (see loadCustomSofaFile()) -- falls back to leaving whatever
+    // dataset was already active in place rather than silently going
+    // silent.
+    void setBinauralDataset (BinauralDatasetSource newSource);
+    // Loads `file` as the custom dataset, switches to it immediately (as
+    // if setBinauralDataset(CustomFile) had just been called), and returns
+    // whether it loaded successfully -- false leaves the previously active
+    // dataset (bundled or a prior custom file) untouched and unswitched,
+    // so a bad file the user picks never silences the plugin.
+    bool loadCustomSofaFile (const juce::File& file);
+    juce::File getCustomSofaFilePath() const { return customSofaFilePath; }
 
     // --- Parameter registry ----------------------------------------------
     // See ParameterRegistry.h for what this is/isn't. Built once at
@@ -316,6 +346,30 @@ private:
     TrajectoryEngine trajectoryEngine { numLiveInputs, grainPoolSizePerCloud };
     AmbisonicsEncoder encoder;
     AmbisonicsDecoder decoder;
+
+    // --- Binaural (HRTF) decode path -------------------------------------
+    // See setBinauralDataset()/loadCustomSofaFile() above. kemarDataset/
+    // sadieDataset load once from the bundled BinaryData in the
+    // constructor (message thread, see the .cpp); customDataset loads
+    // on demand from loadCustomSofaFile(). binauralDecoder.prepare() is
+    // called from setBinauralDataset()/loadCustomSofaFile()/prepareToPlay()
+    // -- message thread only, matches BinauralDecoder::prepare()'s own
+    // "not real-time-safe" contract; binauralDecoder.decode() is the only
+    // one of these ever called from processBlock()/the audio thread.
+    HrtfDataset kemarDataset, sadieDataset, customDataset;
+    BinauralDecoder binauralDecoder;
+    BinauralDatasetSource binauralDatasetSource = BinauralDatasetSource::Kemar;
+    // BinaryData::kemar_44100_sofa/sadie_d1_44100_sofa written here once
+    // (constructor) -- libmysofa needs a real filesystem path, not
+    // in-memory data, see the .cpp's writeBinaryDataToTempFileIfNeeded().
+    juce::File kemarSofaTempFile, sadieSofaTempFile;
+    juce::File customSofaFilePath; // empty until loadCustomSofaFile() succeeds at least once
+    // (Re)loads whichever dataset binauralDatasetSource currently points
+    // at (at currentSampleRate) and rebuilds binauralDecoder from it --
+    // called from setBinauralDataset()/loadCustomSofaFile()/
+    // prepareToPlay(). Message thread only, see BinauralDecoder::prepare().
+    void prepareBinauralDecoder();
+    int currentBlockSizeSamples = 512;
 
     // See getParameterRegistry()/getSelectedObjectIndex() above. Message-
     // thread state only -- GUI selection changes, and now also read every

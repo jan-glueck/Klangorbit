@@ -190,6 +190,17 @@ per-project setting worth recalling), it should be a new, its own
 schemaVersion bump with an explicit migration decision for existing
 presets, not a silent addition.
 
+The same reasoning extends to the Binaural HRTF dataset choice
+(`KlangorbitProcessor::BinauralDatasetSource` -- KEMAR/SADIE II D1/a
+custom SOFA file, only meaningful while Output Format == Binaural): it's
+plugin-instance state exactly like the output format itself, not
+scene/composition state. A custom SOFA file path is additionally
+machine-local (a filesystem path that may not exist, or may point to a
+completely different file, on whatever machine later loads the preset) --
+another reason it doesn't belong in portable scene JSON alongside
+objects/scene settings that are meant to move freely between sessions and
+machines.
+
 ## Storage
 
 - `Presets/factory/` -- checked-in, curated example scenes. These are part

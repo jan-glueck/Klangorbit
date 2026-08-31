@@ -13,7 +13,14 @@ OutputWindow::OutputWindow (KlangorbitProcessor& processorToControl)
     setUsingNativeTitleBar (true);
     setResizable (true, false);
     setContentNonOwned (&panel, false);
-    centreWithSize (460, 320);
+    // Tall enough to fit every row including the Binaural HRTF-dataset
+    // controls (only shown while Output Format == Binaural, see
+    // OutputPanel::updateBinauralRowsVisibility()) without needing a
+    // manual resize when switching into that mode -- just extra empty
+    // space below Bass Management for every other mode. Still resizable,
+    // so a user who wants it smaller for the common non-Binaural case can
+    // shrink it themselves.
+    centreWithSize (460, 490);
 
     // Always-on-top -- see MappingWindow.cpp's own comment for why (a
     // hosted VST3's auxiliary window can otherwise open behind the DAW's

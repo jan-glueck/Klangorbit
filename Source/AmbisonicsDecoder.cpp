@@ -1,5 +1,6 @@
 #include "AmbisonicsDecoder.h"
 #include "SpeakerLayouts.h"
+#include "SphericalHarmonicsUtils.h"
 #include "VBAP.h"
 #include <cmath>
 
@@ -23,99 +24,30 @@ namespace
             case Mode::Atmos5_1_4:   return SpeakerLayouts::atmos5point1point4();
             case Mode::Atmos7_1_2:   return SpeakerLayouts::atmos7point1point2();
             case Mode::Atmos7_1_4:   return SpeakerLayouts::atmos7point1point4();
-            // Raw/Stereo/circular modes have no table here -- raw isn't
-            // decoded at all; Stereo uses stereoPair() directly in
-            // buildStereoMatrix(); Octophonic/CircularArray use their own
-            // tables directly in buildCircularMatrix() (mode-matching, not
-            // AllRAD -- see the class comment) -- none of them go through
-            // this AllRAD-only helper.
+            // Raw/Stereo/Binaural/circular modes have no table here -- raw
+            // isn't decoded at all; Stereo uses stereoPair() directly in
+            // buildStereoMatrix(); Binaural never calls into this class's
+            // own decode machinery at all (see the class comment);
+            // Octophonic/CircularArray use their own tables directly in
+            // buildCircularMatrix() (mode-matching, not AllRAD -- see the
+            // class comment) -- none of them go through this AllRAD-only
+            // helper.
             case Mode::AmbisonicsRawOrder1:
             case Mode::AmbisonicsRawOrder2:
             case Mode::AmbisonicsRawOrder3:
             case Mode::Stereo:
+            case Mode::Binaural:
             case Mode::Octophonic:
             case Mode::CircularArray: return {};
         }
         return {};
     }
 
-    // Uniform-ish sphere coverage for AllRAD's virtual loudspeaker array --
-    // a Fibonacci lattice, deliberately simpler than a formal spherical
-    // t-design (which is what Zotter/Frank's own reference implementation
-    // uses) but a well-known, easy-to-verify way to get good, roughly-even
-    // coverage without needing a lookup table of precomputed t-design
-    // points. 50 points is comfortably denser than any of our target
-    // layouts (max 12 real speakers), which is what AllRAD actually needs
-    // -- the virtual array's own precision matters far less than it being
-    // dense/even enough that the VBAP remap step has good coverage to work
-    // with.
-    std::vector<Vec3> fibonacciSphere (int numPoints)
-    {
-        std::vector<Vec3> points;
-        points.reserve ((size_t) numPoints);
-        const float goldenAngle = 2.39996323f; // pi * (3 - sqrt(5))
-
-        for (int i = 0; i < numPoints; ++i)
-        {
-            const float t = (numPoints > 1) ? ((float) i / (float) (numPoints - 1)) : 0.0f;
-            const float z = 1.0f - 2.0f * t;
-            const float radius = std::sqrt (std::max (0.0f, 1.0f - z * z));
-            const float theta = goldenAngle * (float) i;
-            points.push_back ({ radius * std::cos (theta), radius * std::sin (theta), z });
-        }
-        return points;
-    }
-
-    // Legendre polynomial P_l(x) (degree l, order m=0), via Bonnet's
-    // recursion -- used only for maxReWeights() below.
-    double legendreP (int l, double x)
-    {
-        if (l == 0) return 1.0;
-        if (l == 1) return x;
-
-        double pPrev2 = 1.0, pPrev1 = x, p = x;
-        for (int n = 2; n <= l; ++n)
-        {
-            p = ((2.0 * n - 1.0) * x * pPrev1 - (n - 1.0) * pPrev2) / n;
-            pPrev2 = pPrev1;
-            pPrev1 = p;
-        }
-        return p;
-    }
-
-    // Max-rE weighting (Daniel 2003; also the standard virtual-array decode
-    // weighting in AllRAD itself, Zotter & Frank 2012 sec. 3.2): tapers
-    // down higher Ambisonics orders on the DECODE side only, trading a
-    // slightly wider main lobe for much better suppression of the
-    // reconstruction sidelobes a raw, un-windowed order-limited SH decode
-    // otherwise produces. Necessary here, not optional polish: without it,
-    // a dense virtual array's many small-but-numerous sidelobe
-    // contributions swamp the true on-axis peak once summed through the
-    // VBAP remap in buildAllRadMatrix() -- verified empirically (a
-    // straight-ahead 5.1 test source came out nearly EQUAL across all five
-    // channels without this weighting).
-    std::vector<float> maxReWeights (int order)
-    {
-        const double t = 137.9 * (juce::MathConstants<double>::pi / 180.0) / (double) (order + 2);
-        const double cosT = std::cos (t);
-
-        std::vector<float> weights ((size_t) order + 1);
-        for (int l = 0; l <= order; ++l)
-            weights[(size_t) l] = (float) legendreP (l, cosT);
-        return weights;
-    }
-
-    // Applies maxReWeights() to a full ACN-ordered coefficient vector in
-    // place -- channel c belongs to Ambisonics order l = floor(sqrt(c)),
-    // a standard property of ACN channel numbering.
-    void applyMaxReWeights (std::vector<float>& coeffs, const std::vector<float>& weights)
-    {
-        for (int c = 0; c < (int) coeffs.size(); ++c)
-        {
-            const int l = (int) std::floor (std::sqrt ((double) c) + 1.0e-9);
-            coeffs[(size_t) c] *= weights[(size_t) l];
-        }
-    }
+    // fibonacciSphere()/maxReWeights()/applyMaxReWeights() used to live
+    // here -- moved to SphericalHarmonicsUtils.h so BinauralDecoder can
+    // reuse the identical virtual-array point distribution and decode
+    // weighting instead of a second, easy-to-drift-out-of-sync copy of
+    // the same math (see that header's own class comment).
 }
 
 int AmbisonicsDecoder::numOutputChannels (Mode mode, int circularSpeakerCount)
@@ -126,6 +58,7 @@ int AmbisonicsDecoder::numOutputChannels (Mode mode, int circularSpeakerCount)
         case Mode::AmbisonicsRawOrder2: return 9;
         case Mode::AmbisonicsRawOrder3: return 16;
         case Mode::Stereo:              return 2;
+        case Mode::Binaural:            return 2;
         case Mode::Quad:                return 4;
         case Mode::Surround5_1:         return 6;
         case Mode::Surround7_1:         return 8;
@@ -149,6 +82,7 @@ int AmbisonicsDecoder::ambisonicsOrderFor (Mode mode)
         // Every decoded mode: always encode at the internal maximum for
         // best decode quality, regardless of the target speaker count.
         case Mode::Stereo:
+        case Mode::Binaural:
         case Mode::Quad:
         case Mode::Surround5_1:
         case Mode::Surround7_1:
@@ -178,6 +112,16 @@ juce::AudioChannelSet AmbisonicsDecoder::outputChannelSetFor (Mode mode, int cir
         case Mode::AmbisonicsRawOrder2: return juce::AudioChannelSet::discreteChannels (9);
         case Mode::AmbisonicsRawOrder3: return juce::AudioChannelSet::discreteChannels (16);
         case Mode::Stereo:              return juce::AudioChannelSet::stereo();
+        // Binaural also declares a plain stereo() bus -- deliberately the
+        // SAME identity as Mode::Stereo (both are, from the host's
+        // perspective, "this plugin outputs 2 channels"; which one is
+        // actually active is this plugin's own Output Format state, not
+        // something the bus layout itself needs to distinguish -- same
+        // reasoning as the existing Octophonic/CircularArray(8) overlap
+        // noted above). Safe post the isBusesLayoutSupported() fix: only
+        // the current mode's own layout is ever accepted, so two modes
+        // sharing one layout can't cause host-negotiation ambiguity.
+        case Mode::Binaural:            return juce::AudioChannelSet::stereo();
         case Mode::Quad:                return juce::AudioChannelSet::quadraphonic();
         case Mode::Surround5_1:         return juce::AudioChannelSet::create5point1();
         case Mode::Surround7_1:         return juce::AudioChannelSet::create7point1();
@@ -223,6 +167,16 @@ void AmbisonicsDecoder::setMode (Mode newMode)
     if (isRawPassthrough (mode))
     {
         decodeMatrix.clear(); // unused in this mode -- see the class comment
+        return;
+    }
+
+    if (mode == Mode::Binaural)
+    {
+        // No decode matrix here -- see the class comment. The caller
+        // (KlangorbitProcessor) is responsible for calling
+        // BinauralDecoder::prepare() when Binaural becomes active
+        // (equivalent role to this method for every other decoded mode).
+        decodeMatrix.clear();
         return;
     }
 
@@ -343,7 +297,7 @@ void AmbisonicsDecoder::buildAllRadMatrix (Mode targetMode)
     }
 
     constexpr int numVirtual = 50;
-    const auto virtualDirs = fibonacciSphere (numVirtual);
+    const auto virtualDirs = SphericalHarmonicsUtils::fibonacciSphere (numVirtual);
 
     // Ambisonics -> virtual array: a max-rE-weighted SH sampling decode
     // (decode coefficients == encode coefficients for a real SH basis,
@@ -351,7 +305,7 @@ void AmbisonicsDecoder::buildAllRadMatrix (Mode targetMode)
     // same associated-Legendre-polynomial math -- the max-rE taper is
     // applied on top, see maxReWeights()'s own comment on why it's
     // required for this two-stage decode to stay directional at all).
-    const auto reWeights = maxReWeights (shHelper.getOrder());
+    const auto reWeights = SphericalHarmonicsUtils::maxReWeights (shHelper.getOrder());
     std::vector<std::vector<float>> dVirtual (numVirtual, std::vector<float> ((size_t) numAmbiCh, 0.0f));
     for (int m = 0; m < numVirtual; ++m)
     {
@@ -359,7 +313,7 @@ void AmbisonicsDecoder::buildAllRadMatrix (Mode targetMode)
         const float el = std::asin (juce::jlimit (-1.0f, 1.0f, virtualDirs[(size_t) m].z));
         std::vector<float> coeffs;
         shHelper.computeShCoefficients (az, el, coeffs);
-        applyMaxReWeights (coeffs, reWeights);
+        SphericalHarmonicsUtils::applyMaxReWeights (coeffs, reWeights);
         dVirtual[(size_t) m] = coeffs;
     }
 
@@ -429,7 +383,7 @@ void AmbisonicsDecoder::calibrateDecodeMatrix (int numAmbiCh)
     AmbisonicsEncoder shHelper;
     shHelper.setOrder (3);
 
-    const auto testDirs = fibonacciSphere (32);
+    const auto testDirs = SphericalHarmonicsUtils::fibonacciSphere (32);
     double totalEnergy = 0.0;
 
     for (auto& dir : testDirs)

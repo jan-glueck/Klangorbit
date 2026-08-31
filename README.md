@@ -4,18 +4,19 @@ Object-based Ambisonics encoder with a trajectory/physics engine, and an
 internal decoder to a selectable output format (toolbar -> "Output..." ->
 "Output Format"): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible, order 1-3 --
 still the default, for further processing in SPARTA (AmbiBIN/AmbiDEC) or the
-IEM Plugin Suite), Stereo, Quad, 5.1, 7.1, one of four Dolby-Atmos-bed
+IEM Plugin Suite), Stereo, Binaural (HRTF-based headphone output, with a
+choice of bundled KEMAR/SADIE II datasets or a custom SOFA file -- see
+"Binaural (HRTF) output" below), Quad, 5.1, 7.1, one of four Dolby-Atmos-bed
 layouts (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a fixed, named 8-speaker
 circular array), or Circular Array (a generic circular array, adjustable
 `numSpeakers` 4-24, for array sizes that have no established naming
 convention). Not a general "decode to any speaker array" tool -- only these
 fixed target formats. See `AmbisonicsDecoder.h` and the CHANGELOG entry for
 the decode method (AllRAD for irregular layouts, plain mode-matching for the
-regular circular ones), LFE handling, and bus-layout details. Binaural
-(HRTF-based) is not implemented yet. Octophonic and Circular Array are
-horizontal-only -- a circular array of speakers cannot reproduce
-elevation/height at all, a property of the array type, not a decoder
-limitation.
+regular circular ones, HRTF convolution for Binaural), LFE handling, and
+bus-layout details. Octophonic and Circular Array are horizontal-only -- a
+circular array of speakers cannot reproduce elevation/height at all, a
+property of the array type, not a decoder limitation.
 
 The whole simulation -- physics, panning, grain spawning, everything at
 control rate -- runs from a timer owned by `KlangorbitProcessor` itself,
@@ -134,10 +135,13 @@ the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
 2. With the default Output Format (Ambisonics, Order 3, 16ch -- see the
    toolbar's "Output..." window to change it), route the output to a bus with
    AmbiBIN (SPARTA) or the IEM BinauralDecoder. Switching Output Format to
-   Stereo/Quad/5.1/7.1/an Atmos-bed variant instead sends already-decoded
-   audio straight to that many channels, no external decoder plugin needed
-   -- but changing modes live may need the plugin removed and reinserted in
-   some hosts, see the CHANGELOG.
+   Stereo/Binaural/Quad/5.1/7.1/an Atmos-bed variant instead sends
+   already-decoded audio straight to that many channels, no external decoder
+   plugin needed -- Binaural specifically does its own HRTF convolution
+   in-plugin (see "Binaural (HRTF) output" below), no external
+   AmbiBIN/BinauralDecoder needed for that path -- but changing modes live
+   may need the plugin removed and reinserted in some hosts, see the
+   CHANGELOG.
 3. Drag object 0 in the scene view with the mouse -> the position change
    should show up as a change in direction in the binaural playback.
 4. Double-clicking an object starts an orbit motion around the origin
@@ -179,6 +183,44 @@ the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`).
    same effect as clicking it in the scene, but doesn't require actually
    hitting it with the mouse. Useful once several objects are orbiting or
    flying around and one is hard to click directly.
+
+## Binaural (HRTF) output
+
+Selecting "Binaural" as the Output Format (toolbar -> "Output...") decodes
+straight to 2-channel headphone audio inside the plugin -- an HRTF
+convolution, not the same thing as the plain 2-speaker `Stereo` format
+(no HRTF/head-related processing at all). Technique: the summed Ambisonics
+bus is first decoded to a dense, 50-point virtual loudspeaker array (the
+same `SphericalHarmonicsUtils::fibonacciSphere` point distribution and
+max-rE-weighted decode AllRAD already uses for the real-speaker formats
+above), then each virtual speaker's signal is convolved through that
+direction's own measured left/right head-related impulse response
+(`juce::dsp::Convolution`, one L/R pair per virtual speaker) and summed to
+the output. See `BinauralDecoder.h` for the full two-stage breakdown and
+its own disclosed limitations (CPU cost not measured on real hardware,
+interaural delay not applied -- see "Known limitations" below).
+
+A dataset picker appears in the Output window whenever Binaural is
+selected ("HRTF Dataset"), reading HRIRs via `HrtfDataset` (a thin wrapper
+around [libmysofa](https://github.com/hoene/libmysofa), BSD-3-Clause):
+
+- **KEMAR** (default) -- Gardner & Martin, MIT Media Lab. Freely usable
+  with citation. Bundled.
+- **SADIE II -- D1 (KU100)** -- University of York, Apache License 2.0.
+  An alternative measured head (a dummy-head mannequin rather than KEMAR's
+  own). Bundled.
+- **Custom SOFA file...** -- import any AES69/SOFA-format HRTF measurement
+  of your own via "Browse...". Lets you use a personally-measured or
+  third-party HRTF instead of either bundled default.
+
+Both bundled datasets require attribution when used or redistributed --
+see `THIRD_PARTY_LICENSES.md` for the exact required text. Switching
+datasets rebuilds `binauralDecoder`'s decode matrix and all 100
+convolution engines immediately (message thread, not real-time-safe) --
+expect a brief pause, longer for SADIE II (a larger file). The choice of
+dataset is plugin-instance state, like Output Format/Bass Management --
+not saved in a preset, see "Presets" and the Known Limitations note on
+`Presets/schema/README.md`'s own reasoning for why.
 
 ## Objects, motion physics, and the parameter panel
 
@@ -910,13 +952,21 @@ Docs/WORKFLOW.md.
   not incorrect direction) below 7 speakers, since the fixed internal
   order-3 encode needs at least 7 evenly-spaced speakers for alias-free
   circular-harmonic reconstruction -- see the CHANGELOG entry.
-- **Binaural (HRTF-based) output is not implemented yet.** The chosen
-  approach (bundling SADIE II's KU100 SOFA measurement, Apache 2.0
-  licensed, plus user-supplied SOFA import) is documented in the
-  CHANGELOG but deferred to a follow-up -- needs its own SOFA parsing and
-  partitioned-convolution engine. For binaural today, use the Ambisonics
-  output format with an external decoder (SPARTA AmbiBIN, IEM
-  BinauralDecoder) as before.
+- **Binaural (HRTF-based) output's CPU cost is not measured on real
+  hardware in this environment.** `BinauralDecoder` runs 50 (virtual
+  speakers) x 2 `juce::dsp::Convolution` instances every block -- 50 was
+  chosen to match AllRAD's own already-proven virtual-array density, not
+  independently profiled. Check the toolbar's CPU meter after switching
+  to Binaural; the constant is easy to tune down in `BinauralDecoder.h`
+  if it proves too costly on real hardware.
+- **Binaural interaural delay (ITD) is not applied -- a disclosed v1
+  simplification.** `HrtfDataset::getFilter()`'s own per-ear delay
+  outputs are measured but currently discarded; only the amplitude/
+  spectral shape of each ear's HRIR is used. This mainly affects
+  precision of front-back/elevation localization cues that depend on
+  fine timing differences rather than level differences -- a future
+  enhancement would apply them as a per-speaker fractional delay before
+  convolution. See `BinauralDecoder.h`'s own comment.
 - **Air absorption is a simplified approximation, not ISO 9613-1
   accurate.** See "Acoustic propagation" above -- captures the general
   distance/humidity/temperature trends via cheap closed-form curves, not

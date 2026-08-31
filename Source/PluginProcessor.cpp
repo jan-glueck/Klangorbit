@@ -4,6 +4,7 @@
 #include "GrainDoppler.h"
 #include "MuteSoloLogic.h"
 #include "MappingProfileManager.h"
+#include "BinaryData.h"
 #include <algorithm>
 #include <cmath>
 
@@ -15,6 +16,25 @@ namespace
         distance = juce::jmax (pos.length(), 0.001f);
         azimuth  = std::atan2 (pos.y, pos.x);
         elevation = std::asin (juce::jlimit (-1.0f, 1.0f, pos.z / distance));
+    }
+
+    // Writes an embedded BinaryData asset to a cached temp file, skipping
+    // the write if a file of the expected size is already there -- avoids
+    // re-writing SADIE's ~36MB on every plugin instantiation once one
+    // instance has already written it on this machine. libmysofa needs a
+    // real filesystem path (mysofa_open takes a path, not a buffer), so
+    // the embedded bytes have to land on disk somewhere before
+    // HrtfDataset can open them -- see the class comment.
+    juce::File writeBinaryDataToTempFileIfNeeded (const char* fileName, const char* data, int size)
+    {
+        auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                        .getChildFile ("Klangorbit").getChildFile (fileName);
+        if (file.existsAsFile() && file.getSize() == (juce::int64) size)
+            return file;
+
+        file.getParentDirectory().createDirectory();
+        file.replaceWithData (data, (size_t) size);
+        return file;
     }
 
     // Maps SAPOC_DEFAULT_AMBI_ORDER to its raw-passthrough decoder mode --
@@ -42,6 +62,15 @@ KlangorbitProcessor::KlangorbitProcessor()
 {
     encoder.setOrder (SAPOC_DEFAULT_AMBI_ORDER);
     decoder.setMode (rawModeForOrder (SAPOC_DEFAULT_AMBI_ORDER));
+
+    // See writeBinaryDataToTempFileIfNeeded()'s own comment. Cheap/
+    // sample-rate-independent, so done once here rather than deferred to
+    // first Binaural use -- actually LOADING these into an HrtfDataset
+    // (sample-rate-dependent resampling) and preparing binauralDecoder
+    // from them happens lazily instead, see prepareBinauralDecoder()/
+    // setDecoderMode()/prepareToPlay().
+    kemarSofaTempFile = writeBinaryDataToTempFileIfNeeded ("kemar_44100.sofa", BinaryData::kemar_44100_sofa, BinaryData::kemar_44100_sofaSize);
+    sadieSofaTempFile = writeBinaryDataToTempFileIfNeeded ("sadie_d1_44100.sofa", BinaryData::sadie_d1_44100_sofa, BinaryData::sadie_d1_44100_sofaSize);
 
     // Only object 0 starts active (input channel 0). Further objects are
     // added via the GUI (TrajectoryEngine::activateObject()) -- the input
@@ -173,8 +202,19 @@ void KlangorbitProcessor::timerCallback()
 void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
+    currentBlockSizeSamples = samplesPerBlock;
     encoder.prepare (sampleRate, samplesPerBlock);
     decoder.prepare (sampleRate);
+
+    // Only rebuild binauralDecoder here if Binaural is actually the
+    // active mode -- reloading a dataset from disk (SADIE II is ~36MB) on
+    // every prepareToPlay() regardless of mode would add needless latency
+    // to ordinary playback start/stop for the common case where Binaural
+    // isn't even selected. If the user switches INTO Binaural later,
+    // setDecoderMode() below does this instead, at that point using
+    // whatever sampleRate/currentBlockSizeSamples is current then.
+    if (decoder.getMode() == AmbisonicsDecoder::Mode::Binaural)
+        prepareBinauralDecoder();
 
     ambiScratch.setSize (ambiScratchChannels, samplesPerBlock);
 
@@ -266,6 +306,13 @@ void KlangorbitProcessor::setDecoderMode (AmbisonicsDecoder::Mode newMode)
     encoder.setOrder (AmbisonicsDecoder::ambisonicsOrderFor (newMode));
     decoder.setMode (newMode);
 
+    // Switching INTO Binaural: (re)build binauralDecoder from whichever
+    // dataset is currently selected, at the current sampleRate/block size
+    // -- see prepareToPlay()'s own comment on why this isn't done
+    // unconditionally on every prepareToPlay() call instead.
+    if (newMode == AmbisonicsDecoder::Mode::Binaural)
+        prepareBinauralDecoder();
+
     // A changed Ambisonics order invalidates any in-flight gain ramp
     // target -- reset rather than resize-and-keep.
     for (auto& g : previousGainsPerObject)
@@ -317,6 +364,61 @@ void KlangorbitProcessor::setCircularArraySpeakerCount (int n)
         layouts.outputBuses.getReference (0) = juce::AudioChannelSet::discreteChannels (clamped);
     setBusesLayout (layouts);
     updateHostDisplay (juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged (true));
+}
+
+void KlangorbitProcessor::prepareBinauralDecoder()
+{
+    HrtfDataset* dataset = nullptr;
+    juce::File sourceFile;
+    switch (binauralDatasetSource)
+    {
+        case BinauralDatasetSource::Kemar:      dataset = &kemarDataset;  sourceFile = kemarSofaTempFile;  break;
+        case BinauralDatasetSource::SadieD1:    dataset = &sadieDataset;  sourceFile = sadieSofaTempFile;  break;
+        case BinauralDatasetSource::CustomFile: dataset = &customDataset; sourceFile = customSofaFilePath; break;
+    }
+    if (dataset == nullptr)
+        return;
+
+    // Re-opens via libmysofa at the CURRENT sampleRate every time this is
+    // called (not just once) -- HrtfDataset::load()'s own sampleRate
+    // argument is what libmysofa resamples the stored HRIRs to, so a
+    // sample-rate change requires reloading, not just re-preparing
+    // binauralDecoder against a stale resample. If this fails (or
+    // sourceFile doesn't exist yet, e.g. CustomFile before the user has
+    // picked one), dataset->isLoaded() is false and binauralDecoder.
+    // prepare() below just leaves itself unprepared -- decode() clears
+    // its output rather than crashing or playing stale data, see both
+    // classes' own comments.
+    if (sourceFile.existsAsFile())
+    {
+        juce::String error;
+        dataset->load (sourceFile, currentSampleRate, error);
+    }
+
+    binauralDecoder.prepare (*dataset, currentSampleRate, currentBlockSizeSamples);
+}
+
+void KlangorbitProcessor::setBinauralDataset (BinauralDatasetSource newSource)
+{
+    if (newSource == BinauralDatasetSource::CustomFile && ! customSofaFilePath.existsAsFile())
+        return; // no custom file loaded yet -- see the header's own comment, don't silently go silent
+    if (newSource == binauralDatasetSource)
+        return;
+
+    binauralDatasetSource = newSource;
+    prepareBinauralDecoder();
+}
+
+bool KlangorbitProcessor::loadCustomSofaFile (const juce::File& file)
+{
+    juce::String error;
+    if (! customDataset.load (file, currentSampleRate, error))
+        return false; // previously active dataset stays untouched, see the header's own comment
+
+    customSofaFilePath = file;
+    binauralDatasetSource = BinauralDatasetSource::CustomFile;
+    binauralDecoder.prepare (customDataset, currentSampleRate, currentBlockSizeSamples);
+    return true;
 }
 
 void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
@@ -561,9 +663,16 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     // Decode ambiScratch down to the real output bus -- skipped entirely
     // for raw passthrough modes, which already wrote straight into buffer
-    // above.
+    // above. Binaural is decoded via the separate binauralDecoder (HRTF
+    // convolution, not part of AmbisonicsDecoder -- see both classes' own
+    // comments), every other decoded mode via decoder.decode() as before.
     if (! rawPassthrough)
-        decoder.decode (ambiScratch, buffer, numSamples);
+    {
+        if (decoder.getMode() == AmbisonicsDecoder::Mode::Binaural)
+            binauralDecoder.decode (ambiScratch, buffer, numSamples);
+        else
+            decoder.decode (ambiScratch, buffer, numSamples);
+    }
 
     // Real, measured CPU-load estimate -- see maxConcurrentGrainsGlobal's
     // comment in the header for why this exists (128 concurrent grains is

@@ -7,6 +7,131 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Binaural (HRTF-based) headphone output, the 14th selectable Output
+  Format, closing the gap left by the original decoder-feature spec**
+  (which explicitly deferred it pending a licensing decision, see the
+  older entry below). New `Mode::Binaural` in `AmbisonicsDecoder`
+  (`AmbisonicsDecoder.h/.cpp`) represents it as a selectable format only
+  (2ch, stereo() bus, fixed order-3 encode) -- the actual decode is a
+  separate module, `BinauralDecoder` (`Source/BinauralDecoder.h/.cpp`),
+  invoked from `KlangorbitProcessor::processBlock()` instead of
+  `AmbisonicsDecoder::decode()` while this mode is active, following the
+  same "Binaural is NOT part of `AmbisonicsDecoder`" boundary that class
+  already documented (an HRTF dataset + convolution is a genuinely
+  different dependency shape, kept out of the AU-reusable decoder
+  modules).
+  - **Technique**: the same two-stage shape AllRAD already uses for the
+    irregular real-speaker layouts (Quad/5.1/7.1/Atmos-bed) -- decode the
+    Ambisonics bus to a dense, 50-point virtual loudspeaker array first
+    (`SphericalHarmonicsUtils::fibonacciSphere()`, max-rE-weighted SH
+    sampling decode -- the exact same point distribution and decode
+    weighting AllRAD uses, extracted out of `AmbisonicsDecoder.cpp`'s
+    former anonymous namespace into the new shared
+    `Source/SphericalHarmonicsUtils.h` specifically so this reuse is
+    literal code sharing, not a second hand-copied implementation that
+    could drift out of sync) -- except the second stage convolves each
+    virtual speaker's own mono signal through that direction's measured
+    left/right head-related impulse response (`juce::dsp::Convolution`,
+    one L/R pair per virtual speaker, 100 engines total) and sums to a
+    stereo output, instead of VBAP-remapping to a handful of real
+    speakers. See `BinauralDecoder.h`'s class comment for the full
+    per-block breakdown.
+  - **HRTF dataset loading**: new `Source/HrtfDataset.h/.cpp`, a thin
+    RAII wrapper around [libmysofa](https://github.com/hoene/libmysofa)
+    (`mysofa_open`/`mysofa_getfilter_float`/`mysofa_close`) -- vendored
+    via CMake `FetchContent`, pinned to `v1.3.5` (a hardening/security
+    release). One code path handles both bundled defaults and a
+    user-supplied custom file identically. Confirmed via source
+    inspection that this project's own Vec3 convention (front=+x,
+    left=+y, up=+z) matches SOFA/libmysofa's own Cartesian convention
+    exactly -- no coordinate remapping needed anywhere in the new code,
+    a direction can be passed straight through to
+    `mysofa_getfilter_float()`'s x/y/z parameters.
+  - **Two bundled datasets, both selectable via a new "HRTF Dataset"
+    picker** in the Output window (only shown while Output Format ==
+    Binaural), plus a third "Custom SOFA file..." option -- per explicit
+    direction to bundle BOTH candidate datasets as the default rather
+    than choosing one, with custom import as an ADDITIONAL option on top
+    (not instead of):
+    - **MIT KEMAR** (Gardner & Martin, MIT Media Lab) -- freely usable
+      with citation, effectively public-domain-with-attribution. 710
+      measurement positions, 44.1kHz. Default selection.
+    - **SADIE II -- subject D1 (KU100 mannequin)**, University of York --
+      Apache License 2.0 (OSI-approved, commercial-compatible), citation
+      requested (DOI 10.3390/app8112029). Sourced directly in SOFA
+      format from Zenodo record 12092466; only the 44.1kHz variant is
+      bundled (extracted from the full multi-sample-rate archive) to
+      keep the shipped size down.
+    - Both `.sofa` files are embedded via `juce_add_binary_data`
+      (`HrtfData` CMake target, JUCE's own resource-embedding mechanism
+      -- first use of it in this project) rather than shipped as loose
+      files alongside the plugin bundle, so VST3/Standalone/a future AU
+      build all behave identically with no install-time asset-location
+      logic needed. Since `libmysofa` needs a real filesystem path (not
+      an in-memory buffer), `KlangorbitProcessor` writes each bundled
+      dataset's embedded bytes to a cached temp file once (skipped on
+      subsequent instantiations if a file of the expected size is
+      already there) and opens `HrtfDataset` from that path --
+      sample-rate-dependent resampling still happens fresh in
+      `HrtfDataset::load()` itself on every prepare, only the disk-write
+      step is cached.
+    - Exact required attribution text for both datasets, plus
+      `libmysofa`'s own BSD-3-Clause notice, now lives in a new
+      `THIRD_PARTY_LICENSES.md` at the project root.
+  - **Custom SOFA import**: "Custom SOFA file..." in the dataset picker
+    opens a `juce::FileChooser` (reusing the exact pattern already used
+    for preset load/save) filtered to `*.sofa`; `KlangorbitProcessor::
+    loadCustomSofaFile()` loads it into a dedicated `HrtfDataset` and
+    switches to it immediately on success, or leaves the previously
+    active dataset untouched and shows an alert on failure -- a bad file
+    the user picks never silences the plugin.
+  - **Dataset switching** (`KlangorbitProcessor::setBinauralDataset()`/
+    `loadCustomSofaFile()`) rebuilds `BinauralDecoder`'s decode matrix
+    and all 100 convolution engines immediately, same "rebuild now, not
+    per audio block, message thread only" idiom `setMode()`/
+    `setCircularArraySpeakerCount()` already established for the other
+    decoded modes. `prepareToPlay()`/switching the Output Format into
+    Binaural both trigger this too (at whatever sampleRate/block size is
+    current then) -- deliberately NOT unconditional on every
+    `prepareToPlay()` call regardless of mode, since reloading SADIE
+    II's ~36MB from disk on every playback start/stop for hosts that do
+    that frequently would add needless latency for the common case where
+    Binaural isn't even the active format.
+  - **Disclosed limitations** (see README's "Known limitations" and
+    `BinauralDecoder.h`'s own comment): CPU cost (50 virtual speakers x
+    2 convolution engines per block) is not measured on real hardware in
+    this environment -- 50 was chosen to match AllRAD's own
+    already-proven virtual-array density, not independently profiled,
+    and is easy to tune down later if needed; interaural delay (ITD) is
+    NOT applied in this version -- `HrtfDataset::getFilter()`'s own
+    per-ear delay outputs are measured but currently discarded, only
+    each ear's amplitude/spectral HRIR shape is used, affecting
+    precision of timing-dependent localization cues (mainly front-back/
+    elevation) more than level-dependent ones.
+  - **Tests**: new `Tools/verify_binaural_decoder.cpp` (registered as
+    `verify_binaural_decoder` in CMakeLists.txt) -- loads both real
+    bundled SOFA files directly via `HrtfDataset` and sanity-checks
+    `getFilter()` at 5 known directions (correctly-sized, finite,
+    non-silent taps); separately, prepares a real `BinauralDecoder`
+    against KEMAR and asserts basic physical plausibility rather than
+    exact sample matches (matching the existing `verify_propagation`/
+    `verify_ambisonics_decoder` testing style): a hard-left source comes
+    out louder in the left output channel than the right and vice versa
+    for hard-right (interaural level difference), silence in produces
+    silence out (using a freshly-prepared decoder instance for that
+    check specifically, since `juce::dsp::Convolution` is a stateful
+    overlap-add engine and would legitimately still be finishing a decay
+    tail from a just-processed non-silent block otherwise -- not a bug),
+    and `decode()` without a successful `prepare()` is a safe no-op.
+    Deliberately tests against the REAL bundled KEMAR dataset rather
+    than a synthetic hand-built HRTF (the original plan's stated
+    approach) -- KEMAR is small enough (710 directions, ~11ms filters)
+    to `prepare()` quickly, had already been empirically confirmed to
+    load correctly via a standalone smoke test built while de-risking a
+    known libmysofa/SADIE compatibility issue (GitHub issue #42, not
+    reproduced with the pinned v1.3.5 against either bundled file), and
+    exercises the true end-to-end pipeline rather than only
+    `BinauralDecoder`'s own plumbing in isolation.
 - **Camera orientation gizmo, bottom-left of the 3D viewport.** A small
   fixed-size red/green/blue arm indicator (`KlangorbitEditor::
   drawAxisGizmo()`) showing the world X/Y/Z directions as the camera's

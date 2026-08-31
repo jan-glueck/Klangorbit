@@ -7,11 +7,10 @@ their motion emerge from that. Its output format is selectable (Output
 category, section 12): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible
 -- still the default; feed it into an external decoder such as SPARTA
 AmbiBIN/AmbiDEC or the IEM Plugin Suite), or an internally decoded Stereo,
-Quad, 5.1, 7.1, Dolby-Atmos-bed (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a
-fixed 8-speaker circular array), or Circular Array (any speaker count 4-24)
-output, no external decoder needed. Binaural (HRTF-based headphone) output
-isn't available yet -- use Ambisonics with an external binaural decoder for
-now.
+Binaural (HRTF-based headphone output, see section 12), Quad, 5.1, 7.1,
+Dolby-Atmos-bed (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a fixed 8-speaker
+circular array), or Circular Array (any speaker count 4-24) output, no
+external decoder needed.
 
 This guide covers how to use the plugin. For build instructions and
 internal architecture notes, see `README.md` in the project root.
@@ -24,7 +23,9 @@ internal architecture notes, see `README.md` in the project root.
    as you want moving sound sources (each active object consumes one
    input channel).
 2. Feed a decoder (SPARTA AmbiDEC/AmbiBIN, IEM BinauralDecoder, etc.)
-   from Klangorbit's Ambisonics output.
+   from Klangorbit's Ambisonics output -- or switch Output Format to
+   Binaural/Stereo/Quad/5.1/7.1/an Atmos-bed variant instead to skip an
+   external decoder entirely (see section 12).
 3. Open the Klangorbit editor: you'll see a 3D scene view in the middle,
    an object list on the left, a toolbar across the top, and a parameter
    panel on the right.
@@ -368,14 +369,35 @@ Chooses what the plugin's output bus actually carries -- a plugin-wide
 setting, not tied to the scene or any object, so it lives in its own
 window (toolbar -> **Output...**) rather than the parameter panel:
 
-- **Output Format** -- one of 13 mutually exclusive formats:
+- **Output Format** -- one of 14 mutually exclusive formats:
   - **Ambisonics (Order 1/2/3)** -- the original raw B-format output
     (ACN/SN3D), no decoding at all. Still the default; route it to an
     external decoder (SPARTA AmbiBIN/AmbiDEC, IEM BinauralDecoder) as
     before.
   - **Stereo** -- a plain 2-speaker decode (+-30 deg), not the same
     thing as binaural -- no HRTF/head-related processing, just two
-    virtual loudspeakers. Binaural output isn't available yet.
+    virtual loudspeakers.
+  - **Binaural** -- HRTF-based headphone output, decoded internally (no
+    external AmbiBIN/BinauralDecoder needed for this path). Technique: the
+    Ambisonics bus is decoded to a dense 50-point virtual speaker array
+    (same point distribution AllRAD uses below), then each virtual
+    speaker's signal is convolved through that direction's own measured
+    left/right head-related impulse response and summed to the output --
+    see `BinauralDecoder.h` for the full breakdown. Selecting this format
+    reveals an **HRTF Dataset** picker in the same window:
+    - **KEMAR** (default) -- Gardner & Martin, MIT Media Lab. Bundled.
+    - **SADIE II -- D1 (KU100)** -- University of York. Bundled.
+    - **Custom SOFA file...** -- import your own AES69/SOFA HRTF
+      measurement via **Browse...**.
+
+    Both bundled datasets require attribution -- see
+    `THIRD_PARTY_LICENSES.md` in the project root. Switching datasets
+    rebuilds the decoder immediately; expect a brief pause, longer for
+    SADIE II. CPU cost has not been measured on real hardware -- watch the
+    toolbar's CPU meter after switching. Interaural delay (fine timing
+    differences between the ears) is not applied in this version, only
+    each ear's amplitude/spectral HRIR shape -- see the CHANGELOG and
+    `BinauralDecoder.h`'s own comment.
   - **Quad / 5.1 / 7.1** -- standard loudspeaker layouts, ITU-R
     BS.775-4 angles.
   - **5.1.2 / 5.1.4 / 7.1.2 / 7.1.4** -- Dolby-Atmos-bed-style layouts
@@ -407,8 +429,8 @@ window (toolbar -> **Output...**) rather than the parameter panel:
   dedicated LFE signal, so this is a real, audible addition when
   enabled: a low-passed (~120Hz) version of the omnidirectional (W)
   channel is sent to the LFE channel, for the formats that have one
-  (5.1/7.1/Atmos variants -- Quad, Stereo, Octophonic, and Circular
-  Array have no LFE). Has no effect on any other format.
+  (5.1/7.1/Atmos variants -- Quad, Stereo, Binaural, Octophonic, and
+  Circular Array have no LFE). Has no effect on any other format.
 
 ## 13. Presets
 
@@ -417,8 +439,9 @@ entire scene (every active object, its mode and all parameters, scene
 settings, grains) as a `.json` file. Presets carry a schema
 version and are validated on load -- an incompatible or corrupted file
 is rejected with a clear error message instead of silently loading
-wrong. (Output Format/Bass Management are plugin-instance state, not
-part of the scene the preset saves -- see Presets/schema/README.md.)
+wrong. (Output Format/Bass Management/Binaural HRTF Dataset are
+plugin-instance state, not part of the scene the preset saves -- see
+Presets/schema/README.md.)
 
 ## 14. Keyboard shortcuts summary
 
@@ -439,7 +462,9 @@ part of the scene the preset saves -- see Presets/schema/README.md.)
 
 1. Route Klangorbit's Ambisonics output (ACN/SN3D) into a matching
    decoder (SPARTA AmbiDEC for speakers, AmbiBIN for headphones; IEM's
-   BinauralDecoder/AllRADecoder are also compatible).
+   BinauralDecoder/AllRADecoder are also compatible) -- or switch Output
+   Format to Binaural (section 12) to skip the external decoder for
+   headphone monitoring.
 2. Automate nothing in Reaper for movement -- the physics engine is the
    automation. Instead, perform gestures live (drag, throw, sling) while
    recording, or design a scene ahead of time and save it as a preset.

@@ -18,6 +18,11 @@
       +-30 degrees) -- deliberately NOT the same code path as Binaural
       (no HRTF involved at all, see the class-level note in
       PluginProcessor about why the two are kept conceptually separate).
+    - Binaural: this class only represents it as a selectable format
+      (channel count, bus layout, ambisonics order) -- setMode() stores
+      the mode and clears decodeMatrix but never calls decode() for it;
+      the actual HRTF decode lives entirely in BinauralDecoder (see that
+      class's own comment and the note below).
     - Quad/Surround5_1/Surround7_1/Atmos*: AllRAD (All-Round Ambisonic
       Decoding, Zotter & Frank 2012) -- decode to a large, densely and
       uniformly distributed VIRTUAL loudspeaker array first (a plain SH
@@ -61,6 +66,7 @@ public:
         AmbisonicsRawOrder2,
         AmbisonicsRawOrder3,
         Stereo,
+        Binaural,
         Quad,
         Surround5_1,
         Surround7_1,
@@ -154,7 +160,10 @@ public:
     // OVERWRITES destBuffer's channels (this runs once per block, after
     // every source has already been summed into ambiBuffer -- no
     // accumulation needed here, unlike AmbisonicsEncoder::encodeBlock()).
-    // Must not be called when isRawPassthrough(getMode()) is true.
+    // Must not be called when isRawPassthrough(getMode()) is true, or when
+    // getMode() == Mode::Binaural (decodeMatrix is empty in both cases --
+    // the caller (KlangorbitProcessor) calls BinauralDecoder::decode()
+    // instead for that mode, see the class comment).
     void decode (const juce::AudioBuffer<float>& ambiBuffer, juce::AudioBuffer<float>& destBuffer, int numSamples);
 
 private:

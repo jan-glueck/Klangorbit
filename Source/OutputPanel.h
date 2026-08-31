@@ -20,8 +20,10 @@ class KlangorbitProcessor;
     than duplicating those row widgets -- same reasoning MappingPanel
     already applies for its own rows.
 
-    No scrollable viewport needed (unlike ParameterPanel) -- only five
-    rows total, all fit in a fixed-size window without scrolling.
+    No scrollable viewport needed (unlike ParameterPanel) -- OutputWindow
+    is sized tall enough to fit every row, including the Binaural
+    HRTF-dataset controls that only appear while Output Format ==
+    Binaural (see updateBinauralRowsVisibility()), without scrolling.
 */
 class OutputPanel : public juce::Component
 {
@@ -41,6 +43,15 @@ public:
     void paint (juce::Graphics&) override;
 
 private:
+    // Opens the "Browse..." SOFA file picker, calls
+    // KlangorbitProcessor::loadCustomSofaFile() on the result, and updates
+    // binauralDatasetRow/binauralCustomFileLabel to match -- reverts the
+    // combo back to whatever was active before on failure (see the
+    // header's own comment on loadCustomSofaFile() never silently going
+    // silent).
+    void browseForCustomSofaFile();
+    void updateBinauralRowsVisibility();
+
     KlangorbitProcessor* decoderProcessor = nullptr;
 
     juce::Label decoderModeHintLabel;
@@ -48,6 +59,17 @@ private:
     std::unique_ptr<FloatRowComponent> circularSpeakerCountRow;
     juce::Label circularArrayHintLabel;
     std::unique_ptr<ToggleRowComponent> bassManagementRow;
+
+    // Only shown while Output Format == Binaural -- see
+    // updateBinauralRowsVisibility(). "A (KEMAR/SADIE) as default, B
+    // (custom SOFA import) as an additional option" -- see the CHANGELOG
+    // entry for this feature and THIRD_PARTY_LICENSES.md for the required
+    // attribution both bundled datasets carry.
+    std::unique_ptr<ComboRowComponent> binauralDatasetRow;
+    juce::TextButton binauralBrowseButton { "Browse for custom SOFA file..." };
+    juce::Label binauralCustomFileLabel;
+    juce::Label binauralHintLabel;
+    std::unique_ptr<juce::FileChooser> fileChooser;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OutputPanel)
 };

@@ -32,19 +32,22 @@ OutputPanel::OutputPanel()
     decoderModeRow->combo.addItem ("Ambisonics (Order 2, 9ch)", 2);
     decoderModeRow->combo.addItem ("Ambisonics (Order 3, 16ch)", 3);
     decoderModeRow->combo.addItem ("Stereo", 4);
-    decoderModeRow->combo.addItem ("Quad", 5);
-    decoderModeRow->combo.addItem ("5.1", 6);
-    decoderModeRow->combo.addItem ("7.1", 7);
-    decoderModeRow->combo.addItem ("5.1.2 (Atmos)", 8);
-    decoderModeRow->combo.addItem ("5.1.4 (Atmos)", 9);
-    decoderModeRow->combo.addItem ("7.1.2 (Atmos)", 10);
-    decoderModeRow->combo.addItem ("7.1.4 (Atmos)", 11);
-    decoderModeRow->combo.addItem ("Octophonic (8ch circular)", 12);
-    decoderModeRow->combo.addItem ("Circular Array (adjustable)", 13);
+    decoderModeRow->combo.addItem ("Binaural (HRTF, 2ch)", 5);
+    decoderModeRow->combo.addItem ("Quad", 6);
+    decoderModeRow->combo.addItem ("5.1", 7);
+    decoderModeRow->combo.addItem ("7.1", 8);
+    decoderModeRow->combo.addItem ("5.1.2 (Atmos)", 9);
+    decoderModeRow->combo.addItem ("5.1.4 (Atmos)", 10);
+    decoderModeRow->combo.addItem ("7.1.2 (Atmos)", 11);
+    decoderModeRow->combo.addItem ("7.1.4 (Atmos)", 12);
+    decoderModeRow->combo.addItem ("Octophonic (8ch circular)", 13);
+    decoderModeRow->combo.addItem ("Circular Array (adjustable)", 14);
     decoderModeRow->onSelected = [this] (int index)
     {
         if (decoderProcessor != nullptr)
             decoderProcessor->setDecoderMode ((AmbisonicsDecoder::Mode) index);
+        updateBinauralRowsVisibility();
+        resized();
     };
     addAndMakeVisible (*decoderModeRow);
 
@@ -83,6 +86,49 @@ OutputPanel::OutputPanel()
             decoderProcessor->setBassManagementEnabled (v);
     };
     addAndMakeVisible (*bassManagementRow);
+
+    // Only shown while Output Format == Binaural -- see
+    // updateBinauralRowsVisibility(). Order matches
+    // KlangorbitProcessor::BinauralDatasetSource exactly, same
+    // position-cast-to-enum idiom as decoderModeRow above.
+    binauralDatasetRow = std::make_unique<ComboRowComponent> ("HRTF Dataset");
+    binauralDatasetRow->combo.addItem ("KEMAR (MIT Media Lab)", 1);
+    binauralDatasetRow->combo.addItem ("SADIE II -- D1, KU100 (University of York)", 2);
+    binauralDatasetRow->combo.addItem ("Custom SOFA file...", 3);
+    binauralDatasetRow->onSelected = [this] (int index)
+    {
+        if (decoderProcessor == nullptr)
+            return;
+
+        using Source = KlangorbitProcessor::BinauralDatasetSource;
+        if (index == (int) Source::CustomFile)
+        {
+            // Selecting "Custom..." always opens the picker (even if a
+            // custom file is already loaded) -- lets the user swap to a
+            // different custom file without a separate control. Reverts
+            // the combo to whatever dataset is actually active if the
+            // user cancels, see browseForCustomSofaFile().
+            browseForCustomSofaFile();
+            return;
+        }
+
+        decoderProcessor->setBinauralDataset ((Source) index);
+    };
+    addChildComponent (*binauralDatasetRow); // hidden until Binaural is selected
+
+    binauralBrowseButton.onClick = [this] { browseForCustomSofaFile(); };
+    addChildComponent (binauralBrowseButton);
+
+    styleHintLabel (binauralCustomFileLabel, {});
+    addChildComponent (binauralCustomFileLabel);
+
+    styleHintLabel (binauralHintLabel,
+                     "KEMAR: Gardner & Martin, MIT Media Lab. SADIE II D1: "
+                     "University of York, CC BY-SA / Apache 2.0. See "
+                     "THIRD_PARTY_LICENSES.md for the full required "
+                     "attribution. Switching datasets rebuilds the decoder "
+                     "-- a brief pause is expected, longer for SADIE II.");
+    addChildComponent (binauralHintLabel);
 }
 
 void OutputPanel::setProcessor (KlangorbitProcessor* proc)
@@ -98,6 +144,61 @@ void OutputPanel::refreshFromModel()
     decoderModeRow->combo.setSelectedItemIndex ((int) decoderProcessor->getDecoderMode(), juce::dontSendNotification);
     circularSpeakerCountRow->setValueQuiet ((float) decoderProcessor->getCircularArraySpeakerCount());
     bassManagementRow->setValueQuiet (decoderProcessor->isBassManagementEnabled());
+
+    binauralDatasetRow->combo.setSelectedItemIndex ((int) decoderProcessor->getBinauralDatasetSource(), juce::dontSendNotification);
+    const auto customFile = decoderProcessor->getCustomSofaFilePath();
+    binauralCustomFileLabel.setText (customFile.existsAsFile()
+                                          ? "Custom file: " + customFile.getFileName()
+                                          : "No custom SOFA file loaded yet.",
+                                      juce::dontSendNotification);
+    updateBinauralRowsVisibility();
+    resized();
+}
+
+void OutputPanel::updateBinauralRowsVisibility()
+{
+    const bool isBinaural = decoderProcessor != nullptr
+        && decoderProcessor->getDecoderMode() == AmbisonicsDecoder::Mode::Binaural;
+
+    binauralDatasetRow->setVisible (isBinaural);
+    binauralBrowseButton.setVisible (isBinaural);
+    binauralCustomFileLabel.setVisible (isBinaural);
+    binauralHintLabel.setVisible (isBinaural);
+}
+
+void OutputPanel::browseForCustomSofaFile()
+{
+    if (decoderProcessor == nullptr)
+        return;
+
+    const auto existingCustom = decoderProcessor->getCustomSofaFilePath();
+    const juce::File startDir = existingCustom.existsAsFile()
+        ? existingCustom.getParentDirectory()
+        : juce::File::getSpecialLocation (juce::File::userHomeDirectory);
+
+    fileChooser = std::make_unique<juce::FileChooser> ("Load Custom SOFA File", startDir, "*.sofa");
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this] (const juce::FileChooser& fc)
+        {
+            if (decoderProcessor == nullptr)
+                return;
+
+            const auto file = fc.getResult();
+            if (! file.existsAsFile())
+            {
+                refreshFromModel(); // user cancelled -- revert the combo to whatever's actually active
+                return;
+            }
+
+            if (! decoderProcessor->loadCustomSofaFile (file))
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                    "Could not load SOFA file",
+                    "\"" + file.getFileName() + "\" could not be opened as a SOFA (AES69) HRTF file. "
+                    "The previously active dataset is still in use.");
+
+            refreshFromModel();
+        });
 }
 
 void OutputPanel::resized()
@@ -117,6 +218,18 @@ void OutputPanel::resized()
     b.removeFromTop (UiSpacing::m);
 
     bassManagementRow->setBounds (b.removeFromTop (ToggleRowComponent::preferredHeight));
+
+    if (binauralDatasetRow->isVisible())
+    {
+        b.removeFromTop (UiSpacing::m);
+        binauralDatasetRow->setBounds (b.removeFromTop (ComboRowComponent::preferredHeight));
+        b.removeFromTop (UiSpacing::s);
+        binauralBrowseButton.setBounds (b.removeFromTop (24));
+        b.removeFromTop (UiSpacing::s);
+        binauralCustomFileLabel.setBounds (b.removeFromTop (18));
+        b.removeFromTop (UiSpacing::m);
+        binauralHintLabel.setBounds (b.removeFromTop (48));
+    }
 }
 
 void OutputPanel::paint (juce::Graphics& g)

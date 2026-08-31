@@ -117,15 +117,24 @@ cmake --build . --config Release
 ```
 
 Result: `Klangorbit.vst3`, `Klangorbit.component` (AU, macOS only), and the
-standalone app in the build directory (`Klangorbit_artefacts/`). The VST3
-is automatically copied to the system plugin folder
-(`COPY_PLUGIN_AFTER_BUILD TRUE`, `VST3_COPY_DIR` overridden to the
-system-wide `/Library/Audio/Plug-Ins/VST3` -- world-writable on this Mac,
-no sudo needed); the AU component copies to the standard per-user
-`~/Library/Audio/Plug-Ins/Components/` (JUCE's own default -- the
-system-wide Components folder is root-owned/not world-writable on this
-Mac, unlike the VST3 one, so a per-user install avoids needing sudo).
-Logic Pro/GarageBand/other AU hosts scan both locations.
+standalone app in the build directory (`Klangorbit_artefacts/`). Both the
+VST3 and the AU component are automatically copied to their system-wide
+plugin folders (`COPY_PLUGIN_AFTER_BUILD TRUE`, `VST3_COPY_DIR`/
+`AU_COPY_DIR` overridden to `/Library/Audio/Plug-Ins/VST3`/
+`/Library/Audio/Plug-Ins/Components` -- all users, root of the boot
+volume, instead of JUCE's own per-user defaults) -- but unlike the VST3
+folder, the system-wide Components folder is root-owned and NOT
+world-writable by default on a fresh macOS install, so it needs a
+one-time manual step before the AU install (the copy step below) can
+succeed without sudo:
+```bash
+sudo chmod 777 "/Library/Audio/Plug-Ins/Components"
+```
+(Same reasoning as the VST3 folder already being world-writable on this
+particular Mac -- a one-time local setup step, not something the CMake
+build does on its own.) Logic Pro/GarageBand/other AU hosts also scan the
+per-user `~/Library/Audio/Plug-Ins/Components/`, but this project
+installs system-wide only, for consistency with VST3.
 
 AU format: classic AU v2 (Component Manager, `.component` bundle) --
 deliberately NOT AUv3 (a different, app-extension-based packaging model,

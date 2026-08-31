@@ -28,11 +28,13 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   format-agnostic (see e.g. `AmbisonicsDecoder`'s and `BinauralDecoder`'s
   own "AU-reusable" design notes from earlier entries); this was purely
   a build-configuration change. `COPY_PLUGIN_AFTER_BUILD` installs the
-  `.component` to the standard per-user `~/Library/Audio/Plug-Ins/
-  Components/` (JUCE's own default, left as-is -- unlike `VST3_COPY_DIR`'s
-  system-wide override, the system-wide Components folder is root-owned/
-  not world-writable on this Mac, so a per-user install avoids needing
-  sudo; Logic scans both locations regardless). Verified with Apple's
+  `.component` to the system-wide `/Library/Audio/Plug-Ins/Components`
+  (`AU_COPY_DIR`, matching `VST3_COPY_DIR`'s own system-wide override, for
+  consistency between the two formats) -- unlike the VST3 folder, this one
+  is root-owned/not world-writable by default, so it needs a one-time
+  `sudo chmod 777 "/Library/Audio/Plug-Ins/Components"` before the install
+  step can succeed without sudo (documented in the README's Build
+  section; not something the CMake build does on its own). Verified with Apple's
   own `auval` validation tool (`auval -v aumf Klor Jgck`) -- full PASS
   across every section (default formats, required/recommended/optional/
   special properties, custom Cocoa UI, factory presets, host callbacks,

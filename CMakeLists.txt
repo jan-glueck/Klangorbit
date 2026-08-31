@@ -117,13 +117,15 @@ juce_add_plugin(Klangorbit
     # this exact category by default (see JUCEUtils.cmake's own AU_MAIN_TYPE
     # inference) -- set explicitly here so the choice is documented rather
     # than relying on an inferred default a reader would have to trace
-    # through JUCE's own CMake logic to discover. AU components are
-    # installed to the per-user ~/Library/Audio/Plug-Ins/Components/ (JUCE's
-    # own default, no override here) -- Logic scans both the per-user and
-    # system-wide Components folders, and unlike VST3_COPY_DIR's system-wide
-    # override above, the system folder here is root-owned/not
-    # world-writable on this Mac, so a per-user install avoids needing sudo.
+    # through JUCE's own CMake logic to discover.
     AU_MAIN_TYPE "kAudioUnitType_MusicEffect"
+    # Same system-wide-folder choice as VST3_COPY_DIR above, for
+    # consistency -- requires /Library/Audio/Plug-Ins/Components itself to
+    # be made world-writable first (it isn't by default, unlike the VST3
+    # folder on this Mac): `sudo chmod 777 "/Library/Audio/Plug-Ins/Components"`,
+    # a one-time manual step (not something this build/CMake does on its
+    # own -- see the README's own Build section).
+    AU_COPY_DIR "/Library/Audio/Plug-Ins/Components"
     FORMATS VST3 Standalone AU
     PRODUCT_NAME "Klangorbit"
 )

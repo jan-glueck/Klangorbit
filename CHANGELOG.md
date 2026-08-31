@@ -1719,6 +1719,37 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     result is unverified, see "Known limitations" below.
 
 ### Fixed
+- **Reaper (and potentially other hosts) could permanently negotiate the
+  plugin's output down to plain Stereo (2ch) regardless of the selected
+  Output Format, reported as "no audio" and "only 2 channels" in both
+  Reaper and the Standalone app.** `isBusesLayoutSupported()` used to
+  accept ALL 13 of `AmbisonicsDecoder::Mode`'s output layouts as valid
+  (deliberately, so a host could switch modes via its own native bus-
+  negotiation UI, not only this plugin's own "Output..." picker) --
+  the real-world consequence: some hosts probe several candidate output
+  layouts when a plugin is first inserted and simply settle on whichever
+  one gets accepted first (often plain Stereo, a common host-side
+  default probe) -- permanently stuck there regardless of which mode the
+  decoder itself, and the "Output..." window's own dropdown, actually
+  show as selected. The plugin's original single-format (Ambisonics-only)
+  version never exhibited this, for a simple reason: it only ever had
+  ONE valid layout to negotiate to, so there was no ambiguity for a host
+  to resolve incorrectly. Fixed by restricting `isBusesLayoutSupported()`
+  to accept only the CURRENTLY ACTIVE decoder mode's own layout (plus
+  the full adjustable range specifically while `CircularArray` is
+  active, since that one mode's channel count is independently
+  adjustable via `setCircularArraySpeakerCount()`) -- restores the
+  original "exactly one valid layout at a time" guarantee.
+  `setDecoderMode()`'s own in-plugin mode switching still works
+  unaffected: it calls `decoder.setMode(newMode)` BEFORE calling
+  `setBusesLayout()`, so by the time that call's internal validation
+  reaches `isBusesLayoutSupported()`, `decoder.getMode()` already equals
+  the new mode being requested -- the layout being requested and the
+  "currently active" mode this function now checks against agree. Not
+  independently unit-tested (host bus-negotiation behavior isn't
+  something a headless test can exercise) -- confirmed fixed by the
+  reporting user directly in Reaper (fresh plugin instance after
+  rebuilding correctly showed and used all 16 Ambisonics channels).
 - **The Mappings window (and, latently, Help) could open behind the
   host's own window when hosted as a VST3, with no way to reach it**
   (reported in Reaper). A newly created `juce::DocumentWindow` from

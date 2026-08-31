@@ -217,39 +217,45 @@ void KlangorbitProcessor::releaseResources() {}
 
 bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    // Input is always the fixed live-input bus. Output must match one of
-    // AmbisonicsDecoder::Mode's fixed target formats -- not the CURRENTLY
-    // active mode specifically, but any of them, so a host can propose
-    // switching modes via the normal checkBusesLayoutSupported/
-    // setBusesLayout negotiation (see setDecoderMode()'s own comment on
-    // why a plugin-initiated switch alone isn't reliably enough in every
-    // host).
+    // Input is always the fixed live-input bus.
     if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::discreteChannels (numLiveInputs))
         return false;
 
     const auto outSet = layouts.getMainOutputChannelSet();
-    using Mode = AmbisonicsDecoder::Mode;
-    static constexpr Mode fixedModes[] = {
-        Mode::AmbisonicsRawOrder1, Mode::AmbisonicsRawOrder2, Mode::AmbisonicsRawOrder3,
-        Mode::Stereo, Mode::Quad, Mode::Surround5_1, Mode::Surround7_1,
-        Mode::Atmos5_1_2, Mode::Atmos5_1_4, Mode::Atmos7_1_2, Mode::Atmos7_1_4,
-        Mode::Octophonic,
-    };
-    for (auto m : fixedModes)
-        if (outSet == AmbisonicsDecoder::outputChannelSetFor (m))
-            return true;
 
-    // CircularArray: any channel count in its supported range, since the
-    // user picks numSpeakers independently of selecting the mode itself
-    // (see setCircularArraySpeakerCount()). Note this range includes 8,
-    // which is ALSO Octophonic's own (fixed) channel count -- an
-    // accepted, documented overlap, see AmbisonicsDecoder::
-    // outputChannelSetFor()'s own comment.
-    for (int n = AmbisonicsDecoder::minCircularSpeakers; n <= AmbisonicsDecoder::maxCircularSpeakers; ++n)
-        if (outSet == juce::AudioChannelSet::discreteChannels (n))
-            return true;
+    // Output must match the CURRENTLY ACTIVE decoder mode's layout --
+    // NOT any of AmbisonicsDecoder::Mode's other fixed target formats.
+    // This used to accept all 13 (deliberately, so a host could switch
+    // modes via its own native bus-negotiation UI instead of only this
+    // plugin's own "Output..." picker) -- reverted after a real-world
+    // regression: some hosts (confirmed: Reaper) probe several candidate
+    // layouts on first insertion and simply settle on whichever one this
+    // function accepts first (often plain Stereo, a common host-side
+    // default probe), permanently stuck there regardless of which mode
+    // the decoder itself -- and the "Output..." window's own dropdown --
+    // actually show as selected. Accepting only the current mode's own
+    // layout closes that gap: a host has exactly one valid layout to
+    // negotiate to, the same "no ambiguity" guarantee the plugin's
+    // original single-format (Ambisonics-only) version always had, which
+    // never exhibited this symptom. setDecoderMode() switching modes
+    // still works from OUR OWN UI: it calls decoder.setMode(newMode)
+    // BEFORE calling setBusesLayout() below, so by the time that call's
+    // internal validation reaches this function, decoder.getMode()
+    // already equals the NEW mode -- the layout being requested and the
+    // "currently active" mode this function checks against agree.
+    if (decoder.getMode() == AmbisonicsDecoder::Mode::CircularArray)
+    {
+        // CircularArray's own channel count is independently adjustable
+        // (setCircularArraySpeakerCount()) without a decoder mode change,
+        // so accept any count in its supported range while this mode is
+        // active, not just the exact count currently configured.
+        for (int n = AmbisonicsDecoder::minCircularSpeakers; n <= AmbisonicsDecoder::maxCircularSpeakers; ++n)
+            if (outSet == juce::AudioChannelSet::discreteChannels (n))
+                return true;
+        return false;
+    }
 
-    return false;
+    return outSet == AmbisonicsDecoder::outputChannelSetFor (decoder.getMode());
 }
 
 void KlangorbitProcessor::setDecoderMode (AmbisonicsDecoder::Mode newMode)

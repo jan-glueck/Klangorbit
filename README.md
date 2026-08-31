@@ -154,6 +154,27 @@ from `CMakeLists.txt`.) `auval` isn't run automatically as part of the
 CMake build -- run it manually after building/reinstalling the AU, or
 whenever `Klangorbit_AU` changes.
 
+AU input bus flexibility: unlike VST3/Standalone (still a fixed 8-channel
+discrete "Live Inputs" bus, matching the existing Reaper workflow), the AU
+build's input bus accepts Mono, Stereo, Quad, or 7.1 (1/2/4/8 channels) --
+whichever matches the Logic track/bus you insert Klangorbit on, negotiated
+automatically by Logic itself, no in-plugin control. This exists because
+Logic filters which tracks a plugin can even be inserted on by channel
+format, and the plugin's original fixed 8-discrete-channel bus matched
+none of Logic's standard track types -- see the CHANGELOG entry for the
+full diagnosis (via JUCE's own AU wrapper source) and why this is
+input-side-only (the output side stays locked to the current Output
+Format, unaffected, for the same reason the earlier Reaper bus-negotiation
+fix exists). Objects beyond the currently negotiated input channel count
+simply have no live audio (same mechanism already used for any inactive
+object). One practical consequence for Logic specifically: gravity/
+attraction between objects in DIFFERENT Klangorbit instances (e.g. one
+instance per Logic track) doesn't work -- each instance's own physics
+simulation is completely independent, with no cross-instance
+communication -- so a multi-object scene with real inter-object
+interaction still needs a single instance fed by a wide enough live-input
+bus, same as the existing Reaper workflow.
+
 App/plugin icon and vendor name: `Assets/AppIcon.png` (1024x1024, source
 vector at `Assets/AppIcon.svg`) is baked into a proper `.icns` for the
 Standalone `.app`, VST3, and AU bundles at build time by JUCE's own icon
@@ -1002,6 +1023,18 @@ Docs/WORKFLOW.md.
   fine timing differences rather than level differences -- a future
   enhancement would apply them as a per-speaker fractional delay before
   convolution. See `BinauralDecoder.h`'s own comment.
+- **Whether Logic Pro's AU host actually lets you insert a plugin whose
+  input and output channel counts differ has not been verified.** The AU
+  input-bus fix (see the CHANGELOG entry) makes Klangorbit's Mono/Stereo/
+  Quad/7.1 input formats correctly PUBLISHED (confirmed via `auval`,
+  `Reported Channel Capabilities: [1,16] [2,16] [4,16] [8,16]`) -- but
+  that only fixes the input-side FILTERING that was confirmed broken
+  (the plugin didn't show up at all before). Whether Logic's insert UI
+  then actually accepts the resulting mismatched-channel-count plugin
+  (e.g. mono-in, 16-out) on an ordinary Mono track -- this plugin's whole
+  purpose being a many-out spatializer fed by few-in live sources -- is
+  the next thing to verify empirically in Logic itself; not something
+  `auval` (or this environment, with no way to run Logic) can confirm.
 - **Air absorption is a simplified approximation, not ISO 9613-1
   accurate.** See "Acoustic propagation" above -- captures the general
   distance/humidity/temperature trends via cheap closed-form curves, not

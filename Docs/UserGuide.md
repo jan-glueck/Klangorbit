@@ -4,13 +4,13 @@ Klangorbit is an object-based Ambisonics spatializer built around a live
 physics engine: instead of automating position with envelopes or curves,
 you give sound objects mass, velocity, gravity, and momentum, and let
 their motion emerge from that. Its output format is selectable (Output
-category, section 12): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible
--- still the default; feed it into an external decoder such as SPARTA
-AmbiBIN/AmbiDEC or the IEM Plugin Suite), or an internally decoded Stereo,
-Binaural (HRTF-based headphone output, see section 12), Quad, 5.1, 7.1,
-Dolby-Atmos-bed (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a fixed 8-speaker
-circular array), or Circular Array (any speaker count 4-24) output, no
-external decoder needed.
+category, section 12): an internally decoded Stereo (the default --
+audible immediately, no external decoder needed), Binaural (HRTF-based
+headphone output, see section 12), Quad, 5.1, 7.1, Dolby-Atmos-bed
+(5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a fixed 8-speaker circular array),
+or Circular Array (any speaker count 4-24) output -- or raw Ambisonics
+B-format (ACN/SN3D, AmbiX-compatible) to feed an external decoder such as
+SPARTA AmbiBIN/AmbiDEC or the IEM Plugin Suite instead.
 
 This guide covers how to use the plugin. For build instructions and
 internal architecture notes, see `README.md` in the project root.
@@ -371,12 +371,13 @@ window (toolbar -> **Output...**) rather than the parameter panel:
 
 - **Output Format** -- one of 14 mutually exclusive formats:
   - **Ambisonics (Order 1/2/3)** -- the original raw B-format output
-    (ACN/SN3D), no decoding at all. Still the default; route it to an
-    external decoder (SPARTA AmbiBIN/AmbiDEC, IEM BinauralDecoder) as
-    before.
+    (ACN/SN3D), no decoding at all; route it to an external decoder
+    (SPARTA AmbiBIN/AmbiDEC, IEM BinauralDecoder) as before.
   - **Stereo** -- a plain 2-speaker decode (+-30 deg), not the same
     thing as binaural -- no HRTF/head-related processing, just two
-    virtual loudspeakers.
+    virtual loudspeakers. The default output format (for every plugin
+    format, not just AU) -- audible immediately, no external decoder or
+    manual switch needed.
   - **Binaural** -- HRTF-based headphone output, decoded internally (no
     external AmbiBIN/BinauralDecoder needed for this path). Technique: the
     Ambisonics bus is decoded to a dense 50-point virtual speaker array

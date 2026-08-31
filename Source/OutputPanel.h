@@ -51,6 +51,11 @@ private:
     // silent).
     void browseForCustomSofaFile();
     void updateBinauralRowsVisibility();
+    // Greys out (ComboBox::setItemEnabled, not removed) any Output Format
+    // combo item KlangorbitProcessor::isOutputModeAvailable() rejects --
+    // a no-op on VST3/Standalone (every mode always available there); see
+    // that method's own comment for the AU-specific reasoning.
+    void updateDecoderModeAvailability();
 
     KlangorbitProcessor* decoderProcessor = nullptr;
 

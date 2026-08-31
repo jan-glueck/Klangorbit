@@ -128,8 +128,24 @@ public:
     // Switches the active output format: re-orders the encoder, rebuilds
     // the decode matrix, and (best-effort) asks the host to renegotiate
     // the output bus to match -- see the .cpp for why that last part isn't
-    // guaranteed to take effect live in every host.
+    // guaranteed to take effect live in every host. A no-op (see the .cpp)
+    // if isOutputModeAvailable(newMode) is false.
     void setDecoderMode (AmbisonicsDecoder::Mode newMode);
+
+    // True for every mode when NOT running as AU (VST3/Standalone
+    // behavior is completely unchanged -- every mode has always been
+    // switchable there). For AU: false for the 5 modes that can never
+    // work in Logic (raw Ambisonics Order 1/2/3, Octophonic,
+    // CircularArray -- unnamed channel sets Logic's own layout-tag
+    // matching can't recognize, see isBusesLayoutSupported()'s own AU
+    // branch), and otherwise only true if the mode's own channel count
+    // fits within whatever output width Logic already negotiated at
+    // insertion (getTotalNumOutputChannels()) -- this plugin never asks
+    // an AU host to widen that after the fact, see setDecoderMode()'s own
+    // comment. Used both by OutputPanel (to grey out combo items) and by
+    // setDecoderMode() itself (defensive guard, in case something
+    // requests an unavailable mode some other way).
+    bool isOutputModeAvailable (AmbisonicsDecoder::Mode mode) const;
 
     bool isBassManagementEnabled() const { return decoder.isBassManagementEnabled(); }
     void setBassManagementEnabled (bool shouldBeEnabled) { decoder.setBassManagementEnabled (shouldBeEnabled); }

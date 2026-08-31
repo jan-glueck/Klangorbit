@@ -430,6 +430,24 @@ void AmbisonicsDecoder::decode (const juce::AudioBuffer<float>& ambiBuffer, juce
     if (numOut <= 0 || numAmbiCh <= 0)
         return;
 
+    // Silence any destination channels beyond this mode's own numOut, up
+    // to the buffer's actual full width -- normally a no-op (VST3/
+    // Standalone always negotiate a bus that matches numOut exactly, see
+    // KlangorbitProcessor::isBusesLayoutSupported()), but for AU the
+    // negotiated bus can be WIDER than the currently active mode's own
+    // channel count: Logic fixes the output channel count once, at
+    // insertion, and switching to a mode needing FEWER channels works
+    // within that fixed width rather than requesting a bus change (see
+    // KlangorbitProcessor::setDecoderMode()'s own AU-specific comment).
+    // Without this, those extra channels would keep whatever was last
+    // written there -- destBuffer is JUCE's shared in-place input/output
+    // buffer, not fresh memory.
+    for (int o = numOut; o < destBuffer.getNumChannels(); ++o)
+    {
+        float* dst = destBuffer.getWritePointer (o);
+        std::fill (dst, dst + numSamples, 0.0f);
+    }
+
     for (int o = 0; o < numOut; ++o)
     {
         float* dst = destBuffer.getWritePointer (o);

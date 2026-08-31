@@ -79,9 +79,6 @@ juce_add_binary_data(HrtfData
         Assets/HRTF/sadie_d1_44100.sofa
 )
 
-# --- Ambisonics order as a compile-time default ------------------------
-# Runtime switching comes later; this is just the starting value.
-set(SAPOC_DEFAULT_AMBI_ORDER 3 CACHE STRING "Default Ambisonics order")
 set(SAPOC_MAX_LIVE_INPUTS 8 CACHE STRING "Max. number of simultaneous mono live inputs / SoundObjects")
 
 juce_add_plugin(Klangorbit
@@ -132,7 +129,6 @@ juce_add_plugin(Klangorbit
 
 target_compile_definitions(Klangorbit
     PUBLIC
-        SAPOC_DEFAULT_AMBI_ORDER=${SAPOC_DEFAULT_AMBI_ORDER}
         SAPOC_MAX_LIVE_INPUTS=${SAPOC_MAX_LIVE_INPUTS}
         # Just a convenience starting folder for the preset file dialog
         # during development -- absolute path, so it only applies to local

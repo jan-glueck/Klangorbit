@@ -2,9 +2,10 @@
 
 Object-based Ambisonics encoder with a trajectory/physics engine, and an
 internal decoder to a selectable output format (toolbar -> "Output..." ->
-"Output Format"): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible, order 1-3 --
-still the default, for further processing in SPARTA (AmbiBIN/AmbiDEC) or the
-IEM Plugin Suite), Stereo, Binaural (HRTF-based headphone output, with a
+"Output Format"): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible, order 1-3,
+for further processing in SPARTA (AmbiBIN/AmbiDEC) or the
+IEM Plugin Suite), Stereo (the default -- audible immediately, no external
+decoder needed), Binaural (HRTF-based headphone output, with a
 choice of bundled KEMAR/SADIE II datasets or a custom SOFA file -- see
 "Binaural (HRTF) output" below), Quad, 5.1, 7.1, one of four Dolby-Atmos-bed
 layouts (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a fixed, named 8-speaker
@@ -154,18 +155,16 @@ from `CMakeLists.txt`.) `auval` isn't run automatically as part of the
 CMake build -- run it manually after building/reinstalling the AU, or
 whenever `Klangorbit_AU` changes.
 
-AU input bus flexibility: unlike VST3/Standalone (still a fixed 8-channel
-discrete "Live Inputs" bus, matching the existing Reaper workflow), the AU
-build's input bus accepts Mono, Stereo, Quad, or 7.1 (1/2/4/8 channels) --
-whichever matches the Logic track/bus you insert Klangorbit on, negotiated
-automatically by Logic itself, no in-plugin control. This exists because
-Logic filters which tracks a plugin can even be inserted on by channel
-format, and the plugin's original fixed 8-discrete-channel bus matched
-none of Logic's standard track types -- see the CHANGELOG entry for the
-full diagnosis (via JUCE's own AU wrapper source) and why this is
-input-side-only (the output side stays locked to the current Output
-Format, unaffected, for the same reason the earlier Reaper bus-negotiation
-fix exists). Objects beyond the currently negotiated input channel count
+AU bus flexibility (input AND output): unlike VST3/Standalone (still a
+fixed 8-channel discrete "Live Inputs" bus, matching the existing Reaper
+workflow), the AU build's input bus accepts Mono, Stereo, Quad, or 7.1
+(1/2/4/8 channels) -- whichever matches the Logic track/bus you insert
+Klangorbit on, negotiated automatically by Logic itself, no in-plugin
+control. This exists because Logic filters which tracks a plugin can even
+be inserted on by channel format, and the plugin's original fixed
+8-discrete-channel bus matched none of Logic's standard track types -- see
+the CHANGELOG entry for the full diagnosis (via JUCE's own AU wrapper
+source). Objects beyond the currently negotiated input channel count
 simply have no live audio (same mechanism already used for any inactive
 object). One practical consequence for Logic specifically: gravity/
 attraction between objects in DIFFERENT Klangorbit instances (e.g. one
@@ -174,6 +173,31 @@ simulation is completely independent, with no cross-instance
 communication -- so a multi-object scene with real inter-object
 interaction still needs a single instance fed by a wide enough live-input
 bus, same as the existing Reaper workflow.
+
+The OUTPUT side is flexible too, but works differently: Logic fixes the
+output channel COUNT once, at insertion (based on which track/bus type
+was chosen), and Klangorbit never asks to change it afterward while
+running as AU. Of the 14 Output Formats, only the 9 with both a NAMED
+channel layout and `<= 12` channels (Logic's own ceiling, 7.1.4) are ever
+usable in Logic: Stereo, Binaural, Quad, 5.1, 7.1, and the four Atmos-bed
+formats. The Output window's "Output Format" dropdown greys out
+(`ComboBox::setItemEnabled`) anything needing more channels than what
+Logic actually negotiated -- switching among the remaining, AVAILABLE
+formats works live, using fewer channels internally rather than
+requesting a different bus. Raw Ambisonics (Order 1/2/3), Octophonic, and
+CircularArray are never available in AU at all (unnamed channel sets
+Logic's own layout-tag matching can't recognize, and Order 3 alone
+already exceeds the 12-channel ceiling) -- see `KlangorbitProcessor::
+isOutputModeAvailable()` and the CHANGELOG entry for the full reasoning,
+including why this design was chosen specifically to avoid repeating the
+Reaper bus-negotiation regression noted above.
+
+Every format -- AU, VST3, and Standalone alike -- now starts up in Stereo
+output rather than raw Ambisonics B-format (see the CHANGELOG entry): a
+real behavior change for existing Reaper/Standalone sessions built around
+the old raw-Ambisonics-by-default startup state. Switch Output Format
+back to an Ambisonics order manually if that's what you need; it's still
+fully supported, just no longer the default.
 
 App/plugin icon and vendor name: `Assets/AppIcon.png` (1024x1024, source
 vector at `Assets/AppIcon.svg`) is baked into a proper `.icns` for the
@@ -1023,18 +1047,18 @@ Docs/WORKFLOW.md.
   fine timing differences rather than level differences -- a future
   enhancement would apply them as a per-speaker fractional delay before
   convolution. See `BinauralDecoder.h`'s own comment.
-- **Whether Logic Pro's AU host actually lets you insert a plugin whose
-  input and output channel counts differ has not been verified.** The AU
-  input-bus fix (see the CHANGELOG entry) makes Klangorbit's Mono/Stereo/
-  Quad/7.1 input formats correctly PUBLISHED (confirmed via `auval`,
-  `Reported Channel Capabilities: [1,16] [2,16] [4,16] [8,16]`) -- but
-  that only fixes the input-side FILTERING that was confirmed broken
-  (the plugin didn't show up at all before). Whether Logic's insert UI
-  then actually accepts the resulting mismatched-channel-count plugin
-  (e.g. mono-in, 16-out) on an ordinary Mono track -- this plugin's whole
-  purpose being a many-out spatializer fed by few-in live sources -- is
-  the next thing to verify empirically in Logic itself; not something
-  `auval` (or this environment, with no way to run Logic) can confirm.
+- **The full AU experience in Logic Pro's actual insert UI has not been
+  verified end-to-end.** Both the input-side (Mono/Stereo/Quad/7.1) and
+  output-side (the 9 Logic-viable Output Formats, greyed appropriately)
+  bus flexibility are confirmed correct at the AU-protocol level (`auval
+  -v aumf Klor Jgck`, full PASS, `Reported Channel Capabilities` showing
+  the complete 4x6 = 24-pair cross product) -- but whether Logic's own
+  insert UI actually offers/accepts Klangorbit cleanly across every
+  track/bus type, whether the Output Format dropdown's greying reads
+  correctly against a real negotiated bus, and whether switching between
+  AVAILABLE formats behaves as expected live in Logic, still needs
+  hands-on testing in Logic itself; not something `auval` (or this
+  environment, with no way to run Logic) can confirm.
 - **Air absorption is a simplified approximation, not ISO 9613-1
   accurate.** See "Acoustic propagation" above -- captures the general
   distance/humidity/temperature trends via cheap closed-form curves, not

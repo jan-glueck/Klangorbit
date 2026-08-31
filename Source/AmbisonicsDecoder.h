@@ -78,6 +78,14 @@ public:
         CircularArray, // generic N-channel regular circular array, see setCircularArraySpeakerCount()
     };
 
+    // Total number of Mode values (14) -- single source of truth for
+    // anything that needs to iterate every mode by its 0-based position
+    // (e.g. OutputPanel's combo item IDs, which are position+1; see
+    // KlangorbitProcessor::isOutputModeAvailable()/OutputPanel's own
+    // graying loop). Kept here, not re-derived, so a future added/removed
+    // Mode can't silently desync from a hardcoded count elsewhere.
+    static constexpr int numModes = 14;
+
     // Bounds for CircularArray's speaker count -- below 4 isn't a
     // meaningful "array" (2-3 points aren't circular so much as
     // degenerate VBAP-pair cases already covered by Stereo/other modes);

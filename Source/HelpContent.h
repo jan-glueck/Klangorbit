@@ -20,11 +20,11 @@ Klangorbit is an object-based Ambisonics spatializer driven by a live
 physics engine: give sound objects mass, velocity, gravity, and
 momentum, and let their motion emerge from that instead of automating
 position by hand. Output format is selectable (toolbar -> Output...,
-section 11): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible --
-still the default; feed it into a decoder such as SPARTA AmbiDEC/
-AmbiBIN or the IEM Plugin Suite), or an internally decoded Stereo,
-Binaural (HRTF headphone), Quad, 5.1, 7.1, Dolby-Atmos-bed, Octophonic,
-or Circular Array output, no external decoder needed.
+section 11): an internally decoded Stereo (the default), Binaural (HRTF
+headphone), Quad, 5.1, 7.1, Dolby-Atmos-bed, Octophonic, or Circular
+Array output, no external decoder needed -- or raw Ambisonics B-format
+(ACN/SN3D, AmbiX-compatible) to feed a decoder such as SPARTA AmbiDEC/
+AmbiBIN or the IEM Plugin Suite instead.
 
 A fuller version of this guide lives in Docs/UserGuide.md in the
 project folder.
@@ -278,9 +278,9 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
 
   Output Format          one of 14 mutually exclusive formats:
                            Ambisonics Order 1/2/3 -- raw B-format, no
-                            decoding (still the default)
+                            decoding
                            Stereo -- plain 2-speaker decode, NOT
-                            binaural (no HRTF)
+                            binaural (no HRTF) -- the default
                            Binaural -- HRTF-based headphone output (a
                             dense virtual speaker array, each convolved
                             through a measured head-related impulse

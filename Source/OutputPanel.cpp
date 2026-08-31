@@ -142,6 +142,7 @@ void OutputPanel::refreshFromModel()
         return;
 
     decoderModeRow->combo.setSelectedItemIndex ((int) decoderProcessor->getDecoderMode(), juce::dontSendNotification);
+    updateDecoderModeAvailability();
     circularSpeakerCountRow->setValueQuiet ((float) decoderProcessor->getCircularArraySpeakerCount());
     bassManagementRow->setValueQuiet (decoderProcessor->isBassManagementEnabled());
 
@@ -153,6 +154,21 @@ void OutputPanel::refreshFromModel()
                                       juce::dontSendNotification);
     updateBinauralRowsVisibility();
     resized();
+}
+
+void OutputPanel::updateDecoderModeAvailability()
+{
+    if (decoderProcessor == nullptr)
+        return;
+
+    // Combo item IDs are position+1 (1-based) -- matches the exact
+    // addItem() order above and AmbisonicsDecoder::Mode's own 0-based
+    // enum order, same convention onSelected already relies on.
+    for (int id = 1; id <= AmbisonicsDecoder::numModes; ++id)
+    {
+        const auto mode = (AmbisonicsDecoder::Mode) (id - 1);
+        decoderModeRow->combo.setItemEnabled (id, decoderProcessor->isOutputModeAvailable (mode));
+    }
 }
 
 void OutputPanel::updateBinauralRowsVisibility()

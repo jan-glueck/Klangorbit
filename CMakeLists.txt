@@ -22,6 +22,63 @@ else()
     FetchContent_MakeAvailable(JUCE)
 endif()
 
+# --- libmysofa (SOFA/HRTF file reading, Source/HrtfDataset.h/.cpp) -----
+# First non-JUCE dependency in this project. BSD-3-Clause, tiny C library
+# purpose-built for exactly this (see https://github.com/hoene/libmysofa)
+# -- reading the AES69/SOFA HDF5-based file format ourselves would mean
+# reimplementing a meaningful subset of HDF5, which this library already
+# does correctly and maintains security fixes for (SOFA files can come
+# from an untrusted user via the "load custom SOFA file" import feature,
+# see OutputPanel.h -- v1.3.5 specifically hardens the parser against
+# malformed input, which is exactly the class of file this needs to
+# tolerate safely). BUILD_TESTS/BUILD_SHARED_LIBS off -- only the static
+# library is needed, no need to build or run libmysofa's own test suite
+# as part of this project's build.
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    mysofa
+    GIT_REPOSITORY https://github.com/hoene/libmysofa.git
+    GIT_TAG        v1.3.5
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(mysofa)
+
+# libmysofa's own CMakeLists.txt generates mysofa_export.h (DLL export-
+# macro header, from mysofa_export.h.in) into its OWN build directory,
+# but doesn't add that directory to mysofa-static's PUBLIC include path
+# the way it would for a full install()+find_package() consumer -- add it
+# here so `#include <mysofa.h>` (which itself #includes "mysofa_export.h")
+# resolves correctly for every target in this project that links
+# mysofa-static, without repeating this per-target. $<BUILD_INTERFACE:>
+# (not a bare PUBLIC path) specifically: mysofa-static also has its own
+# install(EXPORT ...) rule, which validates every PUBLIC include
+# directory it exports and rejects a raw path into the build tree (it
+# wouldn't exist after a real install elsewhere) -- BUILD_INTERFACE scopes
+# this to "only while building against this exact tree", matching how
+# libmysofa's own CMakeLists.txt already wraps its OTHER include
+# directories the same way, and sidesteps that validation entirely since
+# this project never runs `cmake --install` on mysofa-static anyway.
+target_include_directories(mysofa-static PUBLIC "$<BUILD_INTERFACE:${mysofa_BINARY_DIR}/src>")
+
+# --- Bundled HRTF datasets (Source/HrtfDataset.h/.cpp, Binaural output
+# mode) -- KEMAR (MIT Media Lab, freely usable with citation) and SADIE
+# II subject D1/KU100 (University of York, Apache License 2.0). See
+# THIRD_PARTY_LICENSES.md for the full attribution text both licenses
+# require. juce_add_binary_data compiles each file into a byte array
+# linked straight into the binary (JUCE's own resource-embedding
+# mechanism, already used by no other asset in this project -- Assets/
+# AppIcon.png instead goes through juce_add_plugin's own ICON_BIG/
+# ICON_SMALL baking, a completely different, icon-specific path) --
+# avoids needing to locate/ship a loose data file relative to the
+# plugin bundle at runtime, and behaves identically for VST3/Standalone/
+# a future AU build alike.
+juce_add_binary_data(HrtfData
+    SOURCES
+        Assets/HRTF/kemar_44100.sofa
+        Assets/HRTF/sadie_d1_44100.sofa
+)
+
 # --- Ambisonics order as a compile-time default ------------------------
 # Runtime switching comes later; this is just the starting value.
 set(SAPOC_DEFAULT_AMBI_ORDER 3 CACHE STRING "Default Ambisonics order")
@@ -82,6 +139,8 @@ target_sources(Klangorbit
         Source/PluginEditor.cpp
         Source/AmbisonicsEncoder.cpp
         Source/AmbisonicsDecoder.cpp
+        Source/HrtfDataset.cpp
+        Source/BinauralDecoder.cpp
         Source/VBAP.cpp
         Source/ParameterRegistry.cpp
         Source/CanonicalInput.cpp
@@ -109,6 +168,9 @@ target_sources(Klangorbit
 target_link_libraries(Klangorbit
     PRIVATE
         juce::juce_audio_utils
+        # Source/BinauralDecoder.h/.cpp -- juce::dsp::Convolution for the
+        # actual HRTF convolution (also already used by nothing else in
+        # this project, first real use of this module).
         juce::juce_dsp
         # Source/OscDriver.h/.cpp -- juce::OSCReceiver/OSCMessage.
         juce::juce_osc
@@ -116,6 +178,10 @@ target_link_libraries(Klangorbit
         # Apple's GCController/GCExtendedGamepad API. macOS-only, matching
         # this project's own scope (see PROJECT_BRIEF.md).
         "-framework GameController"
+        # Source/HrtfDataset.h/.cpp -- reads the bundled/imported SOFA
+        # files, see the FetchContent_Declare(mysofa ...) block above.
+        mysofa-static
+        HrtfData
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -528,6 +594,40 @@ target_link_libraries(verify_gamepad_driver
         # API -- same dependency the Klangorbit target itself links, see its
         # own comment.
         "-framework GameController"
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Binaural (HRTF) decoder verification ---------------------------------
+# Runs HrtfDataset (the libmysofa wrapper, Source/HrtfDataset.h/.cpp)
+# against the two real bundled SOFA files directly from Assets/HRTF/ (see
+# SAPOC_ASSETS_HRTF_DIR below -- a local-dev-only absolute path define,
+# same convention as SAPOC_PRESETS_USER_DIR etc.), and BinauralDecoder's
+# own virtual-array/convolution-summing plumbing against a synthetic,
+# hand-built HRTF (no real dataset needed for that half -- see the test
+# file's own section comments).
+juce_add_console_app(verify_binaural_decoder
+    PRODUCT_NAME "verify_binaural_decoder"
+)
+
+target_compile_definitions(verify_binaural_decoder
+    PRIVATE
+        SAPOC_ASSETS_HRTF_DIR="${CMAKE_SOURCE_DIR}/Assets/HRTF"
+)
+
+target_sources(verify_binaural_decoder
+    PRIVATE
+        Tools/verify_binaural_decoder.cpp
+        Source/HrtfDataset.cpp
+        Source/BinauralDecoder.cpp
+        Source/AmbisonicsEncoder.cpp
+)
+
+target_link_libraries(verify_binaural_decoder
+    PRIVATE
+        juce::juce_dsp
+        mysofa-static
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags

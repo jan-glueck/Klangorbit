@@ -23,9 +23,8 @@ position by hand. Output format is selectable (toolbar -> Output...,
 section 11): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible --
 still the default; feed it into a decoder such as SPARTA AmbiDEC/
 AmbiBIN or the IEM Plugin Suite), or an internally decoded Stereo,
-Quad, 5.1, 7.1, Dolby-Atmos-bed, Octophonic, or Circular Array output,
-no external decoder needed. Binaural (HRTF headphone) output isn't
-available yet.
+Binaural (HRTF headphone), Quad, 5.1, 7.1, Dolby-Atmos-bed, Octophonic,
+or Circular Array output, no external decoder needed.
 
 A fuller version of this guide lives in Docs/UserGuide.md in the
 project folder.
@@ -277,11 +276,17 @@ that object's live input. Turn on with Enabled.
 
 Plugin-wide, not tied to the scene or any object -- has its own window:
 
-  Output Format          one of 13 mutually exclusive formats:
+  Output Format          one of 14 mutually exclusive formats:
                            Ambisonics Order 1/2/3 -- raw B-format, no
                             decoding (still the default)
                            Stereo -- plain 2-speaker decode, NOT
                             binaural (no HRTF)
+                           Binaural -- HRTF-based headphone output (a
+                            dense virtual speaker array, each convolved
+                            through a measured head-related impulse
+                            response). Own HRTF Dataset picker appears
+                            below when selected -- see "Binaural HRTF
+                            Dataset" further down.
                            Quad / 5.1 / 7.1 -- standard loudspeaker
                             layouts (ITU-R BS.775-4 angles)
                            5.1.2 / 5.1.4 / 7.1.2 / 7.1.4 -- Dolby-
@@ -306,7 +311,18 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
    (LFE from W)            (~120Hz) version of the omnidirectional (W)
                           channel to the LFE channel, for formats that
                           have one (5.1/7.1/Atmos variants). No effect
-                          on Ambisonics/Stereo/Quad.
+                          on Ambisonics/Stereo/Binaural/Quad.
+  Binaural HRTF Dataset   only shown while Output Format is "Binaural":
+                           KEMAR -- MIT Media Lab, bundled, default
+                           SADIE II D1 (KU100) -- University of York,
+                            bundled, an alternative measured head
+                           Custom SOFA file... -- import your own
+                            AES69/SOFA-format HRTF measurement via
+                            "Browse..."
+                          Switching datasets rebuilds the decoder --
+                          expect a brief pause, longer for SADIE II.
+                          See THIRD_PARTY_LICENSES.md for the required
+                          attribution for both bundled datasets.
 
 
 == 12. PRESETS ==
@@ -315,8 +331,9 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
 scene (every object, mode, all parameters, scene settings, grain
 clouds) as a .json file. Presets are schema-versioned and validated on
 load -- an incompatible/corrupted file is rejected with a clear error
-instead of silently loading wrong. (Output Format/Bass Management are
-plugin-instance state, not part of what a preset saves.)
+instead of silently loading wrong. (Output Format/Bass Management/
+Binaural HRTF Dataset are plugin-instance state, not part of what a
+preset saves.)
 
 
 == 13. KEYBOARD SHORTCUTS ==

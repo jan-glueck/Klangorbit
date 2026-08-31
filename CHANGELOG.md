@@ -7,6 +7,38 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Audio Unit (AU v2) plugin format, for Logic Pro/GarageBand/other AU
+  hosts** -- `AU` added to `juce_add_plugin()`'s `FORMATS` list in
+  `CMakeLists.txt` (alongside the existing `VST3 Standalone`), producing
+  a new `Klangorbit_AU` build target and `Klangorbit.component` bundle.
+  Deliberately classic AU v2 (Component Manager), NOT AUv3 -- a
+  completely different app-extension packaging model, unneeded for a
+  Mac-only, non-sandboxed plugin distributed outside the App Store.
+  Registers as `kAudioUnitType_MusicEffect` ("Music Effect", 4-char type
+  `aumf`) -- an audio effect that also accepts MIDI, matching the
+  existing `NEEDS_MIDI_INPUT TRUE`/`IS_SYNTH FALSE` plugin
+  characteristics already declared for VST3 (the MIDI CC/Note/Pitch Bend
+  control surface via `MappingEngine`/`MidiDriver` needed this, not a
+  separate synth voice) -- JUCE would infer this exact category
+  automatically from those same two flags, set explicitly via the new
+  `AU_MAIN_TYPE` parameter instead so the choice is documented rather
+  than left as an inferred default a reader would have to trace through
+  JUCE's own CMake logic to discover. No source changes were needed --
+  every decoder/UI/driver module was already architected to be
+  format-agnostic (see e.g. `AmbisonicsDecoder`'s and `BinauralDecoder`'s
+  own "AU-reusable" design notes from earlier entries); this was purely
+  a build-configuration change. `COPY_PLUGIN_AFTER_BUILD` installs the
+  `.component` to the standard per-user `~/Library/Audio/Plug-Ins/
+  Components/` (JUCE's own default, left as-is -- unlike `VST3_COPY_DIR`'s
+  system-wide override, the system-wide Components folder is root-owned/
+  not world-writable on this Mac, so a per-user install avoids needing
+  sudo; Logic scans both locations regardless). Verified with Apple's
+  own `auval` validation tool (`auval -v aumf Klor Jgck`) -- full PASS
+  across every section (default formats, required/recommended/optional/
+  special properties, custom Cocoa UI, factory presets, host callbacks,
+  published parameters, channel-capability/format negotiation, and
+  render tests including a MIDI test) -- not automated into the CMake
+  build, run manually after building/reinstalling `Klangorbit_AU`.
 - **Binaural (HRTF-based) headphone output, the 14th selectable Output
   Format, closing the gap left by the original decoder-feature spec**
   (which explicitly deferred it pending a licensing decision, see the

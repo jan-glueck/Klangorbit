@@ -144,15 +144,26 @@ installs system-wide only, for consistency with VST3.
 AU format: classic AU v2 (Component Manager, `.component` bundle) --
 deliberately NOT AUv3 (a different, app-extension-based packaging model,
 unneeded for a Mac-only, non-sandboxed plugin like this one). Registers as
-a "Music Effect" (`kAudioUnitType_MusicEffect`, 4-char type `aumf`) --
-JUCE infers this automatically from `NEEDS_MIDI_INPUT TRUE` + `IS_SYNTH
-FALSE` (an audio effect that also accepts MIDI, matching the Mappings/
-MIDI-CC control surface -- see "Controller mapping"/"MIDI / OSC control"
-below), set explicitly in `CMakeLists.txt` (`AU_MAIN_TYPE`) rather than
-left as an undocumented inferred default. Validated with Apple's own
-`auval` tool after every build touching the AU target:
+a plain "Effect" (`kAudioUnitType_Effect`, 4-char type `aufx`) -- NOT
+"Music Effect" (`kAudioUnitType_MusicEffect`/`aumf`), which is what
+`NEEDS_MIDI_INPUT TRUE` + `IS_SYNTH FALSE` makes JUCE infer by default
+(an audio effect that also accepts MIDI, matching the Mappings/MIDI-CC
+control surface -- see "Controller mapping"/"MIDI / OSC control" below).
+Overridden to `aufx` deliberately, in `CMakeLists.txt` (`AU_MAIN_TYPE`),
+after empirically confirming with a throwaway diagnostic build that Logic
+Pro's Plugin Manager listed the AU as installed/compatible while `aumf`,
+but never actually offered it as insertable on ANY track/bus type --
+switching to `aufx` (otherwise identical) was the one change that made it
+appear, confirmed directly by the user. Real, currently-open tradeoff:
+`auval` flags `aufx` + implementing MIDI handling as a warning (our
+MIDI-handling code is still built in, from `NEEDS_MIDI_INPUT`, but the
+type tells a host this isn't a MIDI-interested unit) -- whether Logic
+actually still routes MIDI (Mappings/Learn's CC input) to an `aufx`-typed
+AU has not yet been confirmed either way by an in-Logic test. Gamepad/OSC
+control are unaffected regardless of this choice. Validated with Apple's
+own `auval` tool after every build touching the AU target:
 ```bash
-auval -v aumf Klor Jgck
+auval -v aufx Klor Jgck
 ```
 (`Klor`/`Jgck` are this plugin's `PLUGIN_CODE`/`PLUGIN_MANUFACTURER_CODE`
 from `CMakeLists.txt`.) `auval` isn't run automatically as part of the

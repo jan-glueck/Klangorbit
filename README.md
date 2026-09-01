@@ -2,22 +2,26 @@
 
 Object-based Ambisonics encoder with a trajectory/physics engine, and an
 internal decoder to a selectable output format (toolbar -> "Output..." ->
-"Output Format"): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible, order 1-3,
-for further processing in SPARTA (AmbiBIN/AmbiDEC) or the
-IEM Plugin Suite), Stereo (the default -- audible immediately, no external
-decoder needed), Binaural (HRTF-based headphone output, with a
-choice of bundled KEMAR/SADIE II datasets or a custom SOFA file -- see
-"Binaural (HRTF) output" below), Quad, 5.1, 7.1, one of four Dolby-Atmos-bed
-layouts (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a fixed, named 8-speaker
-circular array), or Circular Array (a generic circular array, adjustable
-`numSpeakers` 4-24, for array sizes that have no established naming
-convention). Not a general "decode to any speaker array" tool -- only these
-fixed target formats. See `AmbisonicsDecoder.h` and the CHANGELOG entry for
-the decode method (AllRAD for irregular layouts, plain mode-matching for the
-regular circular ones, HRTF convolution for Binaural), LFE handling, and
-bus-layout details. Octophonic and Circular Array are horizontal-only -- a
-circular array of speakers cannot reproduce elevation/height at all, a
-property of the array type, not a decoder limitation.
+"Output Format", 14 formats, in dropdown order): Stereo (the default --
+audible immediately, no external decoder needed), Binaural (HRTF-based
+headphone output, with a choice of bundled KEMAR/SADIE II datasets or a
+custom SOFA file -- see "Binaural (HRTF) output" below), Quad, Octophonic
+(a fixed, named 8-speaker circular array), Circular Array (a generic
+circular array, adjustable `numSpeakers` 4-24, for array sizes that have
+no established naming convention), 5.1, 7.1, one of four Dolby-Atmos-bed
+layouts (5.1.2/5.1.4/7.1.2/7.1.4), or raw Ambisonics B-format at one of
+three orders -- FOA/SOA/TOA (1st/2nd/3rd Order Ambisonics, 4/9/16ch,
+ACN/SN3D, AmbiX-compatible), for further processing in SPARTA
+(AmbiBIN/AmbiDEC) or the IEM Plugin Suite. Not a general "decode to any
+speaker array" tool -- only these fixed target formats. See
+`AmbisonicsDecoder.h` and the CHANGELOG entry for the decode method
+(AllRAD for irregular layouts, plain mode-matching for the regular
+circular ones, HRTF convolution for Binaural), and "Output formats:
+channel layouts and standards" below for the exact speaker angles/channel
+order and which layouts follow ITU-R BS.775-4/BS.2051-2. Octophonic and
+Circular Array are horizontal-only -- a circular array of speakers cannot
+reproduce elevation/height at all, a property of the array type, not a
+decoder limitation.
 
 The whole simulation -- physics, panning, grain spawning, everything at
 control rate -- runs from a timer owned by `KlangorbitProcessor` itself,
@@ -179,15 +183,15 @@ output channel COUNT once, at insertion (based on which track/bus type
 was chosen), and Klangorbit never asks to change it afterward while
 running as AU. Of the 14 Output Formats, only the 9 with both a NAMED
 channel layout and `<= 12` channels (Logic's own ceiling, 7.1.4) are ever
-usable in Logic: Stereo, Binaural, Quad, 5.1, 7.1, and the four Atmos-bed
-formats. The Output window's "Output Format" dropdown greys out
+usable in Logic: Stereo, Binaural (HRTF), Quad, 5.1, 7.1, and the four
+Atmos-bed formats. The Output window's "Output Format" dropdown greys out
 (`ComboBox::setItemEnabled`) anything needing more channels than what
 Logic actually negotiated -- switching among the remaining, AVAILABLE
 formats works live, using fewer channels internally rather than
-requesting a different bus. Raw Ambisonics (Order 1/2/3), Octophonic, and
-CircularArray are never available in AU at all (unnamed channel sets
-Logic's own layout-tag matching can't recognize, and Order 3 alone
-already exceeds the 12-channel ceiling) -- see `KlangorbitProcessor::
+requesting a different bus. FOA/SOA/TOA (raw Ambisonics), Octophonic, and
+Circular Array are never available in AU at all (unnamed channel sets
+Logic's own layout-tag matching can't recognize, and TOA alone already
+exceeds the 12-channel ceiling) -- see `KlangorbitProcessor::
 isOutputModeAvailable()` and the CHANGELOG entry for the full reasoning,
 including why this design was chosen specifically to avoid repeating the
 Reaper bus-negotiation regression noted above.
@@ -212,13 +216,14 @@ AU's "Manufacturer String").
 
 1. Start the plugin/standalone app, connect a live input (microphone or
    audio interface channel) to Input 0.
-2. With the default Output Format (Ambisonics, Order 3, 16ch -- see the
-   toolbar's "Output..." window to change it), route the output to a bus with
-   AmbiBIN (SPARTA) or the IEM BinauralDecoder. Switching Output Format to
-   Stereo/Binaural/Quad/5.1/7.1/an Atmos-bed variant instead sends
-   already-decoded audio straight to that many channels, no external decoder
-   plugin needed -- Binaural specifically does its own HRTF convolution
-   in-plugin (see "Binaural (HRTF) output" below), no external
+2. The default Output Format is Stereo (audible immediately) -- switch to
+   TOA (3rd Order Ambisonics, 16ch, toolbar -> "Output...") to route the
+   output to a bus with AmbiBIN (SPARTA) or the IEM BinauralDecoder
+   instead. Every other format (Binaural/Quad/Octophonic/Circular
+   Array/5.1/7.1/an Atmos-bed variant) sends already-decoded audio
+   straight to that many channels, no external decoder plugin needed --
+   Binaural (HRTF) specifically does its own HRTF convolution in-plugin
+   (see "Binaural (HRTF) output" below), no external
    AmbiBIN/BinauralDecoder needed for that path -- but changing modes live
    may need the plugin removed and reinserted in some hosts, see the
    CHANGELOG.
@@ -264,9 +269,76 @@ AU's "Manufacturer String").
    hitting it with the mouse. Useful once several objects are orbiting or
    flying around and one is hard to click directly.
 
+## Output formats: channel layouts and standards
+
+Full speaker angles, channel order, and standards compliance for every
+Output Format, in dropdown order. Verified directly against
+`Source/SpeakerLayouts.h` (the source of truth for every layout below,
+including its own citations) -- not summarized from memory.
+
+- **Stereo** -- L/R at +-30 deg. ITU-R BS.775-4 (the same standard
+  defining 5.1/7.1 below).
+- **Binaural (HRTF)** -- not a fixed loudspeaker layout; see "Binaural
+  (HRTF) output" below for the full technique.
+- **Quad** -- L/R +-45 deg, Ls/Rs +-135 deg. The conventional consumer
+  quadraphonic layout -- not an ITU standard.
+- **Octophonic** -- fixed 8-speaker circular array: front L/R +-22.5 deg,
+  front-side L/R +-67.5 deg, rear-side L/R +-112.5 deg, rear L/R
+  +-157.5 deg. No ITU/IEM/AllRAD standard was found for this exact
+  layout during research -- matches Blue Ripple Sound's "O3A Decoder --
+  Octagon" (the one concrete Ambisonics-ecosystem reference product
+  found); the channel order itself is this project's own choice (no
+  external ordering convention to preserve, unlike the named JUCE
+  layouts below).
+- **Circular Array** -- generic N-speaker ring (4-24, adjustable), evenly
+  spaced starting at front, channel index == sweep order. No
+  standard -- pure geometry, for array sizes with no established naming
+  convention.
+- **5.1** -- ITU-R BS.775-4: L/R +-30 deg, C 0 deg, Ls/Rs +-110 deg.
+  Channel order (matches `juce::AudioChannelSet::create5point1()`
+  exactly, verified against JUCE source): L R C LFE Ls Rs.
+- **7.1** -- ITU-R BS.775-4: L/R +-30 deg, C 0 deg, side Lss/Rss +-90 deg,
+  rear Lrs/Rrs +-135 deg -- both within BS.775-4's own permitted sectors
+  (side 90-110 deg, rear 135-150 deg), chosen as the commonly-used
+  nominal defaults. Channel order (matches `create7point1()`): L R C LFE
+  Lss Rss Lrs Rrs.
+- **5.1.2 / 5.1.4 / 7.1.2 / 7.1.4** (the four Dolby-Atmos-bed layouts) --
+  ear-level angles as the matching 5.1/7.1 bed above, PLUS height
+  channels: top-front +-45 deg azimuth / +45 deg elevation, top-rear
+  +-135 deg azimuth / +45 deg elevation, top-side +-90 deg azimuth /
+  +45 deg elevation. ITU-R BS.2051-2 ("Advanced sound system for
+  programme production") only defines permitted ANGLE SECTORS for these
+  (e.g. top-front anywhere in azimuth +-30..45 deg / elevation
+  +30..55 deg), not single fixed values -- the angles used here are
+  round numbers within those permitted sectors, cross-checked against
+  Dolby's own commonly published consumer height-speaker placement
+  guidance (45 deg front / 135 deg rear, 45 deg elevation cited as
+  "ideal") -- a defensible, documented choice within the standard's
+  tolerance, not an invented number, but also not a literal quote of one
+  single "the" official angle (the standard doesn't specify one).
+  Channel counts/order: 5.1.2 = 5.1 bed + top-side L/R (8ch, matches
+  `create5point1point2()`); 5.1.4 = 5.1 bed + top-front L/R + top-rear
+  L/R (10ch, `create5point1point4()`); 7.1.2 = 7.1 bed + top-side L/R
+  (10ch, `create7point1point2()`); 7.1.4 = 7.1 bed + top-front L/R +
+  top-rear L/R (12ch, `create7point1point4()`) -- the largest
+  non-Ambisonics format, at Logic Pro's own channel ceiling (see the AU
+  section above).
+- **FOA / SOA / TOA** (1st/2nd/3rd Order Ambisonics, 4/9/16ch) -- raw
+  B-format, no decoding at all: ACN channel ordering, SN3D normalization
+  (AmbiX-compatible). Not a loudspeaker layout -- feed an external
+  decoder (SPARTA AmbiDEC/AmbiBIN, IEM Plugin Suite) or one of the
+  formats above instead.
+
+All named layouts above (every format except Octophonic and Circular
+Array, which are deliberately generic/unnamed `discreteChannels()` buses
+-- see the CHANGELOG's AU entries for why that distinction matters for
+host recognition) use JUCE's own named `AudioChannelSet`s, so the channel
+order a host/DAW sees matches what it already expects for that format
+name -- not just the angles, the actual channel STREAM order too.
+
 ## Binaural (HRTF) output
 
-Selecting "Binaural" as the Output Format (toolbar -> "Output...") decodes
+Selecting "Binaural (HRTF)" as the Output Format (toolbar -> "Output...") decodes
 straight to 2-channel headphone audio inside the plugin -- an HRTF
 convolution, not the same thing as the plain 2-speaker `Stereo` format
 (no HRTF/head-related processing at all). Technique: the summed Ambisonics

@@ -51,6 +51,17 @@ private:
     // silent).
     void browseForCustomSofaFile();
     void updateBinauralRowsVisibility();
+    // circularSpeakerCountRow: only while Output Format == Circular Array
+    // (Octophonic's own speaker count is fixed at 8, not adjustable, so
+    // the slider is irrelevant there too, same as every other format).
+    // circularArrayHintLabel: while Output Format == Octophonic OR
+    // Circular Array (its text -- horizontal-only, spatial blur below 7
+    // speakers -- applies to both, not just the adjustable one).
+    void updateCircularArrayRowsVisibility();
+    // Only while the current Output Format actually has an LFE channel
+    // (5.1/7.1/Atmos-bed variants) -- see
+    // AmbisonicsDecoder::lfeChannelIndexFor().
+    void updateBassManagementRowVisibility();
     // Greys out (ComboBox::setItemEnabled, not removed) any Output Format
     // combo item KlangorbitProcessor::isOutputModeAvailable() rejects --
     // a no-op on VST3/Standalone (every mode always available there); see

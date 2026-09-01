@@ -60,22 +60,28 @@
 class AmbisonicsDecoder
 {
 public:
+    // Declaration order here matches the Output Format combo's own display
+    // order exactly (see OutputPanel.cpp's addItem() calls, and
+    // isOutputModeAvailable()'s/that combo's shared position-based
+    // id-to-Mode mapping) -- everywhere else in this codebase refers to
+    // modes by symbolic name, not ordinal value, so this order is free to
+    // change without touching any switch statement.
     enum class Mode
     {
-        AmbisonicsRawOrder1,
-        AmbisonicsRawOrder2,
-        AmbisonicsRawOrder3,
         Stereo,
         Binaural,
         Quad,
+        Octophonic,    // fixed 8-channel regular circular array, see SpeakerLayouts::octophonic()
+        CircularArray, // generic N-channel regular circular array, see setCircularArraySpeakerCount()
         Surround5_1,
         Surround7_1,
         Atmos5_1_2,
         Atmos5_1_4,
         Atmos7_1_2,
         Atmos7_1_4,
-        Octophonic,   // fixed 8-channel regular circular array, see SpeakerLayouts::octophonic()
-        CircularArray, // generic N-channel regular circular array, see setCircularArraySpeakerCount()
+        AmbisonicsRawOrder1,
+        AmbisonicsRawOrder2,
+        AmbisonicsRawOrder3,
     };
 
     // Total number of Mode values (14) -- single source of truth for

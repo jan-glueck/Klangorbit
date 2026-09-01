@@ -7,6 +7,80 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Output Format reordered/renamed, conditional-visibility for
+  format-specific controls, a unified window-focus fix, and full
+  channel-layout/standards documentation for every format.**
+  - **Reorder + rename** (`AmbisonicsDecoder::Mode`'s declaration order,
+    `Source/AmbisonicsDecoder.h`, and `OutputPanel`'s combo items to
+    match): Stereo, Binaural (HRTF), Quad, Octophonic, Circular Array,
+    5.1, 7.1, 5.1.2, 5.1.4, 7.1.2, 7.1.4, FOA (1st Order Ambisonics,
+    4ch), SOA (2nd Order, 9ch), TOA (3rd Order, 16ch) -- the raw
+    Ambisonics orders move from first to last, and Octophonic/Circular
+    Array move next to Quad rather than after the Atmos-bed layouts.
+    Confirmed via a full-codebase grep that every reference to `Mode` is
+    by symbolic name, not ordinal value, except `OutputPanel`'s own
+    position-based combo-item-id mapping (already an established,
+    intentional pattern) -- so this reorder needed zero changes to any
+    switch statement anywhere, only the enum's declaration order and the
+    combo's `addItem()` calls (updated to match, with the new names).
+  - **`AmbisonicsDecoder::numModes`** (14) added as the single source of
+    truth `OutputPanel`'s combo-availability loop iterates against.
+  - **Conditional visibility for format-specific controls**, mirroring
+    the pattern the Binaural HRTF-dataset controls already established:
+    - Circular Array's own "Speaker Count" slider is now only shown
+      while Output Format == Circular Array (previously always visible,
+      silently inert for every other format -- including Octophonic,
+      whose count is fixed).
+    - The Octophonic/Circular-Array horizontal-only hint label is shown
+      for either of those two formats (its text applies to both).
+    - Bass Management is now only shown for formats that actually have
+      an LFE channel (5.1/7.1/5.1.2/5.1.4/7.1.2/7.1.4) --
+      `AmbisonicsDecoder::lfeChannelIndexFor(mode) >= 0` -- rather than
+      always visible but inert for every other format.
+    New `OutputPanel::updateCircularArrayRowsVisibility()`/
+    `updateBassManagementRowVisibility()`, called from the same places
+    `updateBinauralRowsVisibility()` already was (mode-change callback,
+    `refreshFromModel()`); `resized()` now only allocates layout space
+    for whichever of these rows is actually visible.
+  - **Unified "bring auxiliary window to front" fix** (`Source/
+    WindowUtils.h`, new -- `WindowUtils::forceToFront()`), applied to
+    all three lazily-created toolbar windows (Help/Mappings/Output,
+    `KlangorbitEditor::showHelpClicked()`/`showMappingClicked()`/
+    `showOutputClicked()`, `Source/PluginEditor.cpp`) uniformly, for
+    every plugin format. Reported in Logic Pro (AU): once one of these
+    windows had fallen behind the plugin's own host-provided editor
+    window (e.g. the user clicks back on the editor), the existing fix
+    (each window's own `setAlwaysOnTop(true)`, plus a synchronous
+    `toFront()` and a second deferred one via
+    `MessageManager::callAsync()`) no longer reliably brought it back --
+    a same-level "most recently activated wins" tiebreak between two
+    elevated windows that a same-level `toFront()` alone doesn't always
+    resolve. Root-caused and fixed the same way in every host, not just
+    Logic, since the underlying mechanism isn't host-specific: toggling
+    `setAlwaysOnTop()` off then back on before calling `toFront()` forces
+    the OS to actually re-apply the elevated window level (many window
+    systems only take visible action on the on/off TRANSITION, not on
+    reasserting the same value again), which reliably re-wins the
+    ordering race. See `WindowUtils.h`'s own comment for the full
+    reasoning.
+  - **Full documentation** of every format's exact speaker angles,
+    channel order, and standards compliance -- verified directly against
+    `Source/SpeakerLayouts.h` (the actual source of truth, including its
+    own citations), not summarized from memory -- added to the in-app
+    Help window (`Source/HelpContent.h`, section 11), `README.md` (new
+    "Output formats: channel layouts and standards" section), and
+    `Docs/UserGuide.md` (section 12): which formats are exact ITU-R
+    BS.775-4 (Stereo/5.1/7.1), which use ITU-R BS.2051-2 angle sectors
+    plus Dolby's own consumer height-speaker guidance for the height
+    channels (the four Atmos-bed layouts), and which have no ITU/
+    standards-body backing at all (Quad -- conventional consumer layout;
+    Octophonic -- matches Blue Ripple Sound's "O3A Decoder -- Octagon",
+    the one concrete Ambisonics-ecosystem reference found, with this
+    project's own channel ordering; Circular Array -- pure geometry, no
+    standard). Also confirms channel STREAM order for every named layout
+    matches `juce::AudioChannelSet`'s own ordering exactly (verified
+    against JUCE source), i.e. what a host/DAW already expects for that
+    format name, not just the physical speaker angles.
 - **Audio Unit (AU v2) plugin format, for Logic Pro/GarageBand/other AU
   hosts** -- `AU` added to `juce_add_plugin()`'s `FORMATS` list in
   `CMakeLists.txt` (alongside the existing `VST3 Standalone`), producing

@@ -21,10 +21,10 @@ physics engine: give sound objects mass, velocity, gravity, and
 momentum, and let their motion emerge from that instead of automating
 position by hand. Output format is selectable (toolbar -> Output...,
 section 11): an internally decoded Stereo (the default), Binaural (HRTF
-headphone), Quad, 5.1, 7.1, Dolby-Atmos-bed, Octophonic, or Circular
-Array output, no external decoder needed -- or raw Ambisonics B-format
-(ACN/SN3D, AmbiX-compatible) to feed a decoder such as SPARTA AmbiDEC/
-AmbiBIN or the IEM Plugin Suite instead.
+headphone), Quad, Octophonic, Circular Array, 5.1, 7.1, or one of four
+Dolby-Atmos-bed layouts, no external decoder needed -- or raw Ambisonics
+B-format (FOA/SOA/TOA, ACN/SN3D, AmbiX-compatible) to feed a decoder
+such as SPARTA AmbiDEC/AmbiBIN or the IEM Plugin Suite instead.
 
 A fuller version of this guide lives in Docs/UserGuide.md in the
 project folder.
@@ -276,26 +276,72 @@ that object's live input. Turn on with Enabled.
 
 Plugin-wide, not tied to the scene or any object -- has its own window:
 
-  Output Format          one of 14 mutually exclusive formats:
-                           Ambisonics Order 1/2/3 -- raw B-format, no
-                            decoding
-                           Stereo -- plain 2-speaker decode, NOT
-                            binaural (no HRTF) -- the default
-                           Binaural -- HRTF-based headphone output (a
-                            dense virtual speaker array, each convolved
-                            through a measured head-related impulse
-                            response). Own HRTF Dataset picker appears
-                            below when selected -- see "Binaural HRTF
-                            Dataset" further down.
-                           Quad / 5.1 / 7.1 -- standard loudspeaker
-                            layouts (ITU-R BS.775-4 angles)
-                           5.1.2 / 5.1.4 / 7.1.2 / 7.1.4 -- Dolby-
-                            Atmos-bed layouts with height speakers
-                            (ITU-R BS.2051-2 angles)
-                           Octophonic -- fixed, named 8-speaker
-                            circular array (45deg spacing)
-                           Circular Array -- generic circular array,
-                            any speaker count 4-24 (own slider below)
+  Output Format          one of 14 mutually exclusive formats, listed in
+                          dropdown order:
+
+                           Stereo -- plain 2-speaker decode at +-30deg,
+                            NOT binaural (no HRTF). The default.
+                           Binaural (HRTF) -- HRTF-based headphone
+                            output (a dense virtual speaker array, each
+                            convolved through a measured head-related
+                            impulse response). Own HRTF Dataset picker
+                            appears below when selected -- see "Binaural
+                            HRTF Dataset" further down.
+                           Quad -- conventional quadraphonic: L/R
+                            +-45deg, Ls/Rs +-135deg. Not an ITU
+                            standard -- the conventional consumer
+                            layout.
+                           Octophonic -- fixed, named 8-speaker circular
+                            array: front L/R +-22.5deg, front-side L/R
+                            +-67.5deg, rear-side L/R +-112.5deg, rear
+                            L/R +-157.5deg. No ITU/IEM/AllRAD standard
+                            found for this exact layout -- matches Blue
+                            Ripple Sound's "O3A Decoder -- Octagon" (the
+                            one concrete Ambisonics-ecosystem reference
+                            found); channel order is this project's own
+                            choice.
+                           Circular Array -- generic circular array, any
+                            speaker count 4-24 (own slider below, only
+                            shown while this format is selected),
+                            evenly spaced starting at front. No
+                            standard -- pure geometry.
+                           5.1 -- ITU-R BS.775-4: L/R +-30deg, C 0deg,
+                            Ls/Rs +-110deg. Channel order L R C LFE
+                            Ls Rs.
+                           7.1 -- ITU-R BS.775-4: L/R +-30deg, C 0deg,
+                            side Lss/Rss +-90deg, rear Lrs/Rrs +-135deg
+                            (both within BS.775-4's permitted sectors --
+                            side 90-110deg, rear 135-150deg). Channel
+                            order L R C LFE Lss Rss Lrs Rrs.
+                           5.1.2 -- 5.1 bed (above) + top-side L/R,
+                            8ch total.
+                           5.1.4 -- 5.1 bed + top-front L/R + top-rear
+                            L/R, 10ch total.
+                           7.1.2 -- 7.1 bed (above) + top-side L/R,
+                            10ch total.
+                           7.1.4 -- 7.1 bed + top-front L/R + top-rear
+                            L/R, 12ch total -- the largest
+                            non-Ambisonics format.
+                            Height angles for all four (top-front
+                            +-45deg/+45deg elevation, top-rear
+                            +-135deg/+45deg elevation, top-side
+                            +-90deg/+45deg elevation): ITU-R BS.2051-2
+                            only defines permitted ANGLE SECTORS for
+                            height speakers (e.g. top-front anywhere in
+                            azimuth +-30..45deg / elevation +30..55deg),
+                            not single fixed values -- the angles used
+                            are round numbers within those sectors,
+                            cross-checked against Dolby's own published
+                            consumer height-speaker guidance (45deg
+                            front / 135deg rear, 45deg elevation cited
+                            as "ideal").
+                           FOA (1st Order Ambisonics, 4ch) -- raw
+                            B-format, no decoding, ACN/SN3D.
+                           SOA (2nd Order Ambisonics, 9ch) -- raw
+                            B-format, no decoding, ACN/SN3D.
+                           TOA (3rd Order Ambisonics, 16ch) -- raw
+                            B-format, no decoding, ACN/SN3D.
+
                           Octophonic/Circular Array are HORIZONTAL ONLY
                           -- a flat speaker ring cannot reproduce
                           elevation, regardless of decoder quality.
@@ -305,14 +351,15 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
                           channel count; most hosts pick this up live,
                           some need the plugin removed/reinserted or
                           the project reloaded.
-  Circular Array:         4-24, only has an effect while Output Format
-   Speaker Count           is "Circular Array" (harmless otherwise)
-  Bass Management         off by default. When on, sends a low-passed
-   (LFE from W)            (~120Hz) version of the omnidirectional (W)
-                          channel to the LFE channel, for formats that
-                          have one (5.1/7.1/Atmos variants). No effect
-                          on Ambisonics/Stereo/Binaural/Quad.
-  Binaural HRTF Dataset   only shown while Output Format is "Binaural":
+  Circular Array:         4-24 -- only shown while Output Format is
+   Speaker Count           "Circular Array".
+  Bass Management         only shown for formats with an LFE channel
+   (LFE from W)            (5.1/7.1/5.1.2/5.1.4/7.1.2/7.1.4). Off by
+                          default -- when on, sends a low-passed
+                          (~120Hz) version of the omnidirectional (W)
+                          channel to the LFE channel.
+  Binaural HRTF Dataset   only shown while Output Format is "Binaural
+                          (HRTF)":
                            KEMAR -- MIT Media Lab, bundled, default
                            SADIE II D1 (KU100) -- University of York,
                             bundled, an alternative measured head

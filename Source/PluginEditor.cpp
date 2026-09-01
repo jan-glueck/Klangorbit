@@ -3,6 +3,7 @@
 #include "OrbitMath.h"
 #include "UiTheme.h"
 #include "AxisShaping.h"
+#include "WindowUtils.h"
 #include <algorithm>
 #include <cmath>
 
@@ -811,17 +812,17 @@ void KlangorbitEditor::showHelpClicked()
     if (helpWindow == nullptr)
         helpWindow = std::make_unique<HelpWindow>(); // constructor already makes it visible
 
-    helpWindow->setVisible (true); // in case a previous close just hid it
-    helpWindow->toFront (true);
-    // Deferred second attempt -- see showMappingClicked()'s own comment on
-    // why a synchronous toFront() right here isn't always enough in every
-    // DAW host. SafePointer (not a raw pointer): callAsync()'s callback
-    // runs on a LATER message-loop iteration, by which point the user
-    // could conceivably have already closed this editor (and with it,
-    // helpWindow, which this editor owns) -- SafePointer becomes null
-    // automatically in that case instead of leaving a dangling pointer.
+    WindowUtils::forceToFront (*helpWindow);
+    // Deferred second attempt -- see WindowUtils.h's own comment on why a
+    // synchronous forceToFront() right here isn't always enough in every
+    // DAW host (confirmed: Logic Pro, AU). SafePointer (not a raw
+    // pointer): callAsync()'s callback runs on a LATER message-loop
+    // iteration, by which point the user could conceivably have already
+    // closed this editor (and with it, helpWindow, which this editor
+    // owns) -- SafePointer becomes null automatically in that case
+    // instead of leaving a dangling pointer.
     juce::Component::SafePointer<HelpWindow> window (helpWindow.get());
-    juce::MessageManager::callAsync ([window] { if (window != nullptr) window->toFront (true); });
+    juce::MessageManager::callAsync ([window] { if (window != nullptr) WindowUtils::forceToFront (*window); });
 }
 
 void KlangorbitEditor::showMappingClicked()
@@ -829,17 +830,18 @@ void KlangorbitEditor::showMappingClicked()
     if (mappingWindow == nullptr)
         mappingWindow = std::make_unique<MappingWindow> (audioProcessor.getParameterRegistry(), audioProcessor.getMappingEngine()); // constructor already makes it visible
 
-    mappingWindow->setVisible (true); // in case a previous close just hid it
-    mappingWindow->toFront (true);
+    WindowUtils::forceToFront (*mappingWindow);
     // Deferred second attempt: the host's own window can still win the
-    // initial ordering race in some DAWs (Reaper, per a user report) even
-    // with MappingWindow's own setAlwaysOnTop(true) -- re-asserting
-    // toFront() one message-loop iteration later, after the OS has fully
-    // realized the window's peer, reliably wins where the synchronous call
-    // right above sometimes doesn't. SafePointer, not a raw pointer -- see
+    // ordering race in some DAWs/hosts (Reaper; also confirmed in Logic
+    // Pro's AU hosting, which is what motivated WindowUtils::
+    // forceToFront()'s own alwaysOnTop-toggle fix, see that header) even
+    // with MappingWindow's own setAlwaysOnTop(true) -- re-asserting one
+    // message-loop iteration later, after the OS has fully realized the
+    // window's peer, reliably wins where the synchronous call right above
+    // sometimes doesn't. SafePointer, not a raw pointer -- see
     // showHelpClicked()'s identical pattern for why.
     juce::Component::SafePointer<MappingWindow> window (mappingWindow.get());
-    juce::MessageManager::callAsync ([window] { if (window != nullptr) window->toFront (true); });
+    juce::MessageManager::callAsync ([window] { if (window != nullptr) WindowUtils::forceToFront (*window); });
 }
 
 void KlangorbitEditor::showOutputClicked()
@@ -847,13 +849,12 @@ void KlangorbitEditor::showOutputClicked()
     if (outputWindow == nullptr)
         outputWindow = std::make_unique<OutputWindow> (audioProcessor); // constructor already makes it visible
 
-    outputWindow->setVisible (true); // in case a previous close just hid it
     outputWindow->refreshFromModel(); // pick up any change made elsewhere (e.g. a preset load) since it was last shown
-    outputWindow->toFront (true);
+    WindowUtils::forceToFront (*outputWindow);
     // Deferred second attempt -- see showMappingClicked()'s identical
     // comment for why, and why SafePointer rather than a raw pointer.
     juce::Component::SafePointer<OutputWindow> window (outputWindow.get());
-    juce::MessageManager::callAsync ([window] { if (window != nullptr) window->toFront (true); });
+    juce::MessageManager::callAsync ([window] { if (window != nullptr) WindowUtils::forceToFront (*window); });
 }
 
 void KlangorbitEditor::showPresetError (const juce::String& title, const juce::String& message)

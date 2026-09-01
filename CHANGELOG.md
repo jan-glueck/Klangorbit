@@ -7,6 +7,80 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Output Format reordered/renamed, conditional-visibility for
+  format-specific controls, a unified window-focus fix, and full
+  channel-layout/standards documentation for every format.**
+  - **Reorder + rename** (`AmbisonicsDecoder::Mode`'s declaration order,
+    `Source/AmbisonicsDecoder.h`, and `OutputPanel`'s combo items to
+    match): Stereo, Binaural (HRTF), Quad, Octophonic, Circular Array,
+    5.1, 7.1, 5.1.2, 5.1.4, 7.1.2, 7.1.4, FOA (1st Order Ambisonics,
+    4ch), SOA (2nd Order, 9ch), TOA (3rd Order, 16ch) -- the raw
+    Ambisonics orders move from first to last, and Octophonic/Circular
+    Array move next to Quad rather than after the Atmos-bed layouts.
+    Confirmed via a full-codebase grep that every reference to `Mode` is
+    by symbolic name, not ordinal value, except `OutputPanel`'s own
+    position-based combo-item-id mapping (already an established,
+    intentional pattern) -- so this reorder needed zero changes to any
+    switch statement anywhere, only the enum's declaration order and the
+    combo's `addItem()` calls (updated to match, with the new names).
+  - **`AmbisonicsDecoder::numModes`** (14) added as the single source of
+    truth `OutputPanel`'s combo-availability loop iterates against.
+  - **Conditional visibility for format-specific controls**, mirroring
+    the pattern the Binaural HRTF-dataset controls already established:
+    - Circular Array's own "Speaker Count" slider is now only shown
+      while Output Format == Circular Array (previously always visible,
+      silently inert for every other format -- including Octophonic,
+      whose count is fixed).
+    - The Octophonic/Circular-Array horizontal-only hint label is shown
+      for either of those two formats (its text applies to both).
+    - Bass Management is now only shown for formats that actually have
+      an LFE channel (5.1/7.1/5.1.2/5.1.4/7.1.2/7.1.4) --
+      `AmbisonicsDecoder::lfeChannelIndexFor(mode) >= 0` -- rather than
+      always visible but inert for every other format.
+    New `OutputPanel::updateCircularArrayRowsVisibility()`/
+    `updateBassManagementRowVisibility()`, called from the same places
+    `updateBinauralRowsVisibility()` already was (mode-change callback,
+    `refreshFromModel()`); `resized()` now only allocates layout space
+    for whichever of these rows is actually visible.
+  - **Unified "bring auxiliary window to front" fix** (`Source/
+    WindowUtils.h`, new -- `WindowUtils::forceToFront()`), applied to
+    all three lazily-created toolbar windows (Help/Mappings/Output,
+    `KlangorbitEditor::showHelpClicked()`/`showMappingClicked()`/
+    `showOutputClicked()`, `Source/PluginEditor.cpp`) uniformly, for
+    every plugin format. Reported in Logic Pro (AU): once one of these
+    windows had fallen behind the plugin's own host-provided editor
+    window (e.g. the user clicks back on the editor), the existing fix
+    (each window's own `setAlwaysOnTop(true)`, plus a synchronous
+    `toFront()` and a second deferred one via
+    `MessageManager::callAsync()`) no longer reliably brought it back --
+    a same-level "most recently activated wins" tiebreak between two
+    elevated windows that a same-level `toFront()` alone doesn't always
+    resolve. Root-caused and fixed the same way in every host, not just
+    Logic, since the underlying mechanism isn't host-specific: toggling
+    `setAlwaysOnTop()` off then back on before calling `toFront()` forces
+    the OS to actually re-apply the elevated window level (many window
+    systems only take visible action on the on/off TRANSITION, not on
+    reasserting the same value again), which reliably re-wins the
+    ordering race. See `WindowUtils.h`'s own comment for the full
+    reasoning.
+  - **Full documentation** of every format's exact speaker angles,
+    channel order, and standards compliance -- verified directly against
+    `Source/SpeakerLayouts.h` (the actual source of truth, including its
+    own citations), not summarized from memory -- added to the in-app
+    Help window (`Source/HelpContent.h`, section 11), `README.md` (new
+    "Output formats: channel layouts and standards" section), and
+    `Docs/UserGuide.md` (section 12): which formats are exact ITU-R
+    BS.775-4 (Stereo/5.1/7.1), which use ITU-R BS.2051-2 angle sectors
+    plus Dolby's own consumer height-speaker guidance for the height
+    channels (the four Atmos-bed layouts), and which have no ITU/
+    standards-body backing at all (Quad -- conventional consumer layout;
+    Octophonic -- matches Blue Ripple Sound's "O3A Decoder -- Octagon",
+    the one concrete Ambisonics-ecosystem reference found, with this
+    project's own channel ordering; Circular Array -- pure geometry, no
+    standard). Also confirms channel STREAM order for every named layout
+    matches `juce::AudioChannelSet`'s own ordering exactly (verified
+    against JUCE source), i.e. what a host/DAW already expects for that
+    format name, not just the physical speaker angles.
 - **Audio Unit (AU v2) plugin format, for Logic Pro/GarageBand/other AU
   hosts** -- `AU` added to `juce_add_plugin()`'s `FORMATS` list in
   `CMakeLists.txt` (alongside the existing `VST3 Standalone`), producing
@@ -23,11 +97,14 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   automatically from those same two flags, set explicitly via the new
   `AU_MAIN_TYPE` parameter instead so the choice is documented rather
   than left as an inferred default a reader would have to trace through
-  JUCE's own CMake logic to discover. No source changes were needed --
-  every decoder/UI/driver module was already architected to be
-  format-agnostic (see e.g. `AmbisonicsDecoder`'s and `BinauralDecoder`'s
-  own "AU-reusable" design notes from earlier entries); this was purely
-  a build-configuration change. `COPY_PLUGIN_AFTER_BUILD` installs the
+  JUCE's own CMake logic to discover. Initially a pure build-configuration
+  change with no source edits (every decoder/UI/driver module was already
+  architected to be format-agnostic, see e.g. `AmbisonicsDecoder`'s and
+  `BinauralDecoder`'s own "AU-reusable" design notes from earlier
+  entries) -- until real-world testing in Logic Pro surfaced that the
+  plugin didn't appear as insertable on ANY track at all (see the
+  flexible-input-channel-count entry directly below, which needed real
+  source changes to fix). `COPY_PLUGIN_AFTER_BUILD` installs the
   `.component` to the system-wide `/Library/Audio/Plug-Ins/Components`
   (`AU_COPY_DIR`, matching `VST3_COPY_DIR`'s own system-wide override, for
   consistency between the two formats) -- unlike the VST3 folder, this one
@@ -41,6 +118,183 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   published parameters, channel-capability/format negotiation, and
   render tests including a MIDI test) -- not automated into the CMake
   build, run manually after building/reinstalling `Klangorbit_AU`.
+- **AU: the "Live Inputs" bus now accepts Mono/Stereo/Quad/7.1 (1/2/4/8
+  channels), not just the fixed 8-channel discrete layout VST3/Standalone
+  still require.** Diagnosed a real-world report from the user: the AU
+  build passed `auval` fully but didn't appear as an insertable Audio
+  Unit on ANY track in Logic Pro -- not Mono, not Stereo, not anything
+  else. Root cause, confirmed by directly reading JUCE's own AU wrapper
+  source (`AudioUnitHelpers::getAUChannelInfo()`, `JUCE/modules/
+  juce_audio_processors_headless/format_types/juce_AU_Shared.h`): it
+  builds the AU's `kAudioUnitProperty_SupportedNumChannels` list by
+  probing `checkBusesLayoutSupported()` (-> `isBusesLayoutSupported()`)
+  across a matrix of standard channel-count layouts for both input and
+  output -- our hard-locked `discreteChannels(8)` input bus matched NONE
+  of Logic's standard track formats (Mono=1, Stereo=2, Quad=4, 7.1=8-but-
+  a-NAMED-layout-not-raw-discrete), so Logic's own per-track AU filtering
+  excluded Klangorbit everywhere.
+  - `KlangorbitProcessor::isBusesLayoutSupported()` (`Source/
+    PluginProcessor.cpp`) now branches at RUNTIME on the inherited
+    `AudioProcessor::wrapperType` member (`wrapperType_AudioUnit`/
+    `wrapperType_AudioUnitv3`) -- NOT a compile-time `#if
+    JucePlugin_Build_AU`, which would be wrong here: `PluginProcessor.cpp`
+    is compiled exactly ONCE into `libKlangorbit_SharedCode.a` and that
+    single compiled object is linked into all three format targets
+    (confirmed via `find build -iname PluginProcessor.cpp.o`, only one
+    exists), so a compile-time macro would silently apply to VST3/
+    Standalone too. VST3/Standalone (the existing, working Reaper
+    workflow) keep the exact original behavior, completely untouched. For
+    AU, the input side now accepts any of `mono()`/`stereo()`/
+    `quadraphonic()`/`create7point1()` -- NAMED layouts, not raw
+    `discreteChannels(N)`, since a host's own format-matching keys off the
+    named identity (same reasoning `AmbisonicsDecoder::
+    outputChannelSetFor()` already documents for its own real-speaker
+    formats) -- `discreteChannels(numLiveInputs)` is ALSO still accepted
+    (not replaced) purely so the plugin's own construction-time default
+    bus (see below) stays self-consistent; it's otherwise inert for actual
+    track matching, since no standard Logic track uses a raw, unnamed
+    8-channel layout either.
+  - Accepting FOUR input layouts simultaneously for AU is safe in a way
+    the OUTPUT-side restriction (see the earlier `isBusesLayoutSupported()`
+    Fixed entry) explicitly is NOT: that fix exists because
+    `AmbisonicsDecoder::decode()` needs to know exactly which mode is
+    active to use the right decode matrix, so a host settling on the wrong
+    OUTPUT config produced silence. Reading live input has no equivalent
+    stored-state dependency -- it already self-adapts every block to
+    however many channels are ACTUALLY present (see the `numInCh` fix
+    below, and every per-object read already gated by `obj.inputChannel <
+    numInCh`) -- so there is no "wrong config" for a host to settle on
+    here, regardless of which of the four it picks. The OUTPUT-side logic
+    is completely unchanged.
+  - **Constructor-time default bus, AU only**: `KlangorbitProcessor`'s
+    constructor now calls `setBusesLayout()` immediately after
+    construction, switching the default INPUT bus to `stereo()` when
+    `wrapperType` is AU. This was required, not just widening
+    `isBusesLayoutSupported()` above: `auval` failed with "Default Layout
+    is not published as a supported layout tag" even after
+    `discreteChannels(numLiveInputs)` was accepted, because
+    `discreteChannels(N)` has no corresponding NAMED CoreAudio
+    `AudioChannelLayoutTag` at all -- accepting a layout in
+    `isBusesLayoutSupported()` and that layout having a publishable tag
+    turned out to be two different things, confirmed empirically (byte-
+    identical `auval` failure before and after that first attempt).
+    `makeBusLayout()` itself stays unconditionally
+    `discreteChannels(numLiveInputs)` for every format (`wrapperType`
+    isn't populated yet at that point -- it's read from a thread-local the
+    wrapper sets just before construction, not accessible from a static
+    function called as a constructor-initializer argument, confirmed via
+    JUCE source) -- the AU-specific default is applied as a follow-up
+    adjustment in the constructor BODY instead, once `wrapperType` is
+    available.
+  - **Required correctness fix, `processBlock()`'s `numInCh` clamp**: was
+    `jmin(numLiveInputs, buffer.getNumChannels())` -- always evaluated to
+    exactly `numLiveInputs` (8) in practice before this change, since
+    input was forced to exactly 8 channels for every format and JUCE's
+    shared in-place buffer is sized to
+    `max(totalNumInputChannels, totalNumOutputChannels)`, always >= 8 as a
+    result. Now that AU can legitimately negotiate FEWER real input
+    channels (e.g. 2, Stereo) while still having a much wider output bus
+    (e.g. 16, raw Ambisonics), `buffer.getNumChannels()` would be 16 even
+    with only 2 real input channels -- without the fix, channels 2-15
+    (uninitialized/output-purposed buffer memory) would have been
+    silently treated as valid extra live-input channels. Fixed to
+    `jmin(numLiveInputs, getTotalNumInputChannels(), buffer.getNumChannels())`
+    -- `getTotalNumInputChannels()` reflects the currently negotiated main
+    input bus width. Every downstream per-object read was already
+    correctly bounded against `numInCh` (`obj.inputChannel < numInCh`),
+    so this one-line fix was sufficient -- no array resizing needed.
+    `numLiveInputs` itself (`SAPOC_MAX_LIVE_INPUTS` = 8, sizing every
+    per-object array) is unchanged for every format; objects beyond the
+    currently-negotiated input channel count simply have no live audio,
+    the same mechanism already used today for any object with
+    `inputChannel == -1`.
+  - **No new UI.** Confirmed explicitly with the user: Logic's own
+    track-type selection at insert time IS the flexible-choice mechanism
+    (exactly like any ordinary AU effect) -- no in-plugin picker needed.
+  - **Superseded by the output-side fix directly below** -- this
+    input-only round shipped with the output side still hard-locked to
+    the 16-channel raw-Ambisonics default, which exceeds Logic's own
+    12-channel ceiling and can never be routed there regardless of how
+    flexible the input side is. Caught by the user directly (not
+    self-discovered) after real testing in Logic.
+- **AU: the output side is now ALSO flexible, and the plugin (every
+  format, not just AU) now starts in Stereo instead of raw Ambisonics.**
+  Of `AmbisonicsDecoder::Mode`'s 14 formats, exactly 9 are usable in
+  Logic at all: a NAMED JUCE `AudioChannelSet` (so Logic's own
+  layout-tag matching recognizes it) AND `<= 12` channels (Logic's own
+  ceiling, 7.1.4 -- confirmed by the user). Stereo, Binaural, Quad, 5.1,
+  7.1, and the four Atmos-bed formats (5.1.2/5.1.4/7.1.2/7.1.4) qualify;
+  raw Ambisonics Order 1/2/3 (unnamed; Order 3 alone already exceeds
+  12ch), Octophonic, and CircularArray (both unnamed) do not, and are
+  excluded from AU unconditionally.
+  - **Design: Logic fixes the output channel COUNT once, at insertion**
+    (based on which track/bus type is chosen), and the plugin never asks
+    to change it afterward for AU -- deliberately different from the
+    input-side strategy above (which accepts multiple simultaneous
+    formats with no live-renegotiation risk, since reading input already
+    self-adapts every block). Output can't use that same trick: which
+    mode is active determines which decode MATRIX gets used, so this
+    plugin requesting a live output-channel-count CHANGE is exactly the
+    mechanism that caused the original Reaper silence regression (see
+    that Fixed entry). Avoided entirely here: `isBusesLayoutSupported()`'s
+    AU output branch accepts all 9 Logic-viable layouts simultaneously
+    (so JUCE's AU wrapper discovers the full set at insertion, letting
+    Logic offer Klangorbit on Stereo/5.1/7.1/Atmos-bed tracks alike --
+    same `AudioUnitHelpers::getAUChannelInfo()` probing mechanism as the
+    input-side fix), but `setDecoderMode()` (for AU only) never calls
+    `setBusesLayout()` again after that -- switching to a mode needing
+    FEWER channels than what's already negotiated just uses fewer of them
+    internally, with no bus-change request for a host to get stuck on.
+  - **Required correctness fix, `AmbisonicsDecoder::decode()`**: it only
+    ever cleared/wrote `numOut` channels (`jmin(decodeMatrix.size(),
+    destBuffer.getNumChannels())`), silently leaving any remaining
+    destination channels untouched. Never reachable before (VST3/
+    Standalone always negotiated an exact channel match) -- now that AU
+    can have a wider negotiated bus than the active mode needs, those
+    leftover channels would have kept stale data from JUCE's shared
+    in-place buffer instead of silence. Fixed by explicitly clearing
+    channels `numOut..destBuffer.getNumChannels()-1` too.
+  - **New `KlangorbitProcessor::isOutputModeAvailable(Mode)`** -- single
+    source of truth for "is this mode selectable right now", used both by
+    `setDecoderMode()` (a defensive no-op guard) and by `OutputPanel`
+    (greys out unavailable combo items via `ComboBox::setItemEnabled()`,
+    not removed -- still visible, just unselectable). Always `true` for
+    VST3/Standalone (unchanged behavior, every mode has always been
+    switchable there); for AU, `false` for the 5 excluded modes
+    unconditionally, otherwise `true` only if the mode's own channel
+    count fits within `getTotalNumOutputChannels()`. New
+    `AmbisonicsDecoder::numModes` constant (14) is the shared source of
+    truth for `OutputPanel`'s combo-item-ID loop bound, so it can't
+    silently desync from a hardcoded count if a mode is ever added.
+  - **Global default startup Output Format is now Stereo, for every
+    format** (`makeBusLayout()`'s default output, and the constructor's
+    initial `encoder.setOrder()`/`decoder.setMode()`, all changed from
+    `rawModeForOrder(SAPOC_DEFAULT_AMBI_ORDER)` -- raw B-format, 16
+    channels -- to `Mode::Stereo` directly). Not just an AU
+    accommodation: raw B-format is silent/unusable without an external
+    decoder, so a fresh plugin instance used to produce no audible output
+    at all until the user wired one up or switched Output Format
+    manually -- Stereo is audible immediately, in Reaper/Standalone too.
+    `SAPOC_DEFAULT_AMBI_ORDER` and the `rawModeForOrder()` helper are now
+    fully unused (confirmed via a whole-repo grep) and were removed
+    entirely -- the CMake `CACHE STRING`, its `target_compile_definitions`
+    line, the helper function, both call sites -- rather than left as
+    dead configuration. **This is a real behavior change for existing
+    Reaper/Standalone sessions** that may have been relying on the old
+    raw-Ambisonics-by-default startup state; switch Output Format back to
+    an Ambisonics order manually if needed (still fully supported, just
+    no longer the default).
+  - Verified with `auval -v aumf Klor Jgck`: full PASS, default format
+    now 2ch in / 2ch out (Stereo/Stereo), and `Reported Channel
+    Capabilities (explicit)` now shows the full cross product of all 4
+    input formats against 6 distinct output channel-count buckets (2, 4,
+    6, 8, 10, 12) -- `[1,2] [1,4] [1,6] [1,8] [1,10] [1,12] [2,2] ...
+    [8,12]`, 24 pairs total. Whether Logic's own insert UI actually
+    offers/accepts Klangorbit cleanly across all of these -- especially
+    whether the Output Format dropdown's greying and live switching
+    between available formats behaves as expected -- still needs
+    live-testing in Logic itself; `auval` confirms the AU-protocol layer
+    is correct, not the full in-host experience.
 - **Binaural (HRTF-based) headphone output, the 14th selectable Output
   Format, closing the gap left by the original decoder-feature spec**
   (which explicitly deferred it pending a licensing decision, see the

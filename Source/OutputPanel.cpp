@@ -28,34 +28,36 @@ OutputPanel::OutputPanel()
     // (0-based, from getSelectedItemIndex() below) is cast directly to the
     // enum. addItem()'s IDs (1, 2, 3, ...) are just JUCE's required
     // 1-based ComboBox item IDs, unrelated to the enum's own values.
-    decoderModeRow->combo.addItem ("Ambisonics (Order 1, 4ch)", 1);
-    decoderModeRow->combo.addItem ("Ambisonics (Order 2, 9ch)", 2);
-    decoderModeRow->combo.addItem ("Ambisonics (Order 3, 16ch)", 3);
-    decoderModeRow->combo.addItem ("Stereo", 4);
-    decoderModeRow->combo.addItem ("Binaural (HRTF, 2ch)", 5);
-    decoderModeRow->combo.addItem ("Quad", 6);
-    decoderModeRow->combo.addItem ("5.1", 7);
-    decoderModeRow->combo.addItem ("7.1", 8);
-    decoderModeRow->combo.addItem ("5.1.2 (Atmos)", 9);
-    decoderModeRow->combo.addItem ("5.1.4 (Atmos)", 10);
-    decoderModeRow->combo.addItem ("7.1.2 (Atmos)", 11);
-    decoderModeRow->combo.addItem ("7.1.4 (Atmos)", 12);
-    decoderModeRow->combo.addItem ("Octophonic (8ch circular)", 13);
-    decoderModeRow->combo.addItem ("Circular Array (adjustable)", 14);
+    decoderModeRow->combo.addItem ("Stereo", 1);
+    decoderModeRow->combo.addItem ("Binaural (HRTF)", 2);
+    decoderModeRow->combo.addItem ("Quad", 3);
+    decoderModeRow->combo.addItem ("Octophonic", 4);
+    decoderModeRow->combo.addItem ("Circular Array (adjustable)", 5);
+    decoderModeRow->combo.addItem ("5.1", 6);
+    decoderModeRow->combo.addItem ("7.1", 7);
+    decoderModeRow->combo.addItem ("5.1.2", 8);
+    decoderModeRow->combo.addItem ("5.1.4", 9);
+    decoderModeRow->combo.addItem ("7.1.2", 10);
+    decoderModeRow->combo.addItem ("7.1.4", 11);
+    decoderModeRow->combo.addItem ("FOA (1st Order Ambisonics, 4ch)", 12);
+    decoderModeRow->combo.addItem ("SOA (2nd Order Ambisonics, 9ch)", 13);
+    decoderModeRow->combo.addItem ("TOA (3rd Order Ambisonics, 16ch)", 14);
     decoderModeRow->onSelected = [this] (int index)
     {
         if (decoderProcessor != nullptr)
             decoderProcessor->setDecoderMode ((AmbisonicsDecoder::Mode) index);
         updateBinauralRowsVisibility();
+        updateCircularArrayRowsVisibility();
+        updateBassManagementRowVisibility();
         resized();
     };
     addAndMakeVisible (*decoderModeRow);
 
-    // Only meaningful while Output Format == Circular Array (silently
-    // ignored otherwise, including by the fixed Octophonic preset -- see
-    // AmbisonicsDecoder::setCircularArraySpeakerCount()). Kept always
-    // visible rather than hidden/shown per mode -- a single row, not worth
-    // the extra state.
+    // Only shown while Output Format == Circular Array -- see
+    // updateCircularArrayRowsVisibility(). Silently ignored by the fixed
+    // Octophonic preset regardless (see AmbisonicsDecoder::
+    // setCircularArraySpeakerCount()), so hiding it there too is correct,
+    // not just tidiness.
     circularSpeakerCountRow = std::make_unique<FloatRowComponent> (
         "Circular Array: Speaker Count", (double) AmbisonicsDecoder::minCircularSpeakers,
         (double) AmbisonicsDecoder::maxCircularSpeakers, 1.0);
@@ -64,7 +66,7 @@ OutputPanel::OutputPanel()
         if (decoderProcessor != nullptr)
             decoderProcessor->setCircularArraySpeakerCount ((int) std::round (v));
     };
-    addAndMakeVisible (*circularSpeakerCountRow);
+    addChildComponent (*circularSpeakerCountRow);
 
     styleHintLabel (circularArrayHintLabel,
                      "Octophonic/Circular Array are horizontal-only -- a "
@@ -75,17 +77,19 @@ OutputPanel::OutputPanel()
                      "Ambisonics order.");
     addAndMakeVisible (circularArrayHintLabel);
 
-    // Default off -- Ambisonics has no dedicated LFE signal, so this is a
-    // real, audible addition (a low-passed W channel) to what was mixed,
-    // not something to silently turn on. Only affects modes with an LFE
-    // channel (5.1/7.1/Atmos variants); harmless no-op otherwise.
+    // Only shown while Output Format has an LFE channel (5.1/7.1/Atmos
+    // variants) -- see updateBassManagementRowVisibility(). Ambisonics has
+    // no dedicated LFE signal, so enabling this is a real, audible
+    // addition (a low-passed W channel) to what was mixed, not something
+    // to silently turn on by default -- still off by default here, just
+    // no longer shown at all for formats it can't affect.
     bassManagementRow = std::make_unique<ToggleRowComponent> ("Bass Management (LFE from W)");
     bassManagementRow->onToggled = [this] (bool v)
     {
         if (decoderProcessor != nullptr)
             decoderProcessor->setBassManagementEnabled (v);
     };
-    addAndMakeVisible (*bassManagementRow);
+    addChildComponent (*bassManagementRow);
 
     // Only shown while Output Format == Binaural -- see
     // updateBinauralRowsVisibility(). Order matches
@@ -142,6 +146,7 @@ void OutputPanel::refreshFromModel()
         return;
 
     decoderModeRow->combo.setSelectedItemIndex ((int) decoderProcessor->getDecoderMode(), juce::dontSendNotification);
+    updateDecoderModeAvailability();
     circularSpeakerCountRow->setValueQuiet ((float) decoderProcessor->getCircularArraySpeakerCount());
     bassManagementRow->setValueQuiet (decoderProcessor->isBassManagementEnabled());
 
@@ -152,7 +157,24 @@ void OutputPanel::refreshFromModel()
                                           : "No custom SOFA file loaded yet.",
                                       juce::dontSendNotification);
     updateBinauralRowsVisibility();
+    updateCircularArrayRowsVisibility();
+    updateBassManagementRowVisibility();
     resized();
+}
+
+void OutputPanel::updateDecoderModeAvailability()
+{
+    if (decoderProcessor == nullptr)
+        return;
+
+    // Combo item IDs are position+1 (1-based) -- matches the exact
+    // addItem() order above and AmbisonicsDecoder::Mode's own 0-based
+    // enum order, same convention onSelected already relies on.
+    for (int id = 1; id <= AmbisonicsDecoder::numModes; ++id)
+    {
+        const auto mode = (AmbisonicsDecoder::Mode) (id - 1);
+        decoderModeRow->combo.setItemEnabled (id, decoderProcessor->isOutputModeAvailable (mode));
+    }
 }
 
 void OutputPanel::updateBinauralRowsVisibility()
@@ -164,6 +186,25 @@ void OutputPanel::updateBinauralRowsVisibility()
     binauralBrowseButton.setVisible (isBinaural);
     binauralCustomFileLabel.setVisible (isBinaural);
     binauralHintLabel.setVisible (isBinaural);
+}
+
+void OutputPanel::updateCircularArrayRowsVisibility()
+{
+    if (decoderProcessor == nullptr)
+        return;
+
+    const auto mode = decoderProcessor->getDecoderMode();
+    circularSpeakerCountRow->setVisible (mode == AmbisonicsDecoder::Mode::CircularArray);
+    circularArrayHintLabel.setVisible (mode == AmbisonicsDecoder::Mode::Octophonic
+                                        || mode == AmbisonicsDecoder::Mode::CircularArray);
+}
+
+void OutputPanel::updateBassManagementRowVisibility()
+{
+    if (decoderProcessor == nullptr)
+        return;
+
+    bassManagementRow->setVisible (AmbisonicsDecoder::lfeChannelIndexFor (decoderProcessor->getDecoderMode()) >= 0);
 }
 
 void OutputPanel::browseForCustomSofaFile()
@@ -209,15 +250,24 @@ void OutputPanel::resized()
     b.removeFromTop (UiSpacing::m);
 
     decoderModeRow->setBounds (b.removeFromTop (ComboRowComponent::preferredHeight));
-    b.removeFromTop (UiSpacing::m);
 
-    circularSpeakerCountRow->setBounds (b.removeFromTop (FloatRowComponent::preferredHeight));
-    b.removeFromTop (UiSpacing::m);
+    if (circularSpeakerCountRow->isVisible())
+    {
+        b.removeFromTop (UiSpacing::m);
+        circularSpeakerCountRow->setBounds (b.removeFromTop (FloatRowComponent::preferredHeight));
+    }
 
-    circularArrayHintLabel.setBounds (b.removeFromTop (64));
-    b.removeFromTop (UiSpacing::m);
+    if (circularArrayHintLabel.isVisible())
+    {
+        b.removeFromTop (UiSpacing::m);
+        circularArrayHintLabel.setBounds (b.removeFromTop (64));
+    }
 
-    bassManagementRow->setBounds (b.removeFromTop (ToggleRowComponent::preferredHeight));
+    if (bassManagementRow->isVisible())
+    {
+        b.removeFromTop (UiSpacing::m);
+        bassManagementRow->setBounds (b.removeFromTop (ToggleRowComponent::preferredHeight));
+    }
 
     if (binauralDatasetRow->isVisible())
     {

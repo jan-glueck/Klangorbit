@@ -4,13 +4,14 @@ Klangorbit is an object-based Ambisonics spatializer built around a live
 physics engine: instead of automating position with envelopes or curves,
 you give sound objects mass, velocity, gravity, and momentum, and let
 their motion emerge from that. Its output format is selectable (Output
-category, section 12): raw Ambisonics B-format (ACN/SN3D, AmbiX-compatible
--- still the default; feed it into an external decoder such as SPARTA
-AmbiBIN/AmbiDEC or the IEM Plugin Suite), or an internally decoded Stereo,
-Binaural (HRTF-based headphone output, see section 12), Quad, 5.1, 7.1,
-Dolby-Atmos-bed (5.1.2/5.1.4/7.1.2/7.1.4), Octophonic (a fixed 8-speaker
-circular array), or Circular Array (any speaker count 4-24) output, no
-external decoder needed.
+category, section 12, 14 formats in dropdown order): an internally
+decoded Stereo (the default -- audible immediately, no external decoder
+needed), Binaural (HRTF-based headphone output), Quad, Octophonic (a
+fixed 8-speaker circular array), Circular Array (any speaker count
+4-24), 5.1, 7.1, or one of four Dolby-Atmos-bed layouts
+(5.1.2/5.1.4/7.1.2/7.1.4) -- or raw Ambisonics B-format at one of three
+orders, FOA/SOA/TOA (ACN/SN3D, AmbiX-compatible), to feed an external
+decoder such as SPARTA AmbiBIN/AmbiDEC or the IEM Plugin Suite instead.
 
 This guide covers how to use the plugin. For build instructions and
 internal architecture notes, see `README.md` in the project root.
@@ -24,8 +25,8 @@ internal architecture notes, see `README.md` in the project root.
    input channel).
 2. Feed a decoder (SPARTA AmbiDEC/AmbiBIN, IEM BinauralDecoder, etc.)
    from Klangorbit's Ambisonics output -- or switch Output Format to
-   Binaural/Stereo/Quad/5.1/7.1/an Atmos-bed variant instead to skip an
-   external decoder entirely (see section 12).
+   Binaural (HRTF)/Stereo/Quad/5.1/7.1/an Atmos-bed variant instead to
+   skip an external decoder entirely (see section 12).
 3. Open the Klangorbit editor: you'll see a 3D scene view in the middle,
    an object list on the left, a toolbar across the top, and a parameter
    panel on the right.
@@ -369,21 +370,24 @@ Chooses what the plugin's output bus actually carries -- a plugin-wide
 setting, not tied to the scene or any object, so it lives in its own
 window (toolbar -> **Output...**) rather than the parameter panel:
 
-- **Output Format** -- one of 14 mutually exclusive formats:
-  - **Ambisonics (Order 1/2/3)** -- the original raw B-format output
-    (ACN/SN3D), no decoding at all. Still the default; route it to an
-    external decoder (SPARTA AmbiBIN/AmbiDEC, IEM BinauralDecoder) as
-    before.
-  - **Stereo** -- a plain 2-speaker decode (+-30 deg), not the same
+- **Output Format** -- one of 14 mutually exclusive formats, in dropdown
+  order. Full speaker angles/channel order verified directly against
+  `Source/SpeakerLayouts.h` (the source of truth, including its own
+  citations):
+  - **Stereo** -- a plain 2-speaker decode, L/R at +-30 deg (ITU-R
+    BS.775-4, the same standard defining 5.1/7.1 below). Not the same
     thing as binaural -- no HRTF/head-related processing, just two
-    virtual loudspeakers.
-  - **Binaural** -- HRTF-based headphone output, decoded internally (no
-    external AmbiBIN/BinauralDecoder needed for this path). Technique: the
-    Ambisonics bus is decoded to a dense 50-point virtual speaker array
-    (same point distribution AllRAD uses below), then each virtual
-    speaker's signal is convolved through that direction's own measured
-    left/right head-related impulse response and summed to the output --
-    see `BinauralDecoder.h` for the full breakdown. Selecting this format
+    virtual loudspeakers. **The default output format** (for every
+    plugin format, not just AU) -- audible immediately, no external
+    decoder or manual switch needed.
+  - **Binaural (HRTF)** -- HRTF-based headphone output, decoded
+    internally (no external AmbiBIN/BinauralDecoder needed for this
+    path); not a fixed loudspeaker layout. Technique: the Ambisonics bus
+    is decoded to a dense 50-point virtual speaker array (same point
+    distribution AllRAD uses below), then each virtual speaker's signal
+    is convolved through that direction's own measured left/right
+    head-related impulse response and summed to the output -- see
+    `BinauralDecoder.h` for the full breakdown. Selecting this format
     reveals an **HRTF Dataset** picker in the same window:
     - **KEMAR** (default) -- Gardner & Martin, MIT Media Lab. Bundled.
     - **SADIE II -- D1 (KU100)** -- University of York. Bundled.
@@ -398,17 +402,46 @@ window (toolbar -> **Output...**) rather than the parameter panel:
     differences between the ears) is not applied in this version, only
     each ear's amplitude/spectral HRIR shape -- see the CHANGELOG and
     `BinauralDecoder.h`'s own comment.
-  - **Quad / 5.1 / 7.1** -- standard loudspeaker layouts, ITU-R
-    BS.775-4 angles.
-  - **5.1.2 / 5.1.4 / 7.1.2 / 7.1.4** -- Dolby-Atmos-bed-style layouts
-    with height/top speakers, ITU-R BS.2051-2 angles.
-  - **Octophonic** -- a fixed, named 8-speaker circular array (45 deg
-    spacing, +-22.5 deg convention -- see the CHANGELOG for why).
+  - **Quad** -- conventional quadraphonic: L/R +-45 deg, Ls/Rs +-135 deg.
+    Not an ITU standard -- the conventional consumer layout.
+  - **Octophonic** -- fixed, named 8-speaker circular array: front L/R
+    +-22.5 deg, front-side L/R +-67.5 deg, rear-side L/R +-112.5 deg,
+    rear L/R +-157.5 deg. No ITU/IEM/AllRAD standard was found for this
+    exact layout during research -- matches Blue Ripple Sound's "O3A
+    Decoder -- Octagon" (the one concrete Ambisonics-ecosystem reference
+    product found); the channel order itself is this project's own
+    choice.
   - **Circular Array** -- a generic circular array for any speaker
-    count without an established naming convention; set **Circular
-    Array: Speaker Count** (4-24) to match your actual setup. That
-    control only has an effect while this format is selected --
-    harmless otherwise.
+    count without an established naming convention (evenly spaced
+    starting at front, channel index == sweep order; no standard, pure
+    geometry); set **Circular Array: Speaker Count** (4-24, **only shown
+    while this format is selected**) to match your actual setup.
+  - **5.1** -- ITU-R BS.775-4: L/R +-30 deg, C 0 deg, Ls/Rs +-110 deg.
+    Channel order (matches `juce::AudioChannelSet::create5point1()`
+    exactly): L R C LFE Ls Rs.
+  - **7.1** -- ITU-R BS.775-4: L/R +-30 deg, C 0 deg, side Lss/Rss
+    +-90 deg, rear Lrs/Rrs +-135 deg -- both within BS.775-4's own
+    permitted sectors (side 90-110 deg, rear 135-150 deg). Channel order
+    (matches `create7point1()`): L R C LFE Lss Rss Lrs Rrs.
+  - **5.1.2 / 5.1.4 / 7.1.2 / 7.1.4** -- Dolby-Atmos-bed-style layouts:
+    the matching 5.1/7.1 bed above, plus height channels at top-front
+    +-45 deg/+45 deg elevation, top-rear +-135 deg/+45 deg elevation,
+    top-side +-90 deg/+45 deg elevation. ITU-R BS.2051-2 only defines
+    permitted ANGLE SECTORS for these (e.g. top-front anywhere in
+    azimuth +-30..45 deg / elevation +30..55 deg), not single fixed
+    values -- the angles used are round numbers within those sectors,
+    cross-checked against Dolby's own published consumer height-speaker
+    guidance (45 deg front / 135 deg rear, 45 deg elevation cited as
+    "ideal"). Channel counts: 5.1.2 = 5.1 bed + top-side L/R (8ch);
+    5.1.4 = 5.1 bed + top-front L/R + top-rear L/R (10ch); 7.1.2 = 7.1
+    bed + top-side L/R (10ch); 7.1.4 = 7.1 bed + top-front L/R +
+    top-rear L/R (12ch -- the largest non-Ambisonics format, and Logic
+    Pro's own channel ceiling, see the AU sections above).
+  - **FOA (1st Order Ambisonics, 4ch) / SOA (2nd Order, 9ch) / TOA (3rd
+    Order, 16ch)** -- the original raw B-format output (ACN channel
+    ordering, SN3D normalization, AmbiX-compatible), no decoding at all;
+    route to an external decoder (SPARTA AmbiBIN/AmbiDEC, IEM
+    BinauralDecoder) as before.
 
   Octophonic and Circular Array are horizontal-only: a flat ring of
   speakers cannot reproduce elevation/height at all, regardless of
@@ -417,20 +450,19 @@ window (toolbar -> **Output...**) rather than the parameter panel:
   wrong direction) below 7 speakers -- see the CHANGELOG for why.
 
   Every non-Ambisonics format is decoded internally (AllRAD for the
-  irregular Quad/5.1/7.1/Atmos layouts, a simpler direct decode for
-  Stereo/Octophonic/Circular Array -- see the CHANGELOG for the method
-  and why it differs); there is no need to route to an external decoder
-  plugin for any of these. Switching formats (or changing Circular
-  Array's Speaker Count while it's active) changes the plugin's output
-  channel count -- most hosts (Reaper confirmed) pick this up live, some
-  need the plugin removed and reinserted, or the project reloaded, to
-  fully apply it.
-- **Bass Management (LFE from W)** -- off by default. Ambisonics has no
-  dedicated LFE signal, so this is a real, audible addition when
-  enabled: a low-passed (~120Hz) version of the omnidirectional (W)
-  channel is sent to the LFE channel, for the formats that have one
-  (5.1/7.1/Atmos variants -- Quad, Stereo, Binaural, Octophonic, and
-  Circular Array have no LFE). Has no effect on any other format.
+  irregular 5.1/7.1/Atmos layouts, a simpler direct decode for
+  Stereo/Quad/Octophonic/Circular Array -- see the CHANGELOG for the
+  method and why it differs); there is no need to route to an external
+  decoder plugin for any of these. Switching formats (or changing
+  Circular Array's Speaker Count while it's active) changes the plugin's
+  output channel count -- most hosts (Reaper confirmed) pick this up
+  live, some need the plugin removed and reinserted, or the project
+  reloaded, to fully apply it.
+- **Bass Management (LFE from W)** -- **only shown for formats with an
+  LFE channel** (5.1/7.1/5.1.2/5.1.4/7.1.2/7.1.4). Off by default --
+  Ambisonics has no dedicated LFE signal, so this is a real, audible
+  addition when enabled: a low-passed (~120Hz) version of the
+  omnidirectional (W) channel is sent to the LFE channel.
 
 ## 13. Presets
 
@@ -463,8 +495,8 @@ Presets/schema/README.md.)
 1. Route Klangorbit's Ambisonics output (ACN/SN3D) into a matching
    decoder (SPARTA AmbiDEC for speakers, AmbiBIN for headphones; IEM's
    BinauralDecoder/AllRADecoder are also compatible) -- or switch Output
-   Format to Binaural (section 12) to skip the external decoder for
-   headphone monitoring.
+   Format to Binaural (HRTF) (section 12) to skip the external decoder
+   for headphone monitoring.
 2. Automate nothing in Reaper for movement -- the physics engine is the
    automation. Instead, perform gestures live (drag, throw, sling) while
    recording, or design a scene ahead of time and save it as a preset.

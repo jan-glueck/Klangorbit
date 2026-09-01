@@ -109,13 +109,23 @@ juce_add_plugin(Klangorbit
     # Classic AU (Component Manager, .component bundle) for Logic Pro/
     # GarageBand/other AU hosts, alongside the existing VST3/Standalone --
     # NOT AUv3 (a completely different app-extension packaging model,
-    # unneeded here). "Music Effect" (aumf), not plain "Effect" (aufx):
-    # NEEDS_MIDI_INPUT TRUE + IS_SYNTH FALSE above already makes JUCE infer
-    # this exact category by default (see JUCEUtils.cmake's own AU_MAIN_TYPE
-    # inference) -- set explicitly here so the choice is documented rather
-    # than relying on an inferred default a reader would have to trace
-    # through JUCE's own CMake logic to discover.
-    AU_MAIN_TYPE "kAudioUnitType_MusicEffect"
+    # unneeded here). Plain "Effect" (aufx), NOT "Music Effect" (aumf):
+    # NEEDS_MIDI_INPUT TRUE + IS_SYNTH FALSE above would make JUCE infer
+    # aumf by default (see JUCEUtils.cmake's own AU_MAIN_TYPE inference) --
+    # deliberately overridden here after empirically confirming, with a
+    # throwaway diagnostic build, that Logic Pro's Plugin Manager listed
+    # this AU as installed/compatible while aumf, but never actually
+    # offered it as insertable on ANY track/bus type -- switching to aufx
+    # (same manufacturer/plugin code, otherwise identical) was the one
+    # change that made it appear, confirmed directly by the user. Real
+    # tradeoff, not free: auval flags "AU implements MusicDeviceMIDIEvent
+    # but is of type 'aufx' (it should be 'aumf')" -- our MIDI-handling
+    # code is still built in (from NEEDS_MIDI_INPUT), but declaring aufx
+    # tells a host this isn't a MIDI-interested unit, so Logic likely
+    # won't route MIDI (Mappings/Learn's CC input) to it via AU -- not yet
+    # confirmed either way by an actual in-Logic MIDI test. Gamepad/OSC
+    # control are unaffected either way (no dependency on this type).
+    AU_MAIN_TYPE "kAudioUnitType_Effect"
     # Same system-wide-folder choice as VST3_COPY_DIR above, for
     # consistency -- requires /Library/Audio/Plug-Ins/Components itself to
     # be made world-writable first (it isn't by default, unlike the VST3

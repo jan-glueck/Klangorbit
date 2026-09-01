@@ -6,6 +6,33 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Fixed
+- **AU never appeared as insertable on ANY track in Logic Pro, despite
+  `auval` fully passing and Logic's own Plugin Manager showing it as
+  installed/compatible.** All the input/output bus-flexibility work
+  earlier in this section turned out not to be the (whole) cause. Root
+  cause, confirmed empirically with a throwaway diagnostic build: the AU
+  category itself. `AU_MAIN_TYPE` was `kAudioUnitType_MusicEffect`
+  (`aumf`) -- semantically correct (an audio effect that also wants
+  MIDI, matching `NEEDS_MIDI_INPUT TRUE`) and JUCE's own inferred
+  default for these flags, but Logic's per-track AU filtering excluded
+  it from every track/bus type regardless. Switching `AU_MAIN_TYPE` to
+  plain `kAudioUnitType_Effect` (`aufx`), with everything else
+  unchanged, was the one change that made it appear -- confirmed
+  directly by the user after testing the diagnostic build.
+  - **Real, currently-open tradeoff, not a free fix**: `auval` flags this
+    with a warning -- `AU implements MusicDeviceMIDIEvent but is of type
+    'aufx' (it should be 'aumf')`. The plugin's own MIDI-handling code
+    (from `NEEDS_MIDI_INPUT TRUE`) is still built in regardless of this
+    type, but declaring `aufx` tells a host this isn't a MIDI-interested
+    unit -- whether Logic still routes MIDI (the Mappings/Learn feature's
+    CC/Note/Pitch Bend input) to an `aufx`-typed AU has NOT been
+    confirmed either way by an actual in-Logic test yet. Gamepad and OSC
+    control are unaffected regardless of this choice (no dependency on
+    the AU type). VST3/Standalone are completely unaffected either way
+    -- `AU_MAIN_TYPE` only applies to the AU target.
+  - Verified with `auval -v aufx Klor Jgck`: full PASS (the MIDI-type
+    mismatch above is a warning, not a failure).
 ### Added
 - **Output Format reordered/renamed, conditional-visibility for
   format-specific controls, a unified window-focus fix, and full

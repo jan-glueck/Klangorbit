@@ -225,6 +225,15 @@ private:
     // grainMovementModeRow's onSelected (mode changed live).
     void updateGrainMovementModeVisibility();
 
+    // Shows/hides pitchQuantizeScaleRow: visible only while the GrainCloud
+    // category is showing AND editedGrainCloud->pitchJitterMode == Scale --
+    // same "narrows what the generic category pass just made visible"
+    // pattern as updateGrainMovementModeVisibility() above, on an
+    // independent axis (pitch jitter mode, not movement mode). Called from
+    // the same trigger points: selectCategory(), setEditedGrainCloud()/
+    // refreshFromModel(), and pitchJitterModeRow's own onSelected.
+    void updatePitchJitterModeVisibility();
+
     juce::Viewport viewport;
     juce::Component content;
 
@@ -280,4 +289,8 @@ private:
     std::unique_ptr<ComboRowComponent> grainWindowShapeRow;
     std::unique_ptr<ComboRowComponent> grainMovementModeRow;
     std::unique_ptr<ComboRowComponent> grainReadDepthDistributionRow;
+    std::unique_ptr<ComboRowComponent> pitchJitterModeRow;
+    // Visible only while pitchJitterModeRow == Scale, see
+    // updatePitchJitterModeVisibility().
+    std::unique_ptr<ComboRowComponent> pitchQuantizeScaleRow;
 };

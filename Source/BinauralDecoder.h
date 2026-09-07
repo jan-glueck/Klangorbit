@@ -86,8 +86,25 @@ public:
     void decode (const juce::AudioBuffer<float>& ambiInput, juce::AudioBuffer<float>& stereoOutput, int numSamples);
 
 private:
+    // See its own comment (BinauralDecoder.cpp) -- practical loudness
+    // calibration, called once from prepare().
+    static float calibrateOutputGain (const std::vector<std::vector<double>>& combinedLeft,
+                                       const std::vector<std::vector<double>>& combinedRight);
+
     // decodeMatrix[virtualSpeakerIndex][ambiChannel].
     std::vector<std::vector<float>> decodeMatrix;
+
+    // Practical loudness calibration, computed once in prepare() -- see its
+    // own comment there. Applied as a single multiply on the final L/R sum
+    // in decode(). Without this, summing numVirtualSpeakers (50) un-
+    // normalized HRIR convolutions (Normalise::no is deliberate, see
+    // loadImpulseResponse() below -- that flag is about not flattening each
+    // IR's own physically-meaningful directional level, a different thing
+    // from calibrating the SUM's overall output level) came out
+    // substantially louder than every other decode mode, and inconsistently
+    // so between HRTF datasets whose own absolute measurement level differs
+    // (e.g. SADIE II measured louder than KEMAR).
+    float outputGain = 1.0f;
 
     struct VirtualSpeakerConvolvers
     {

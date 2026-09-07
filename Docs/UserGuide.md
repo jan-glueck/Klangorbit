@@ -319,7 +319,29 @@ trajectory. Turn it on with **Enabled**.
   variation per spawn) -- Grain Rate Jitter varies the spacing between
   spawns instead of a perfectly metronomic beat; Grain Duration Jitter
   varies each grain's own length.
-- **Pitch Jitter** -- random per-grain playback-rate deviation.
+- **Pitch Jitter** -- how far each grain's pitch may deviate from the
+  source material's own pitch (the REACH, 0..1; 0 = no deviation). Shared
+  by both **Pitch Jitter Mode** settings below.
+- **Pitch Jitter Mode** -- **Random** (default): applies Pitch Jitter as
+  a continuous, uniformly random +/- playback-rate deviation, the
+  original behavior. **Scale**: quantizes instead -- each grain's pitch
+  snaps exactly onto a degree of **Pitch Quantize Scale** below, picked
+  at random from every degree within Pitch Jitter's reach (up to one
+  octave up/down at Pitch Jitter = 1.0). Use Scale mode to keep a
+  jittered grain cloud musically "in tune" with itself instead of
+  detuning arbitrarily.
+- **Pitch Quantize Scale** -- only shown while Pitch Jitter Mode ==
+  Scale: Octaves, Fifths, Major/Minor Triad, Major/Dorian/Lydian/
+  Mixolydian/Aeolian Scale, Whole-Tone, Octatonic, Hexatonic, or Acoustic
+  Scale (the "overtone scale"/Lydian Dominant -- the closest standard
+  12-tone-equal-tempered scale to the real overtone series, since the
+  real, inharmonic harmonic series has no exact equal-tempered
+  equivalent). The grain's own natural pitch is always the scale's root
+  -- there's no separate key/note picker, since these are intervals
+  relative to whatever the source material already sounds like, not
+  absolute pitches. Octaves/Fifths are bare intervals rather than full
+  scales (Octaves alone removes all pitch variation except octave
+  jumps).
 - **Position Jitter In Buffer / Read Depth Min / Max / Distribution** --
   control how far back into the object's recent audio each grain reads
   from, and whether that's evenly spread, biased shallow (recent), or
@@ -525,8 +547,9 @@ them can still be rebound to something else via Learn mode (section 17):
 - **Right stick**: orbits the camera (look-around) -- the gamepad
   equivalent of dragging empty space with the mouse. Only does anything
   with the editor window open (there's nothing to look at otherwise).
-- **D-pad Up/Down**: zooms the camera in/out. Also editor-only.
-- **Button X**: cycles the selection to the next active object.
+- **D-pad Left/Right**: zooms the camera in/out. Also editor-only.
+- **D-pad Up/Down**: cycles the selection to the next/previous active
+  object, wrapping around (bidirectional).
 - **Button A**: activates the next inactive object slot and selects it
   (same as the "+ Object" button in the object list).
 - **Button B**: deactivates the currently selected object (same as
@@ -545,7 +568,10 @@ keeps working with the editor window closed, since the whole simulation
 runs independent of it. Only one controller is read at a time. An
 optional inertia mode for the left stick's movement (movement continues
 after release, decelerating like a thrown object) exists but has no UI
-toggle yet.
+toggle yet. Button X has no built-in behavior -- free for a Learn-mode
+binding of your own, same as any other raw control (section 17). The
+Learn-mode "second bank" modifier defaults to the left trigger, not a
+shoulder button, so it never competes with Orbit Shot/Slingshot above.
 
 ## 17. Controller mapping (toolbar -> Mappings...)
 
@@ -564,11 +590,12 @@ The target-parameter dropdown only offers scene-wide parameters and
 object regardless of selection (possible by hand-editing a saved mapping
 profile's JSON, but not through this picker).
 
-**Paging**: hold the control shown next to "Paging modifier" (right
-shoulder button by default) to unlock a second layer of bindings -- the
-same stick can drive one parameter normally and a different one while
-the modifier is held. Learn a binding while holding the modifier to
-place it in that second layer.
+**Paging**: hold the control shown next to "Paging modifier" (left
+trigger by default -- not a shoulder button, since Left/Right Shoulder
+already have a built-in meaning of their own, see section 16) to unlock
+a second layer of bindings -- the same stick can drive one parameter
+normally and a different one while the modifier is held. Learn a
+binding while holding the modifier to place it in that second layer.
 
 Binding either of the left stick's axes here takes over the built-in
 rate-control movement (section 16) completely for that axis pair --

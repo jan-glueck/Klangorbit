@@ -24,7 +24,15 @@ class OutputWindow : public juce::DocumentWindow
 public:
     explicit OutputWindow (KlangorbitProcessor& processorToControl);
 
-    void closeButtonPressed() override { setVisible (false); }
+    // See HelpWindow.h's identical member for why this exists.
+    std::function<void()> onClosed;
+
+    void closeButtonPressed() override
+    {
+        setVisible (false);
+        if (onClosed)
+            onClosed();
+    }
 
     // Re-syncs the controls with the current model state -- call every
     // time the window is (re)shown, see OutputPanel::refreshFromModel().

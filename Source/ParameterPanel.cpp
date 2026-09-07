@@ -395,6 +395,47 @@ ParameterPanel::ParameterPanel()
     addGrainFloatRow ("Grain Duration (s)", &GrainCloudSettings::grainDuration, 0.01, GrainLimits::maxGrainDuration, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Grain Duration Jitter", &GrainCloudSettings::grainDurationJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
     addGrainFloatRow ("Pitch Jitter", &GrainCloudSettings::pitchJitter, 0.0, 1.0, 0.01, Category::GrainCloud);
+
+    pitchJitterModeRow = std::make_unique<ComboRowComponent> ("Pitch Jitter Mode");
+    pitchJitterModeRow->combo.addItem ("Random", 1);
+    pitchJitterModeRow->combo.addItem ("Scale", 2);
+    pitchJitterModeRow->onSelected = [this] (int index)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->pitchJitterMode = (PitchJitterMode) index;
+        updatePitchJitterModeVisibility(); // show the Scale row only when it now applies
+        layoutContent(); // heights above/below the now-hidden/shown row changed -- re-flow immediately
+    };
+    content.addAndMakeVisible (*pitchJitterModeRow);
+    addToLayout (*pitchJitterModeRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
+
+    // Standard music-theory interval sets -- see Grain.h's own comment on
+    // PitchQuantizeScale for what each one means (Octaves/Fifths are bare
+    // intervals, not full scales; Acoustic is the "overtone scale"). Only
+    // shown while Pitch Jitter Mode == Scale, see
+    // updatePitchJitterModeVisibility().
+    pitchQuantizeScaleRow = std::make_unique<ComboRowComponent> ("Pitch Quantize Scale");
+    pitchQuantizeScaleRow->combo.addItem ("Octaves", 1);
+    pitchQuantizeScaleRow->combo.addItem ("Fifths", 2);
+    pitchQuantizeScaleRow->combo.addItem ("Major Triad", 3);
+    pitchQuantizeScaleRow->combo.addItem ("Minor Triad", 4);
+    pitchQuantizeScaleRow->combo.addItem ("Major Scale", 5);
+    pitchQuantizeScaleRow->combo.addItem ("Dorian Scale", 6);
+    pitchQuantizeScaleRow->combo.addItem ("Lydian Scale", 7);
+    pitchQuantizeScaleRow->combo.addItem ("Mixolydian Scale", 8);
+    pitchQuantizeScaleRow->combo.addItem ("Aeolian Scale", 9);
+    pitchQuantizeScaleRow->combo.addItem ("Whole-Tone Scale", 10);
+    pitchQuantizeScaleRow->combo.addItem ("Octatonic Scale", 11);
+    pitchQuantizeScaleRow->combo.addItem ("Hexatonic Scale", 12);
+    pitchQuantizeScaleRow->combo.addItem ("Acoustic Scale (Overtone Series)", 13);
+    pitchQuantizeScaleRow->onSelected = [this] (int index)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->pitchQuantizeScale = (PitchQuantizeScale) index;
+    };
+    content.addChildComponent (*pitchQuantizeScaleRow); // hidden until updatePitchJitterModeVisibility() shows it
+    addToLayout (*pitchQuantizeScaleRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
+
     addGrainFloatRow ("Position Jitter In Buffer (s)", &GrainCloudSettings::positionJitterInBuffer, 0.0, GrainLimits::maxPositionJitterInBuffer, 0.01, Category::GrainCloud);
 
     // Bounded to GrainLimits::maxGrainReadDepthRange -- the same constant
@@ -624,6 +665,7 @@ void ParameterPanel::selectCategory (Category category)
     // requiredMovementMode (see addToLayout()) -- further narrows what
     // the generic pass above just made visible.
     updateGrainMovementModeVisibility();
+    updatePitchJitterModeVisibility();
 
     viewport.setViewPosition (0, 0);
     layoutContent();
@@ -644,6 +686,14 @@ void ParameterPanel::updateGrainMovementModeVisibility()
     for (size_t i = 0; i < layoutOrder.size(); ++i)
         if (layoutRequiredMovementMode[i].has_value())
             layoutOrder[i]->setVisible (*layoutRequiredMovementMode[i] == editedGrainCloud->movementMode);
+}
+
+void ParameterPanel::updatePitchJitterModeVisibility()
+{
+    if (currentCategory != Category::GrainCloud || editedGrainCloud == nullptr)
+        return;
+
+    pitchQuantizeScaleRow->setVisible (editedGrainCloud->pitchJitterMode == PitchJitterMode::Scale);
 }
 
 void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects)
@@ -718,7 +768,10 @@ void ParameterPanel::refreshFromModel()
     grainWindowShapeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->windowShape, juce::dontSendNotification);
     grainMovementModeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->movementMode, juce::dontSendNotification);
     grainReadDepthDistributionRow->combo.setSelectedItemIndex ((int) editedGrainCloud->grainReadDepthDistribution, juce::dontSendNotification);
+    pitchJitterModeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->pitchJitterMode, juce::dontSendNotification);
+    pitchQuantizeScaleRow->combo.setSelectedItemIndex ((int) editedGrainCloud->pitchQuantizeScale, juce::dontSendNotification);
     updateGrainMovementModeVisibility(); // movementMode may have changed (e.g. a preset load, or switching selected object) without going through grainMovementModeRow's own onSelected
+    updatePitchJitterModeVisibility(); // same idea, for pitchJitterMode
 }
 
 void ParameterPanel::layoutContent()

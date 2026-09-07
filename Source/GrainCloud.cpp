@@ -16,6 +16,82 @@ namespace
         return baseValue * (1.0f + range * (rng.nextFloat() * 2.0f - 1.0f));
     }
 
+    // --- PitchJitterMode::Scale (see Grain.h's own comment on both enums) ---
+
+    // Semitone offsets within one octave (0 = the grain's own natural
+    // pitch) for each PitchQuantizeScale -- standard music-theory interval
+    // sets. Returned by reference to a function-local static, not
+    // recomputed per call.
+    const std::vector<int>& scaleSemitones (PitchQuantizeScale scale)
+    {
+        static const std::vector<int> octaves    { 0 };
+        static const std::vector<int> fifths      { 0, 7 };
+        static const std::vector<int> majorTriad  { 0, 4, 7 };
+        static const std::vector<int> minorTriad  { 0, 3, 7 };
+        static const std::vector<int> majorScale  { 0, 2, 4, 5, 7, 9, 11 };
+        static const std::vector<int> dorian      { 0, 2, 3, 5, 7, 9, 10 };
+        static const std::vector<int> lydian      { 0, 2, 4, 6, 7, 9, 11 };
+        static const std::vector<int> mixolydian  { 0, 2, 4, 5, 7, 9, 10 };
+        static const std::vector<int> aeolian     { 0, 2, 3, 5, 7, 8, 10 };
+        static const std::vector<int> wholeTone   { 0, 2, 4, 6, 8, 10 };
+        static const std::vector<int> octatonic   { 0, 2, 3, 5, 6, 8, 9, 11 };
+        static const std::vector<int> hexatonic   { 0, 1, 4, 5, 8, 9 };
+        static const std::vector<int> acoustic    { 0, 2, 4, 6, 7, 9, 10 }; // "overtone scale"/Lydian Dominant
+
+        switch (scale)
+        {
+            case PitchQuantizeScale::Octaves:    return octaves;
+            case PitchQuantizeScale::Fifths:     return fifths;
+            case PitchQuantizeScale::MajorTriad: return majorTriad;
+            case PitchQuantizeScale::MinorTriad: return minorTriad;
+            case PitchQuantizeScale::MajorScale: return majorScale;
+            case PitchQuantizeScale::Dorian:     return dorian;
+            case PitchQuantizeScale::Lydian:     return lydian;
+            case PitchQuantizeScale::Mixolydian: return mixolydian;
+            case PitchQuantizeScale::Aeolian:    return aeolian;
+            case PitchQuantizeScale::WholeTone:  return wholeTone;
+            case PitchQuantizeScale::Octatonic:  return octatonic;
+            case PitchQuantizeScale::Hexatonic:  return hexatonic;
+            case PitchQuantizeScale::Acoustic:   return acoustic;
+        }
+        return majorScale; // unreachable (every enumerator handled above) -- silences -Wreturn-type
+    }
+
+    // pitchJitter (0..1) -> +/- semitone reach, capped at one octave (12
+    // semitones = playbackRate 2.0) so a Scale-mode grain's rate stays
+    // within exactly the range Random mode's own algebra already
+    // self-limits to -- see Grain.h's GrainLimits::maxPitchJitterPlaybackRate
+    // and the ring buffer sizing (requiredRingBufferSeconds) that depends on
+    // that ceiling never being exceeded by EITHER mode.
+    constexpr float maxScaleReachSemitones = 12.0f;
+
+    // Picks one semitone offset at random from every degree of `scale`
+    // (across as many octaves up/down as needed) that falls within +/-
+    // (pitchJitter * maxScaleReachSemitones) of the grain's own natural
+    // pitch (offset 0, always a candidate). pitchJitter <= 0 always yields
+    // exactly 0 (no deviation) -- same "no jitter" floor Random mode has
+    // via its own `if (settings.pitchJitter > 0.0f)` guard in spawnGrain().
+    float pickQuantizedSemitoneOffset (PitchQuantizeScale scale, float pitchJitter, juce::Random& rng)
+    {
+        const float reach = juce::jmax (0.0f, pitchJitter) * maxScaleReachSemitones;
+        const auto& steps = scaleSemitones (scale);
+
+        std::vector<int> candidates;
+        const int maxOctave = (int) std::ceil (reach / 12.0f) + 1; // +1 margin: a degree near an octave's top can still land within reach from the next octave up/down
+        for (int octave = -maxOctave; octave <= maxOctave; ++octave)
+            for (int step : steps)
+            {
+                const int offset = step + octave * 12;
+                if ((float) std::abs (offset) <= reach)
+                    candidates.push_back (offset);
+            }
+
+        if (candidates.empty())
+            return 0.0f; // reach ~0 -- only the root (offset 0) qualifies, or floating-point rounding excluded even that
+
+        return (float) candidates[(size_t) rng.nextInt ((int) candidates.size())];
+    }
+
     // Point at `radius` and angle `phase` on the circle lying in the plane
     // perpendicular to `normal`, centered at the origin (caller adds the
     // parent's position) -- used by OrbitAroundParent for both flat
@@ -270,7 +346,17 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
 
     float rate = 1.0f;
     if (settings.pitchJitter > 0.0f)
-        rate = 1.0f + settings.pitchJitter * (rng.nextFloat() * 2.0f - 1.0f);
+    {
+        if (settings.pitchJitterMode == PitchJitterMode::Scale)
+        {
+            const float semitoneOffset = pickQuantizedSemitoneOffset (settings.pitchQuantizeScale, settings.pitchJitter, rng);
+            rate = std::pow (2.0f, semitoneOffset / 12.0f);
+        }
+        else
+        {
+            rate = 1.0f + settings.pitchJitter * (rng.nextFloat() * 2.0f - 1.0f);
+        }
+    }
     g.playbackRate = juce::jmax (0.1f, rate);
 
     g.grainLengthSamples = juce::jmax (1, (int) (g.lifetimeSeconds * sampleRate));

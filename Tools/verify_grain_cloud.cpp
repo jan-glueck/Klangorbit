@@ -56,7 +56,8 @@ static void testRenderGrainBlock()
         const int grainLength = 256;
         std::vector<float> out ((size_t) grainLength, 0.0f);
         int samplesPlayed = 0;
-        renderGrainBlock (ring.data(), ringSize, /*startSample*/ 0, /*rate*/ 1.0f, grainLength,
+        double readPosition = 0.0;
+        renderGrainBlock (ring.data(), ringSize, readPosition, /*rate*/ 1.0f, grainLength,
                            samplesPlayed, out.data(), grainLength);
 
         check (allFinite (out), "renderGrainBlock: envelope test has no NaN/Inf");
@@ -71,7 +72,7 @@ static void testRenderGrainBlock()
 
         // Calling again after the grain is exhausted must yield silence, not garbage.
         std::vector<float> tail (64, 1.0f);
-        renderGrainBlock (ring.data(), ringSize, 0, 1.0f, grainLength, samplesPlayed, tail.data(), (int) tail.size());
+        renderGrainBlock (ring.data(), ringSize, readPosition, 1.0f, grainLength, samplesPlayed, tail.data(), (int) tail.size());
         const bool allZero = std::all_of (tail.begin(), tail.end(), [] (float x) { return x == 0.0f; });
         check (allZero, "renderGrainBlock: silent after the envelope is exhausted");
     }
@@ -82,7 +83,8 @@ static void testRenderGrainBlock()
         std::vector<float> out ((size_t) grainLength);
         int samplesPlayed = 0;
         // Start near the end of the buffer so playback wraps partway through.
-        renderGrainBlock (ring.data(), ringSize, ringSize - 50, 1.0f, grainLength, samplesPlayed, out.data(), grainLength);
+        double readPosition = (double) (ringSize - 50);
+        renderGrainBlock (ring.data(), ringSize, readPosition, 1.0f, grainLength, samplesPlayed, out.data(), grainLength);
 
         check (allFinite (out), "renderGrainBlock: wrap test has no NaN/Inf");
 
@@ -102,8 +104,9 @@ static void testRenderGrainBlock()
         const int grainLength = 4000; // several cycles of the 1kHz test tone
         std::vector<float> outNormal ((size_t) grainLength), outFast ((size_t) grainLength);
         int played1 = 0, played2 = 0;
-        renderGrainBlock (ring.data(), ringSize, 0, 1.0f, grainLength, played1, outNormal.data(), grainLength);
-        renderGrainBlock (ring.data(), ringSize, 0, 2.0f, grainLength, played2, outFast.data(), grainLength);
+        double pos1 = 0.0, pos2 = 0.0;
+        renderGrainBlock (ring.data(), ringSize, pos1, 1.0f, grainLength, played1, outNormal.data(), grainLength);
+        renderGrainBlock (ring.data(), ringSize, pos2, 2.0f, grainLength, played2, outFast.data(), grainLength);
 
         // Skip the windowed-down start/end where zero-crossing counting is unreliable.
         const float freqNormal = estimateFrequencyHz (outNormal, grainLength / 4, 3 * grainLength / 4, kSampleRate);
@@ -146,7 +149,8 @@ static void testRenderGrainBlock()
         {
             std::vector<float> out ((size_t) shortGrainLength);
             int samplesPlayed = 0;
-            renderGrainBlock (ring.data(), ringSize, 0, rate, shortGrainLength, samplesPlayed, out.data(), shortGrainLength);
+            double readPosition = 0.0;
+            renderGrainBlock (ring.data(), ringSize, readPosition, rate, shortGrainLength, samplesPlayed, out.data(), shortGrainLength);
 
             const float lastEnvelopeMagnitude = std::abs (out.back());
             worstResidual = juce::jmax (worstResidual, lastEnvelopeMagnitude);
@@ -167,12 +171,52 @@ static void testRenderGrainBlock()
         {
             std::vector<float> out (shortGrainLength + 1);
             int samplesPlayed = 0;
-            renderGrainBlock (ring.data(), ringSize, 0, rate, shortGrainLength, samplesPlayed, out.data(), (int) out.size());
+            double readPosition = 0.0;
+            renderGrainBlock (ring.data(), ringSize, readPosition, rate, shortGrainLength, samplesPlayed, out.data(), (int) out.size());
             const float jump = std::abs (out[(size_t) shortGrainLength] - out[(size_t) shortGrainLength - 1]);
             worstJump = juce::jmax (worstJump, jump);
         }
         std::printf ("       worst tail-to-silence jump across rates 0.1..2.0: %.5f\n", worstJump);
         check (worstJump < 0.02f, "renderGrainBlock: tail-to-silence transition has no audible discontinuity for any playbackRate 0.1..2.0");
+    }
+
+    // --- Doppler regression: playbackRate changing MID-GRAIN (block to
+    // block, as GrainDoppler.h's per-block ratio does) must not jump the
+    // read position -- reported bug ("Doppler... knackt"). With the OLD
+    // "start + samplesPlayed*rate" formula, a changed rate on the very next
+    // call recomputed the read position for the entire already-elapsed
+    // samplesPlayed at the NEW rate, jumping the read pointer
+    // discontinuously. The fix makes readPosition a caller-owned
+    // accumulator (see GrainRenderer.h) that only changes SLOPE, not
+    // position, when the rate changes -- verified directly here by
+    // comparing the sample-to-sample jump right at the rate-change boundary
+    // against jumps elsewhere in the same continuous render.
+    {
+        const int grainLength = 4000;
+        std::vector<float> out ((size_t) grainLength);
+        int samplesPlayed = 0;
+        double readPosition = 0.0;
+
+        // First half at rate 1.0, second half at rate 2.5 -- a large,
+        // sudden change, larger than one block of real Doppler would ever
+        // produce, to make any leftover discontinuity easy to detect.
+        const int half = grainLength / 2;
+        renderGrainBlock (ring.data(), ringSize, readPosition, 1.0f, grainLength, samplesPlayed, out.data(), half);
+        renderGrainBlock (ring.data(), ringSize, readPosition, 2.5f, grainLength, samplesPlayed, out.data() + half, grainLength - half);
+
+        check (allFinite (out), "renderGrainBlock: mid-grain rate change has no NaN/Inf");
+
+        float jumpAtBoundary = std::abs (out[(size_t) half] - out[(size_t) (half - 1)]);
+        float maxJumpElsewhere = 0.0f;
+        for (int i = 1; i < grainLength; ++i)
+        {
+            if (i == half)
+                continue;
+            maxJumpElsewhere = juce::jmax (maxJumpElsewhere, std::abs (out[(size_t) i] - out[(size_t) (i - 1)]));
+        }
+        std::printf ("       mid-grain rate-change jump: %.4f (max jump elsewhere: %.4f)\n", jumpAtBoundary, maxJumpElsewhere);
+        check (jumpAtBoundary < juce::jmax (0.05f, maxJumpElsewhere * 2.0f),
+               "renderGrainBlock: playbackRate changing mid-grain (Doppler) produces no larger a jump than the rest of the signal");
     }
 }
 
@@ -918,6 +962,94 @@ static void testReadDepthDistributionBias()
     check (avgOld > avgUniform, "GrainCloud: WeightedTowardOld biases the average read depth above Uniform's");
 }
 
+static void testPitchJitterScaleQuantizes()
+{
+    // Spawns many grains with PitchJitterMode::Scale and collects each
+    // one's resulting playbackRate, converted back to a semitone offset
+    // (12 * log2(rate)) -- every offset must land (within floating-point
+    // tolerance) on an actual degree of the chosen scale, unlike Random
+    // mode which can land anywhere in its continuous range.
+    auto collectSemitoneOffsets = [] (PitchQuantizeScale scale, float pitchJitter, int seed) -> std::vector<float>
+    {
+        GrainCloud cloud (64);
+        cloud.getSettings().enabled = true;
+        cloud.getSettings().grainRate = 40.0f;
+        cloud.getSettings().grainDuration = 0.02f; // short -- lots of independent spawns in a short test
+        cloud.getSettings().maxConcurrentGrains = 64;
+        cloud.getSettings().pitchJitter = pitchJitter;
+        cloud.getSettings().pitchJitterMode = PitchJitterMode::Scale;
+        cloud.getSettings().pitchQuantizeScale = scale;
+
+        juce::Random rng (seed);
+        int budget = 256;
+        cloud.setRingBufferContext (0, kSampleRate);
+
+        std::vector<int> lastGen (64, 0);
+        std::vector<float> offsets;
+        const double dt = 1.0 / 200.0;
+        for (int tick = 0; tick < 2000; ++tick) // 10s
+        {
+            cloud.update (dt, {}, {}, budget, rng);
+            std::vector<GrainCloud::Snapshot> snap;
+            cloud.getSnapshot (snap);
+            for (size_t i = 0; i < snap.size(); ++i)
+            {
+                if (snap[i].spawnGeneration != lastGen[i])
+                {
+                    lastGen[i] = snap[i].spawnGeneration;
+                    offsets.push_back (12.0f * std::log2 (snap[i].playbackRate));
+                }
+            }
+        }
+        return offsets;
+    };
+
+    // Major Triad {0,4,7}: every octave-extended candidate within one
+    // octave (see maxScaleReachSemitones in GrainCloud.cpp) is one of
+    // {-12,-8,-5,0,4,7,12} (root/triad tones plus their octave images).
+    {
+        const auto offsets = collectSemitoneOffsets (PitchQuantizeScale::MajorTriad, 1.0f, 601);
+        check (offsets.size() > 20, "PitchJitterMode::Scale: Major Triad test spawned a usable number of grains");
+
+        const float allowed[] = { -12.0f, -8.0f, -5.0f, 0.0f, 4.0f, 7.0f, 12.0f };
+        bool allOnScale = true;
+        bool sawNonZero = false;
+        for (float off : offsets)
+        {
+            bool matched = false;
+            for (float a : allowed)
+                if (std::abs (off - a) < 0.01f) { matched = true; break; }
+            if (! matched) { allOnScale = false; break; }
+            if (std::abs (off) > 0.01f) sawNonZero = true;
+        }
+        std::printf ("       Major Triad, pitchJitter=1.0: %d grains spawned, all landed on a triad degree: %s\n",
+                     (int) offsets.size(), allOnScale ? "yes" : "no");
+        check (allOnScale, "PitchJitterMode::Scale: every grain's semitone offset is an exact Major Triad degree (root/major-3rd/5th, any octave within reach)");
+        check (sawNonZero, "PitchJitterMode::Scale: pitchJitter=1.0 actually produces some non-root degrees, not just the root every time");
+    }
+
+    // pitchJitter == 0: must always be exactly the root (offset 0),
+    // regardless of scale -- matches Random mode's own "no jitter" floor.
+    {
+        const auto offsets = collectSemitoneOffsets (PitchQuantizeScale::Acoustic, 0.0f, 602);
+        bool allZero = true;
+        for (float off : offsets)
+            if (std::abs (off) > 0.001f) { allZero = false; break; }
+        check (allZero, "PitchJitterMode::Scale: pitchJitter=0 always yields the root (offset 0), no scale degrees selected");
+    }
+
+    // Octaves {0}: with pitchJitter=1.0 (full one-octave reach), the only
+    // possible offsets are -12, 0, or 12 -- confirms the "bare interval,
+    // not a full scale" case works the same way as a multi-note scale.
+    {
+        const auto offsets = collectSemitoneOffsets (PitchQuantizeScale::Octaves, 1.0f, 603);
+        bool allOctaves = true;
+        for (float off : offsets)
+            if (std::abs (off) > 0.01f && std::abs (std::abs (off) - 12.0f) > 0.01f) { allOctaves = false; break; }
+        check (allOctaves, "PitchJitterMode::Scale: Octaves scale only ever produces offsets of -12, 0, or +12 semitones");
+    }
+}
+
 int main()
 {
     testRenderGrainBlock();
@@ -938,6 +1070,7 @@ int main()
     testReadDepthRangeDisabledByDefault();
     testReadDepthRangeIsRespected();
     testReadDepthDistributionBias();
+    testPitchJitterScaleQuantizes();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

@@ -496,6 +496,13 @@ private:
     {
         int lastSeenGeneration = -1; // detects "this slot was respawned" even without an intervening inactive block
         int samplesPlayed = 0;
+        // Persistent ring-buffer read position, owned by renderGrainBlock()
+        // (see its own comment in GrainRenderer.h for why this must be an
+        // accumulator, not recomputed from bufferReadStartSample +
+        // samplesPlayed*playbackRate, once per-grain Doppler can change
+        // playbackRate block-to-block). Reset to bufferReadStartSample when
+        // lastSeenGeneration changes (a new grain spawned into this slot).
+        double readPosition = 0.0;
         std::vector<float> previousChannelGains;
     };
     std::vector<std::vector<GrainAudioState>> grainAudioState; // [objectIndex][grainPoolSlot]

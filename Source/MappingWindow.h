@@ -22,7 +22,15 @@ class MappingWindow : public juce::DocumentWindow
 public:
     MappingWindow (const ParameterRegistry& registryToShow, MappingEngine& engineToControl);
 
-    void closeButtonPressed() override { setVisible (false); }
+    // See HelpWindow.h's identical member for why this exists.
+    std::function<void()> onClosed;
+
+    void closeButtonPressed() override
+    {
+        setVisible (false);
+        if (onClosed)
+            onClosed();
+    }
 
 private:
     MappingPanel panel;

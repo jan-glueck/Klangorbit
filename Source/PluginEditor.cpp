@@ -807,10 +807,34 @@ void KlangorbitEditor::resized()
     viewArea = bounds;
 }
 
+void KlangorbitEditor::bringEditorToFront()
+{
+    // A plain, best-effort toFront() -- unlike WindowUtils::forceToFront(),
+    // there's no setAlwaysOnTop() toggle available here: in a hosted
+    // context (AU/VST3), this editor's own top-level window is the HOST's
+    // own peer window, not a juce::DocumentWindow this code owns, so it
+    // can't be re-elevated the same way. What was actually missing is
+    // simpler than that tiebreak fix, though: hiding an always-on-top
+    // Help/Mappings/Output window doesn't itself hand focus/z-order back to
+    // whatever was behind it in every host, so nothing was asking the
+    // editor's window to reactivate at all. Both a synchronous call and a
+    // deferred one (SafePointer via callAsync, same reasoning as
+    // showHelpClicked()'s own comment -- this editor could conceivably be
+    // gone by the time a later message-loop iteration runs) cover the same
+    // "sometimes the first call loses a race" cases seen elsewhere in this
+    // file.
+    toFront (true);
+    juce::Component::SafePointer<KlangorbitEditor> self (this);
+    juce::MessageManager::callAsync ([self] { if (self != nullptr) self->toFront (true); });
+}
+
 void KlangorbitEditor::showHelpClicked()
 {
     if (helpWindow == nullptr)
+    {
         helpWindow = std::make_unique<HelpWindow>(); // constructor already makes it visible
+        helpWindow->onClosed = [this] { bringEditorToFront(); };
+    }
 
     WindowUtils::forceToFront (*helpWindow);
     // Deferred second attempt -- see WindowUtils.h's own comment on why a
@@ -828,7 +852,10 @@ void KlangorbitEditor::showHelpClicked()
 void KlangorbitEditor::showMappingClicked()
 {
     if (mappingWindow == nullptr)
+    {
         mappingWindow = std::make_unique<MappingWindow> (audioProcessor.getParameterRegistry(), audioProcessor.getMappingEngine()); // constructor already makes it visible
+        mappingWindow->onClosed = [this] { bringEditorToFront(); };
+    }
 
     WindowUtils::forceToFront (*mappingWindow);
     // Deferred second attempt: the host's own window can still win the
@@ -847,7 +874,10 @@ void KlangorbitEditor::showMappingClicked()
 void KlangorbitEditor::showOutputClicked()
 {
     if (outputWindow == nullptr)
+    {
         outputWindow = std::make_unique<OutputWindow> (audioProcessor); // constructor already makes it visible
+        outputWindow->onClosed = [this] { bringEditorToFront(); };
+    }
 
     outputWindow->refreshFromModel(); // pick up any change made elsewhere (e.g. a preset load) since it was last shown
     WindowUtils::forceToFront (*outputWindow);
@@ -1043,16 +1073,18 @@ void KlangorbitEditor::updateGamepadCamera()
         repaint();
     }
 
-    // D-pad Up/Down: zoom in/out (multiplicative-feeling since Camera3D::
+    // D-pad Left/Right: zoom in/out (multiplicative-feeling since Camera3D::
     // zoom() takes an absolute distance delta and distance is clamped to
     // Camera3D's own [minDistance, maxDistance] range regardless -- a
     // fixed rate feels fine here since, unlike the mouse wheel, this is a
-    // continuous hold rather than discrete notches). Left/Right are
-    // deliberately unused -- see GamepadDriver.h's own class comment for
-    // what the rest of the D-pad/face buttons/shoulders do instead.
-    if (state.dpadUp != state.dpadDown) // both held at once cancels out, same as neither
+    // continuous hold rather than discrete notches). Up/Down moved to
+    // GamepadDriver's own object-selection cycling (see its class comment)
+    // -- was zoom before, reassigned so object cycling gets the more
+    // natural up/down pair, zoom keeps a D-pad axis rather than losing its
+    // control entirely.
+    if (state.dpadLeft != state.dpadRight) // both held at once cancels out, same as neither
     {
-        camera.zoom ((state.dpadUp ? -1.0f : 1.0f) * gamepadCameraZoomMetersPerSecond * (float) dt);
+        camera.zoom ((state.dpadLeft ? -1.0f : 1.0f) * gamepadCameraZoomMetersPerSecond * (float) dt);
         repaint();
     }
 }

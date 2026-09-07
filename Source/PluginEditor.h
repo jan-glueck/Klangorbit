@@ -80,20 +80,20 @@
     CPU-load readout, gamepad camera control, and repaint().
 
     Gamepad: see GamepadDriver.h for its full fixed default control scheme
-    (left stick movement, X/A/B cycle/add/remove selected object, Y/Left
-    Shoulder/Right Shoulder held + left stick for Free Throw/Orbit Shot/
-    Slingshot -- a gamepad-driven equivalent of this editor's own
-    Shift+drag sling gesture above, direction/strength chosen by pushing
-    the stick rather than pulling the mouse back). All of that runs from
-    KlangorbitProcessor's own timer and keeps working with this editor
-    closed, same as gamepad movement always has. Only the right stick
-    (camera look) and D-pad (camera zoom) are handled here instead, in
-    updateGamepadCamera() below -- Camera3D is purely this editor's own
-    view state (see its own class comment), so unlike everything else
-    above, camera control is meaningless without an editor open and has no
-    background equivalent. resyncFromBackgroundObjectChanges() below keeps
-    this editor's own selection highlight/object list in sync with
-    whatever GamepadDriver's cycle/add/remove buttons just changed.
+    (left stick movement, D-pad Up/Down/A/B cycle/add/remove selected
+    object, Y/Left Shoulder/Right Shoulder held + left stick for Free
+    Throw/Orbit Shot/Slingshot -- a gamepad-driven equivalent of this
+    editor's own Shift+drag sling gesture above, direction/strength chosen
+    by pushing the stick rather than pulling the mouse back). All of that
+    runs from KlangorbitProcessor's own timer and keeps working with this
+    editor closed, same as gamepad movement always has. Only the right
+    stick (camera look) and D-pad Left/Right (camera zoom) are handled here
+    instead, in updateGamepadCamera() below -- Camera3D is purely this
+    editor's own view state (see its own class comment), so unlike
+    everything else above, camera control is meaningless without an editor
+    open and has no background equivalent. resyncFromBackgroundObjectChanges()
+    below keeps this editor's own selection highlight/object list in sync
+    with whatever GamepadDriver's cycle/add/remove buttons just changed.
 */
 class KlangorbitEditor : public juce::AudioProcessorEditor,
                                private juce::Timer
@@ -122,6 +122,13 @@ private:
     void showMappingClicked(); // lazily creates mappingWindow, or re-shows/refronts it if already open
     void showOutputClicked(); // lazily creates outputWindow, or re-shows/refronts it if already open
 
+    // Wired to helpWindow/mappingWindow/outputWindow's onClosed callback --
+    // brings THIS editor's own top-level window back to front once one of
+    // those always-on-top auxiliary windows hides itself, see those
+    // windows' own onClosed comment (HelpWindow.h) for the reported bug
+    // this fixes.
+    void bringEditorToFront();
+
     void addObjectClicked();
     void removeObjectClicked();
     void selectObject (int index); // -1 = clear the selection
@@ -136,7 +143,7 @@ private:
     // selectObject()/refresh() themselves at the point of the change.
     void resyncFromBackgroundObjectChanges();
 
-    // Right stick (look-around) + D-pad (zoom) camera control -- polled
+    // Right stick (look-around) + D-pad Left/Right (zoom) camera control -- polled
     // directly from GamepadDriver::getLastState() each tick, entirely
     // separate from GamepadDriver itself (see its class comment for why:
     // Camera3D is editor-only view state, meaningless with no editor open,

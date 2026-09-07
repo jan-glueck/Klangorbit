@@ -22,7 +22,22 @@ class HelpWindow : public juce::DocumentWindow
 public:
     HelpWindow();
 
-    void closeButtonPressed() override { setVisible (false); }
+    // Fires after this window hides itself (see closeButtonPressed()) --
+    // KlangorbitEditor wires this to bring its OWN top-level window back to
+    // front (see PluginEditor.cpp's bringEditorToFront()). Needed because
+    // hiding an always-on-top window doesn't itself hand focus/z-order back
+    // to whatever was behind it in every host -- reported in Logic Pro
+    // (AU): the plugin's own editor window sometimes stayed behind other
+    // windows after this one closed, only recovering once the editor
+    // itself was closed and reopened.
+    std::function<void()> onClosed;
+
+    void closeButtonPressed() override
+    {
+        setVisible (false);
+        if (onClosed)
+            onClosed();
+    }
 
 private:
     juce::TextEditor textEditor;

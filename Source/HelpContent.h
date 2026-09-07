@@ -444,8 +444,8 @@ see the next section):
                                into Manual mode.
   Right stick                 Orbit the camera (look-around). Editor
                                only -- nothing to look at otherwise.
-  D-pad Left/Right              Zoom the camera in/out. Editor only.
-  D-pad Up/Down                Cycle the selection to the next/previous
+  D-pad Up/Down                Zoom the camera in/out. Editor only.
+  D-pad Left/Right              Cycle the selection to the next/previous
                                active object (bidirectional).
   Button A                     Activate the next inactive object slot
                                and select it (same as "+ Object").

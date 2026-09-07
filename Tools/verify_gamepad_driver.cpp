@@ -43,7 +43,7 @@ namespace
 int main()
 {
     // ==================================================================
-    // driveObjectManagement: cycle (D-pad Up/Down), add (Button A), remove (Button B)
+    // driveObjectManagement: cycle (D-pad Left/Right), add (Button A), remove (Button B)
     // ==================================================================
     {
         TrajectoryEngine engine (3);
@@ -54,37 +54,37 @@ int main()
         int selected = -1;
 
         GamepadState previous; // everything false/zero
-        GamepadState pressUp; pressUp.dpadUp = true;
+        GamepadState pressRight; pressRight.dpadRight = true;
 
-        driver.driveObjectManagement (selected, previous, pressUp);
-        check (selected == 0, "cycle: from nothing selected, D-pad Up lands on the first active slot (0)");
-
-        // Holding (no fresh edge) must not re-fire.
-        driver.driveObjectManagement (selected, pressUp, pressUp);
-        check (selected == 0, "cycle: holding D-pad Up (no new press edge) does not cycle again");
-
-        GamepadState released; // dpadUp back to false
-        driver.driveObjectManagement (selected, pressUp, released);
-        driver.driveObjectManagement (selected, released, pressUp); // a fresh press
-        check (selected == 2, "cycle: D-pad Up skips the inactive slot (1) and lands on the next active one (2)");
-
-        driver.driveObjectManagement (selected, pressUp, released);
-        driver.driveObjectManagement (selected, released, pressUp);
-        check (selected == 0, "cycle: D-pad Up wraps back around to the first active slot after the last one");
-
-        // --- D-pad Down: the reverse direction ---
-        GamepadState pressDown; pressDown.dpadDown = true;
-
-        driver.driveObjectManagement (selected, released, pressDown);
-        check (selected == 2, "cycle: D-pad Down from slot 0 wraps backward to the last active slot (2), skipping the inactive one (1)");
-
-        driver.driveObjectManagement (selected, pressDown, released);
-        driver.driveObjectManagement (selected, released, pressDown);
-        check (selected == 0, "cycle: D-pad Down steps backward again, back to slot 0");
+        driver.driveObjectManagement (selected, previous, pressRight);
+        check (selected == 0, "cycle: from nothing selected, D-pad Right lands on the first active slot (0)");
 
         // Holding (no fresh edge) must not re-fire.
-        driver.driveObjectManagement (selected, pressDown, pressDown);
-        check (selected == 0, "cycle: holding D-pad Down (no new press edge) does not cycle again");
+        driver.driveObjectManagement (selected, pressRight, pressRight);
+        check (selected == 0, "cycle: holding D-pad Right (no new press edge) does not cycle again");
+
+        GamepadState released; // dpadRight back to false
+        driver.driveObjectManagement (selected, pressRight, released);
+        driver.driveObjectManagement (selected, released, pressRight); // a fresh press
+        check (selected == 2, "cycle: D-pad Right skips the inactive slot (1) and lands on the next active one (2)");
+
+        driver.driveObjectManagement (selected, pressRight, released);
+        driver.driveObjectManagement (selected, released, pressRight);
+        check (selected == 0, "cycle: D-pad Right wraps back around to the first active slot after the last one");
+
+        // --- D-pad Left: the reverse direction ---
+        GamepadState pressLeft; pressLeft.dpadLeft = true;
+
+        driver.driveObjectManagement (selected, released, pressLeft);
+        check (selected == 2, "cycle: D-pad Left from slot 0 wraps backward to the last active slot (2), skipping the inactive one (1)");
+
+        driver.driveObjectManagement (selected, pressLeft, released);
+        driver.driveObjectManagement (selected, released, pressLeft);
+        check (selected == 0, "cycle: D-pad Left steps backward again, back to slot 0");
+
+        // Holding (no fresh edge) must not re-fire.
+        driver.driveObjectManagement (selected, pressLeft, pressLeft);
+        check (selected == 0, "cycle: holding D-pad Left (no new press edge) does not cycle again");
     }
 
     {

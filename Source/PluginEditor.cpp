@@ -1073,18 +1073,16 @@ void KlangorbitEditor::updateGamepadCamera()
         repaint();
     }
 
-    // D-pad Left/Right: zoom in/out (multiplicative-feeling since Camera3D::
+    // D-pad Up/Down: zoom in/out (multiplicative-feeling since Camera3D::
     // zoom() takes an absolute distance delta and distance is clamped to
     // Camera3D's own [minDistance, maxDistance] range regardless -- a
     // fixed rate feels fine here since, unlike the mouse wheel, this is a
-    // continuous hold rather than discrete notches). Up/Down moved to
-    // GamepadDriver's own object-selection cycling (see its class comment)
-    // -- was zoom before, reassigned so object cycling gets the more
-    // natural up/down pair, zoom keeps a D-pad axis rather than losing its
-    // control entirely.
-    if (state.dpadLeft != state.dpadRight) // both held at once cancels out, same as neither
+    // continuous hold rather than discrete notches). D-pad Left/Right
+    // independently drive GamepadDriver's own object-selection cycling (see
+    // its class comment) -- the two axes don't interact.
+    if (state.dpadUp != state.dpadDown) // both held at once cancels out, same as neither
     {
-        camera.zoom ((state.dpadLeft ? -1.0f : 1.0f) * gamepadCameraZoomMetersPerSecond * (float) dt);
+        camera.zoom ((state.dpadUp ? -1.0f : 1.0f) * gamepadCameraZoomMetersPerSecond * (float) dt);
         repaint();
     }
 }

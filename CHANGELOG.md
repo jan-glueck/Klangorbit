@@ -62,19 +62,21 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   loses the race" pattern `WindowUtils::forceToFront()` already uses for
   the opposite direction).
 ### Changed
-- **Gamepad default control scheme: D-pad reassigned, and the Learn-mode
-  paging modifier moved off the shoulder buttons.** Reported: Left/Right
-  Shoulder held for Orbit Shot/Slingshot (`GamepadDriver::
-  driveThrowGesture()`) wasn't working, and object cycling should move to
-  the D-pad's Up/Down buttons.
-  - **D-pad Up/Down** now cycles the selection to the next/previous
+- **Gamepad default control scheme: D-pad Left/Right reassigned to object
+  cycling, and the Learn-mode paging modifier moved off the shoulder
+  buttons.** Reported: Left/Right Shoulder held for Orbit Shot/Slingshot
+  (`GamepadDriver::driveThrowGesture()`) wasn't working, and object
+  cycling should move to the D-pad. (An initial pass reassigned D-pad
+  Up/Down to cycling and moved zoom to Left/Right instead -- corrected
+  immediately after merge per user feedback: zoom stays on Up/Down as
+  before, cycling took Left/Right instead, not the other way around.)
+  - **D-pad Left/Right** now cycles the selection to the next/previous
     active object (`GamepadDriver::driveObjectManagement()`), replacing
     Button X (which now has no built-in behavior, free for a Learn-mode
     binding like any other raw source) -- and is now bidirectional,
     which Button X's cycle never was.
-  - **D-pad Left/Right** now drives camera zoom (`KlangorbitEditor::
-    updateGamepadCamera()`), taking over from Up/Down (previously
-    unused).
+  - **D-pad Up/Down** keeps its original camera-zoom assignment
+    (`KlangorbitEditor::updateGamepadCamera()`), unchanged.
   - **`MappingEngine`'s default paging-modifier source** changed from
     `Gamepad0.RightShoulder` to `Gamepad0.LeftTrigger`. Root design flaw
     found while investigating the shoulder-button report: Right Shoulder

@@ -695,8 +695,8 @@ any other bindable control:
 |---|---|
 | Left stick | Rate-controls the selected object's position on the ground plane: deflection sets its current velocity continuously, in whichever direction you push; centering the stick (its own spring-back is enough) stops the object exactly where it is, immediately, with no drift and no snapping back to where it started. Touching the stick switches the selected object into Manual mode automatically, the same mode a mouse drag uses. |
 | Right stick | Orbits the camera view (azimuth/elevation) -- the gamepad equivalent of dragging empty space with the mouse. Editor-only (there's nothing to look at with the window closed). |
-| D-pad Left/Right | Zooms the camera in/out. Editor-only, same reasoning as the right stick above. |
-| D-pad Up/Down | Cycles the selection to the next/previous active object, wrapping around (bidirectional). |
+| D-pad Up/Down | Zooms the camera in/out. Editor-only, same reasoning as the right stick above. |
+| D-pad Left/Right | Cycles the selection to the next/previous active object, wrapping around (bidirectional). |
 | Button A | Activates the next inactive object slot and selects it -- the gamepad equivalent of the "+ Object" button in the object list. |
 | Button B | Deactivates the currently selected object and clears the selection -- the gamepad equivalent of "- Remove Object". |
 | Button Y (hold) | Aims a **Free Throw**: while held, the left stick's direction and magnitude set the launch direction/strength (push the stick the way you want the object to fly); releasing fires it. |

@@ -111,6 +111,39 @@ York)".
 
 ---
 
+## Spherical Far Field HRIR Compilation of the Neumann KU 100 (TH Koeln)
+
+**What it's used for:** an alternative bundled Binaural HRTF dataset
+(`Assets/HRTF/ku100_48000.sofa`, embedded via `juce_add_binary_data` as
+`BinaryData::ku100_48000_sofa`). The `HRIR_FULL2DEG.sofa` file from the
+compilation below -- a dense, full-sphere 2-degree Gauss-Legendre grid
+(16020 measurement points), natively 48kHz. Downloaded directly from the
+Zenodo record (MD5 `aa48acb20c1fb8ff3d8de116107b73c2`, matching the
+record's own published checksum); not resampled or otherwise modified.
+
+**Source:** <https://zenodo.org/records/3928297>, DOI
+10.5281/zenodo.3928297
+**Author:** Benjamin Bernschütz (TH Köln, Institute of Communications
+Engineering, Cologne, Germany; TU Berlin, Audio Communication Group,
+Berlin, Germany)
+**License:** CC BY 3.0, per the Zenodo record's own license field. (The
+SOFA file's own embedded metadata additionally states "CC 3.0 BY-SA" --
+noted here for completeness; Klangorbit follows the Zenodo record's
+official license field as the authoritative one for redistribution
+terms, and satisfies the stricter (ShareAlike/attribution) reading
+either way, since this project's own source is open and this file is
+redistributed unmodified with full attribution.)
+**Recommended citation:** B. Bernschütz, "A Spherical Far Field HRIR /
+HRTF Compilation of the Neumann KU 100," in *Proceedings of the 39th
+DAGA*, 2013, pp. 592–595.
+
+**How Klangorbit satisfies this:** cited here (with the DOI and the
+recommended paper citation) and in the CHANGELOG entry that added this
+dataset; the Output window's "HRTF Dataset" picker labels this option
+"KU100 -- 2deg Grid (TH Koeln / Bernschuetz)".
+
+---
+
 ## A note on custom SOFA files
 
 The Binaural output format's "Custom SOFA file..." option

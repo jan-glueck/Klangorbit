@@ -64,6 +64,7 @@ int main()
     const struct { const char* name; juce::File file; } datasets[] = {
         { "KEMAR", hrtfDir.getChildFile ("kemar_44100.sofa") },
         { "SADIE II D1", hrtfDir.getChildFile ("sadie_d1_44100.sofa") },
+        { "KU100 2deg Grid (TH Koeln)", hrtfDir.getChildFile ("ku100_48000.sofa") },
     };
 
     for (auto& ds : datasets)
@@ -272,13 +273,17 @@ int main()
 
         const float rmsKemar = measureAverageRms (hrtfDir.getChildFile ("kemar_44100.sofa"));
         const float rmsSadie = measureAverageRms (hrtfDir.getChildFile ("sadie_d1_44100.sofa"));
-        std::printf ("       calibrated RMS averaged over 5 directions: KEMAR=%.4f, SADIE II D1=%.4f\n", rmsKemar, rmsSadie);
+        const float rmsKu100 = measureAverageRms (hrtfDir.getChildFile ("ku100_48000.sofa"));
+        std::printf ("       calibrated RMS averaged over 5 directions: KEMAR=%.4f, SADIE II D1=%.4f, KU100=%.4f\n", rmsKemar, rmsSadie, rmsKu100);
 
         check (rmsKemar > 0.02f && rmsKemar < 1.0f, "BinauralDecoder: KEMAR calibrated output RMS is in a sane absolute range (not un-normalized-loud, not silent)");
         check (rmsSadie > 0.02f && rmsSadie < 1.0f, "BinauralDecoder: SADIE II D1 calibrated output RMS is in a sane absolute range (not un-normalized-loud, not silent)");
+        check (rmsKu100 > 0.02f && rmsKu100 < 1.0f, "BinauralDecoder: KU100 calibrated output RMS is in a sane absolute range (not un-normalized-loud, not silent)");
 
-        const float ratio = (rmsKemar > 0.0f && rmsSadie > 0.0f) ? juce::jmax (rmsKemar, rmsSadie) / juce::jmin (rmsKemar, rmsSadie) : 1000.0f;
-        check (ratio < 2.0f, "BinauralDecoder: KEMAR and SADIE II D1's direction-averaged output level calibrates to within 2x of each other (datasets' own raw-level differences are compensated)");
+        const float worst = juce::jmax (rmsKemar, rmsSadie, rmsKu100);
+        const float best  = juce::jmin (rmsKemar, rmsSadie, rmsKu100);
+        const float ratio = (best > 0.0f) ? worst / best : 1000.0f;
+        check (ratio < 2.0f, "BinauralDecoder: KEMAR, SADIE II D1, and KU100's direction-averaged output levels all calibrate to within 2x of each other (datasets' own raw-level differences are compensated)");
     }
 
     // decode() called on a BinauralDecoder that was never successfully

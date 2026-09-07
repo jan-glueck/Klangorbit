@@ -98,7 +98,8 @@ OutputPanel::OutputPanel()
     binauralDatasetRow = std::make_unique<ComboRowComponent> ("HRTF Dataset");
     binauralDatasetRow->combo.addItem ("KEMAR (MIT Media Lab)", 1);
     binauralDatasetRow->combo.addItem ("SADIE II -- D1, KU100 (University of York)", 2);
-    binauralDatasetRow->combo.addItem ("Custom SOFA file...", 3);
+    binauralDatasetRow->combo.addItem ("KU100 -- 2deg Grid (TH Koeln / Bernschuetz)", 3);
+    binauralDatasetRow->combo.addItem ("Custom SOFA file...", 4);
     binauralDatasetRow->onSelected = [this] (int index)
     {
         if (decoderProcessor == nullptr)
@@ -128,10 +129,11 @@ OutputPanel::OutputPanel()
 
     styleHintLabel (binauralHintLabel,
                      "KEMAR: Gardner & Martin, MIT Media Lab. SADIE II D1: "
-                     "University of York, CC BY-SA / Apache 2.0. See "
+                     "University of York, CC BY-SA / Apache 2.0. KU100 "
+                     "(2deg grid): Bernschuetz, TH Koeln, CC BY 3.0. See "
                      "THIRD_PARTY_LICENSES.md for the full required "
                      "attribution. Switching datasets rebuilds the decoder "
-                     "-- a brief pause is expected, longer for SADIE II.");
+                     "-- a brief pause is expected, longer for SADIE II/KU100.");
     addChildComponent (binauralHintLabel);
 }
 

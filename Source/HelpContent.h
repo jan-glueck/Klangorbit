@@ -396,11 +396,16 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
                            KEMAR -- MIT Media Lab, bundled, default
                            SADIE II D1 (KU100) -- University of York,
                             bundled, an alternative measured head
+                           KU100 2deg Grid (TH Koeln/Bernschuetz) --
+                            bundled, the densest grid (16020 points,
+                            full sphere); a different KU100 measurement
+                            from SADIE II D1 above (same dummy head
+                            model, different lab/grid)
                            Custom SOFA file... -- import your own
                             AES69/SOFA-format HRTF measurement via
                             "Browse..."
                           Switching datasets rebuilds the decoder --
-                          expect a brief pause, longer for SADIE II.
+                          expect a brief pause, longer for SADIE II/KU100.
                           See THIRD_PARTY_LICENSES.md for the required
                           attribution for both bundled datasets.
 

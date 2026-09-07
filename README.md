@@ -384,7 +384,8 @@ in `decode()`. A practical measurement, not an analytical derivation
 HRTF dataset's own absolute measurement level along with everything
 else. See `Tools/verify_binaural_decoder.cpp`'s loudness-calibration
 section, which checks both that the calibrated RMS lands in a sane
-absolute range and that KEMAR/SADIE II land within 2x of each other.
+absolute range and that all bundled datasets (KEMAR/SADIE II/KU100)
+land within 2x of each other.
 
 A dataset picker appears in the Output window whenever Binaural is
 selected ("HRTF Dataset"), reading HRIRs via `HrtfDataset` (a thin wrapper
@@ -395,15 +396,22 @@ around [libmysofa](https://github.com/hoene/libmysofa), BSD-3-Clause):
 - **SADIE II -- D1 (KU100)** -- University of York, Apache License 2.0.
   An alternative measured head (a dummy-head mannequin rather than KEMAR's
   own). Bundled.
+- **KU100 -- 2deg Grid (TH Koeln / Bernschuetz)** -- Benjamin Bernschütz,
+  TH Köln, CC BY 3.0 (Zenodo DOI 10.5281/zenodo.3928297). The densest of
+  the three bundled datasets: a full-sphere 2-degree Gauss-Legendre grid,
+  16020 measurement points (`HRIR_FULL2DEG.sofa` from the compilation),
+  natively 48kHz. A different KU100 measurement from SADIE II D1 above
+  (same dummy head model, different lab/grid). Bundled.
 - **Custom SOFA file...** -- import any AES69/SOFA-format HRTF measurement
   of your own via "Browse...". Lets you use a personally-measured or
-  third-party HRTF instead of either bundled default.
+  third-party HRTF instead of any bundled default.
 
-Both bundled datasets require attribution when used or redistributed --
-see `THIRD_PARTY_LICENSES.md` for the exact required text. Switching
-datasets rebuilds `binauralDecoder`'s decode matrix and all 100
-convolution engines immediately (message thread, not real-time-safe) --
-expect a brief pause, longer for SADIE II (a larger file). The choice of
+All three bundled datasets require attribution when used or
+redistributed -- see `THIRD_PARTY_LICENSES.md` for the exact required
+text. Switching datasets rebuilds `binauralDecoder`'s decode matrix and
+all 100 convolution engines immediately (message thread, not
+real-time-safe) -- expect a brief pause, longer for SADIE II/KU100
+(larger files, ~35MB/~19MB respectively vs. KEMAR's ~1MB). The choice of
 dataset is plugin-instance state, like Output Format/Bass Management --
 not saved in a preset, see "Presets" and the Known Limitations note on
 `Presets/schema/README.md`'s own reasoning for why.

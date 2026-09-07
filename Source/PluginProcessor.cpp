@@ -105,6 +105,7 @@ KlangorbitProcessor::KlangorbitProcessor()
     // setDecoderMode()/prepareToPlay().
     kemarSofaTempFile = writeBinaryDataToTempFileIfNeeded ("kemar_44100.sofa", BinaryData::kemar_44100_sofa, BinaryData::kemar_44100_sofaSize);
     sadieSofaTempFile = writeBinaryDataToTempFileIfNeeded ("sadie_d1_44100.sofa", BinaryData::sadie_d1_44100_sofa, BinaryData::sadie_d1_44100_sofaSize);
+    ku100SofaTempFile = writeBinaryDataToTempFileIfNeeded ("ku100_48000.sofa", BinaryData::ku100_48000_sofa, BinaryData::ku100_48000_sofaSize);
 
     // Only object 0 starts active (input channel 0). Further objects are
     // added via the GUI (TrajectoryEngine::activateObject()) -- the input
@@ -553,6 +554,7 @@ void KlangorbitProcessor::prepareBinauralDecoder()
     {
         case BinauralDatasetSource::Kemar:      dataset = &kemarDataset;  sourceFile = kemarSofaTempFile;  break;
         case BinauralDatasetSource::SadieD1:    dataset = &sadieDataset;  sourceFile = sadieSofaTempFile;  break;
+        case BinauralDatasetSource::Ku100:      dataset = &ku100Dataset;  sourceFile = ku100SofaTempFile;  break;
         case BinauralDatasetSource::CustomFile: dataset = &customDataset; sourceFile = customSofaFilePath; break;
     }
     if (dataset == nullptr)

@@ -6,6 +6,28 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Added
+- **Third bundled Binaural HRTF dataset: "KU100 -- 2deg Grid (TH Koeln /
+  Bernschuetz)".** `HRIR_FULL2DEG.sofa` from Benjamin Bernschütz's
+  "Spherical Far Field HRIR Compilation of the Neumann KU 100" (Zenodo,
+  DOI 10.5281/zenodo.3928297, CC BY 3.0) -- downloaded directly, MD5
+  verified against the record's own published checksum
+  (`aa48acb20c1fb8ff3d8de116107b73c2`), not modified. The densest of the
+  three bundled datasets: a full-sphere 2-degree Gauss-Legendre grid
+  (16020 measurement points) vs. KEMAR's 710 and SADIE II D1's own grid;
+  natively 48kHz (the other two bundled files are 44.1kHz variants) --
+  doesn't matter functionally, since `HrtfDataset::load()` resamples via
+  libmysofa to whatever rate is requested regardless of a file's own
+  native rate. Bundled as `Assets/HRTF/ku100_48000.sofa` (~19MB), same
+  `juce_add_binary_data`-embedded-then-written-to-a-cached-temp-file
+  mechanism as the existing two datasets (`KlangorbitProcessor::
+  BinauralDatasetSource::Ku100`, inserted before `CustomFile`). Full
+  attribution (author, license, recommended DAGA-2013 paper citation) in
+  `THIRD_PARTY_LICENSES.md`; new "HRTF Dataset" picker entry, updated
+  hint text (`OutputPanel`), Help (`?`) content, README, and UserGuide
+  entries. `Tools/verify_binaural_decoder.cpp` extended to load/exercise
+  this dataset alongside the existing two, including in the loudness-
+  calibration cross-dataset check (now three-way, still within 2x).
 ### Fixed
 - **Grain Doppler produced audible clicks.** Root cause:
   `GrainRenderer.h`'s `renderGrainBlock()` computed each sample's ring

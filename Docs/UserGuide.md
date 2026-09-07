@@ -413,13 +413,17 @@ window (toolbar -> **Output...**) rather than the parameter panel:
     reveals an **HRTF Dataset** picker in the same window:
     - **KEMAR** (default) -- Gardner & Martin, MIT Media Lab. Bundled.
     - **SADIE II -- D1 (KU100)** -- University of York. Bundled.
+    - **KU100 -- 2deg Grid (TH Koeln / Bernschuetz)** -- Benjamin
+      Bernschütz, TH Köln, CC BY 3.0. The densest bundled grid (16020
+      points, full sphere). A different KU100 measurement from SADIE II
+      D1 above (same dummy head model, different lab/grid). Bundled.
     - **Custom SOFA file...** -- import your own AES69/SOFA HRTF
       measurement via **Browse...**.
 
-    Both bundled datasets require attribution -- see
+    All three bundled datasets require attribution -- see
     `THIRD_PARTY_LICENSES.md` in the project root. Switching datasets
     rebuilds the decoder immediately; expect a brief pause, longer for
-    SADIE II. CPU cost has not been measured on real hardware -- watch the
+    SADIE II/KU100. CPU cost has not been measured on real hardware -- watch the
     toolbar's CPU meter after switching. Interaural delay (fine timing
     differences between the ears) is not applied in this version, only
     each ear's amplitude/spectral HRIR shape -- see the CHANGELOG and

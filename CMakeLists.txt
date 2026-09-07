@@ -62,21 +62,23 @@ FetchContent_MakeAvailable(mysofa)
 target_include_directories(mysofa-static PUBLIC "$<BUILD_INTERFACE:${mysofa_BINARY_DIR}/src>")
 
 # --- Bundled HRTF datasets (Source/HrtfDataset.h/.cpp, Binaural output
-# mode) -- KEMAR (MIT Media Lab, freely usable with citation) and SADIE
-# II subject D1/KU100 (University of York, Apache License 2.0). See
-# THIRD_PARTY_LICENSES.md for the full attribution text both licenses
-# require. juce_add_binary_data compiles each file into a byte array
-# linked straight into the binary (JUCE's own resource-embedding
-# mechanism, already used by no other asset in this project -- Assets/
-# AppIcon.png instead goes through juce_add_plugin's own ICON_BIG/
-# ICON_SMALL baking, a completely different, icon-specific path) --
-# avoids needing to locate/ship a loose data file relative to the
-# plugin bundle at runtime, and behaves identically for VST3/Standalone/
-# a future AU build alike.
+# mode) -- KEMAR (MIT Media Lab, freely usable with citation), SADIE
+# II subject D1/KU100 (University of York, Apache License 2.0), and the
+# TH Koeln/Bernschuetz "Spherical Far Field HRIR Compilation of the
+# Neumann KU 100" (CC BY 3.0). See THIRD_PARTY_LICENSES.md for the full
+# attribution text all three licenses require. juce_add_binary_data
+# compiles each file into a byte array linked straight into the binary
+# (JUCE's own resource-embedding mechanism, already used by no other
+# asset in this project -- Assets/AppIcon.png instead goes through
+# juce_add_plugin's own ICON_BIG/ICON_SMALL baking, a completely
+# different, icon-specific path) -- avoids needing to locate/ship a
+# loose data file relative to the plugin bundle at runtime, and behaves
+# identically for VST3/Standalone/AU alike.
 juce_add_binary_data(HrtfData
     SOURCES
         Assets/HRTF/kemar_44100.sofa
         Assets/HRTF/sadie_d1_44100.sofa
+        Assets/HRTF/ku100_48000.sofa
 )
 
 set(SAPOC_MAX_LIVE_INPUTS 8 CACHE STRING "Max. number of simultaneous mono live inputs / SoundObjects")

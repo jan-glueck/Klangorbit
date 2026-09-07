@@ -161,13 +161,20 @@ public:
     // Only meaningful while getDecoderMode() == Mode::Binaural -- stored
     // regardless of the current mode (same "remember it for later" pattern
     // as circularSpeakerCount above), so switching into Binaural later
-    // reuses whatever was last configured. Kemar/SadieD1 are bundled (see
-    // BinaryData::kemar_44100_sofa/sadie_d1_44100_sofa, written once to a
-    // cached temp file since libmysofa needs a real filesystem path, see
-    // the .cpp); CustomFile is loaded from a user-chosen SOFA file via
-    // loadCustomSofaFile(). "A as default, B as an additional option" --
-    // see the original decoder-feature brief.
-    enum class BinauralDatasetSource { Kemar, SadieD1, CustomFile };
+    // reuses whatever was last configured. Kemar/SadieD1/Ku100 are bundled
+    // (see BinaryData::kemar_44100_sofa/sadie_d1_44100_sofa/
+    // ku100_48000_sofa, each written once to a cached temp file since
+    // libmysofa needs a real filesystem path, see the .cpp); CustomFile is
+    // loaded from a user-chosen SOFA file via loadCustomSofaFile(). Ku100
+    // is the TH Koeln/Bernschuetz "Spherical Far Field HRIR Compilation of
+    // the Neumann KU 100" (CC BY 3.0, see THIRD_PARTY_LICENSES.md) -- a
+    // denser measurement grid (16020 points, 2deg Gauss-Legendre) than
+    // either KEMAR or SADIE II D1, natively 48kHz (unlike the other two
+    // bundled datasets' 44.1kHz source files -- doesn't matter functionally,
+    // HrtfDataset::load() resamples to whatever rate is requested
+    // regardless of a file's own native rate; the filename suffix is purely
+    // documentation of what was actually downloaded).
+    enum class BinauralDatasetSource { Kemar, SadieD1, Ku100, CustomFile };
     BinauralDatasetSource getBinauralDatasetSource() const { return binauralDatasetSource; }
     // Switches the active dataset and rebuilds binauralDecoder's decode
     // matrix/convolution engines immediately (same "rebuild now, not per
@@ -365,20 +372,21 @@ private:
 
     // --- Binaural (HRTF) decode path -------------------------------------
     // See setBinauralDataset()/loadCustomSofaFile() above. kemarDataset/
-    // sadieDataset load once from the bundled BinaryData in the
-    // constructor (message thread, see the .cpp); customDataset loads
+    // sadieDataset/ku100Dataset load once from the bundled BinaryData in
+    // the constructor (message thread, see the .cpp); customDataset loads
     // on demand from loadCustomSofaFile(). binauralDecoder.prepare() is
     // called from setBinauralDataset()/loadCustomSofaFile()/prepareToPlay()
     // -- message thread only, matches BinauralDecoder::prepare()'s own
     // "not real-time-safe" contract; binauralDecoder.decode() is the only
     // one of these ever called from processBlock()/the audio thread.
-    HrtfDataset kemarDataset, sadieDataset, customDataset;
+    HrtfDataset kemarDataset, sadieDataset, ku100Dataset, customDataset;
     BinauralDecoder binauralDecoder;
     BinauralDatasetSource binauralDatasetSource = BinauralDatasetSource::Kemar;
-    // BinaryData::kemar_44100_sofa/sadie_d1_44100_sofa written here once
-    // (constructor) -- libmysofa needs a real filesystem path, not
-    // in-memory data, see the .cpp's writeBinaryDataToTempFileIfNeeded().
-    juce::File kemarSofaTempFile, sadieSofaTempFile;
+    // BinaryData::kemar_44100_sofa/sadie_d1_44100_sofa/ku100_48000_sofa
+    // written here once (constructor) -- libmysofa needs a real filesystem
+    // path, not in-memory data, see the .cpp's
+    // writeBinaryDataToTempFileIfNeeded().
+    juce::File kemarSofaTempFile, sadieSofaTempFile, ku100SofaTempFile;
     juce::File customSofaFilePath; // empty until loadCustomSofaFile() succeeds at least once
     // (Re)loads whichever dataset binauralDatasetSource currently points
     // at (at currentSampleRate) and rebuilds binauralDecoder from it --

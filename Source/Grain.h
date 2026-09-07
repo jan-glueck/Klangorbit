@@ -35,6 +35,60 @@ enum class GrainReadDepthDistribution
 };
 
 /**
+    How GrainCloudSettings::pitchJitter is turned into a per-grain
+    playbackRate at spawn time (see GrainCloud::spawnGrain()). Random is
+    the original behavior (continuous, uniformly random +/- deviation);
+    Scale instead quantizes to the nearest degree(s) of a chosen
+    PitchQuantizeScale, letting a grain cloud stay musically "in tune"
+    with itself (or with a chosen overtone/interval series) rather than
+    detuning arbitrarily.
+*/
+enum class PitchJitterMode
+{
+    Random,
+    Scale
+};
+
+/**
+    Interval sets (semitone offsets within one octave, 0 = the grain's own
+    natural/unshifted pitch, always included) used by PitchJitterMode::Scale
+    -- see GrainCloud.cpp's scaleSemitones() for the actual values and
+    pickQuantizedSemitoneOffset() for how a grain's final semitone offset is
+    chosen from them. Deliberately no separate "root note"/key picker: the
+    grain's own natural pitch (ratio 1.0, i.e. offset 0) IS the root, so
+    these are all just interval sets relative to whatever the source
+    material's own pitch already is, not absolute pitches.
+
+    Octaves/Fifths are bare intervals rather than full scales, included
+    because they're useful "sparse" quantizers in their own right (e.g.
+    Octaves alone removes all pitch variation except octave jumps).
+    Acoustic is the "overtone scale"/Lydian Dominant -- the closest
+    standard 12-tone-equal-tempered scale to the (inharmonic, continuously
+    spaced) natural overtone series, included specifically to cover a
+    "tune grain pitch jitter to the overtone series" request; the real
+    harmonic series itself has no exact equal-tempered representation, so
+    this is a practical approximation, same spirit as this project's other
+    disclosed simplified models (e.g. PropagationProcessor's air
+    absorption).
+*/
+enum class PitchQuantizeScale
+{
+    Octaves,
+    Fifths,
+    MajorTriad,
+    MinorTriad,
+    MajorScale,
+    Dorian,
+    Lydian,
+    Mixolydian,
+    Aeolian,
+    WholeTone,
+    Octatonic,
+    Hexatonic,
+    Acoustic
+};
+
+/**
     LEGACY ONLY -- superseded by dedicated per-parameter jitter fields on
     GrainCloudSettings (grainRateJitter, grainDurationJitter,
     initialSpeedJitter, boundaryRadiusJitter, orbitRadiusJitter), which can
@@ -150,7 +204,15 @@ struct GrainCloudSettings
     // spawn time (this grain's own lifetime only, doesn't affect any
     // other already-active grain).
     float grainDurationJitter = 0.0f;
-    float pitchJitter = 0.0f;                 // 0..1, max random +/- playback-rate deviation per grain
+    float pitchJitter = 0.0f;                 // 0..1, reach of the per-grain pitch deviation -- see pitchJitterMode for how it's applied
+    // Random (default): pitchJitter directly scales a continuous, uniformly
+    // random +/- playback-rate deviation (unchanged original behavior).
+    // Scale: pitchJitter instead scales how far (in semitones, capped at
+    // one octave -- see GrainCloud.cpp's maxScaleReachSemitones) a randomly
+    // picked degree of pitchQuantizeScale may sit from the grain's own
+    // natural pitch, and the grain is quantized exactly onto that degree.
+    PitchJitterMode pitchJitterMode = PitchJitterMode::Random;
+    PitchQuantizeScale pitchQuantizeScale = PitchQuantizeScale::MajorScale; // only used while pitchJitterMode == Scale
     float positionJitterInBuffer = 0.05f;     // seconds, random look-back offset into the ring buffer per grain
     // Per-cloud local cap (on top of the global cap, see PluginProcessor).
     // Raised over time from an initial default of 8 -- comfortably covers

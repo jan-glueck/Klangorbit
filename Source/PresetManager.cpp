@@ -138,6 +138,62 @@ namespace
         return false;
     }
 
+    juce::String pitchJitterModeToString (PitchJitterMode m)
+    {
+        switch (m)
+        {
+            case PitchJitterMode::Random: return "random";
+            case PitchJitterMode::Scale:  return "scale";
+        }
+        return "random";
+    }
+
+    bool pitchJitterModeFromString (const juce::String& s, PitchJitterMode& out)
+    {
+        if (s == "random") { out = PitchJitterMode::Random; return true; }
+        if (s == "scale")  { out = PitchJitterMode::Scale;  return true; }
+        return false;
+    }
+
+    juce::String pitchQuantizeScaleToString (PitchQuantizeScale s)
+    {
+        switch (s)
+        {
+            case PitchQuantizeScale::Octaves:    return "octaves";
+            case PitchQuantizeScale::Fifths:     return "fifths";
+            case PitchQuantizeScale::MajorTriad: return "majorTriad";
+            case PitchQuantizeScale::MinorTriad: return "minorTriad";
+            case PitchQuantizeScale::MajorScale: return "majorScale";
+            case PitchQuantizeScale::Dorian:     return "dorian";
+            case PitchQuantizeScale::Lydian:     return "lydian";
+            case PitchQuantizeScale::Mixolydian: return "mixolydian";
+            case PitchQuantizeScale::Aeolian:    return "aeolian";
+            case PitchQuantizeScale::WholeTone:  return "wholeTone";
+            case PitchQuantizeScale::Octatonic:  return "octatonic";
+            case PitchQuantizeScale::Hexatonic:  return "hexatonic";
+            case PitchQuantizeScale::Acoustic:   return "acoustic";
+        }
+        return "majorScale";
+    }
+
+    bool pitchQuantizeScaleFromString (const juce::String& s, PitchQuantizeScale& out)
+    {
+        if (s == "octaves")    { out = PitchQuantizeScale::Octaves;    return true; }
+        if (s == "fifths")     { out = PitchQuantizeScale::Fifths;     return true; }
+        if (s == "majorTriad") { out = PitchQuantizeScale::MajorTriad; return true; }
+        if (s == "minorTriad") { out = PitchQuantizeScale::MinorTriad; return true; }
+        if (s == "majorScale") { out = PitchQuantizeScale::MajorScale; return true; }
+        if (s == "dorian")     { out = PitchQuantizeScale::Dorian;     return true; }
+        if (s == "lydian")     { out = PitchQuantizeScale::Lydian;     return true; }
+        if (s == "mixolydian") { out = PitchQuantizeScale::Mixolydian; return true; }
+        if (s == "aeolian")    { out = PitchQuantizeScale::Aeolian;    return true; }
+        if (s == "wholeTone")  { out = PitchQuantizeScale::WholeTone;  return true; }
+        if (s == "octatonic")  { out = PitchQuantizeScale::Octatonic;  return true; }
+        if (s == "hexatonic")  { out = PitchQuantizeScale::Hexatonic;  return true; }
+        if (s == "acoustic")   { out = PitchQuantizeScale::Acoustic;   return true; }
+        return false;
+    }
+
     juce::String readDepthDistributionToString (GrainReadDepthDistribution d)
     {
         switch (d)
@@ -233,6 +289,8 @@ namespace
         obj->setProperty ("grainDuration", (double) s.grainDuration);
         obj->setProperty ("grainDurationJitter", (double) s.grainDurationJitter);
         obj->setProperty ("pitchJitter", (double) s.pitchJitter);
+        obj->setProperty ("pitchJitterMode", pitchJitterModeToString (s.pitchJitterMode));
+        obj->setProperty ("pitchQuantizeScale", pitchQuantizeScaleToString (s.pitchQuantizeScale));
         obj->setProperty ("positionJitterInBuffer", (double) s.positionJitterInBuffer);
         obj->setProperty ("maxConcurrentGrains", s.maxConcurrentGrains);
         obj->setProperty ("windowShape", windowShapeToString (s.windowShape));
@@ -278,6 +336,18 @@ namespace
         out.grainDuration           = (float) gcVar.getProperty ("grainDuration", (double) out.grainDuration);
         out.grainDurationJitter     = (float) gcVar.getProperty ("grainDurationJitter", (double) out.grainDurationJitter);
         out.pitchJitter             = (float) gcVar.getProperty ("pitchJitter", (double) out.pitchJitter);
+        if (gcVar.hasProperty ("pitchJitterMode"))
+        {
+            const auto s = gcVar.getProperty ("pitchJitterMode", juce::var()).toString();
+            if (! pitchJitterModeFromString (s, out.pitchJitterMode))
+                return juce::Result::fail ("'grainCloud.pitchJitterMode': unknown value '" + s + "'.");
+        }
+        if (gcVar.hasProperty ("pitchQuantizeScale"))
+        {
+            const auto s = gcVar.getProperty ("pitchQuantizeScale", juce::var()).toString();
+            if (! pitchQuantizeScaleFromString (s, out.pitchQuantizeScale))
+                return juce::Result::fail ("'grainCloud.pitchQuantizeScale': unknown value '" + s + "'.");
+        }
         out.positionJitterInBuffer = (float) gcVar.getProperty ("positionJitterInBuffer", (double) out.positionJitterInBuffer);
         out.maxConcurrentGrains     = (int) gcVar.getProperty ("maxConcurrentGrains", out.maxConcurrentGrains);
 

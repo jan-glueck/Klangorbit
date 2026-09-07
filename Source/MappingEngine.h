@@ -32,7 +32,7 @@ struct MappingBinding
     or OSC driver exists and posts to the same hub.
 
     Paging/banking: a held "modifier" source (default
-    "Gamepad0.RightShoulder", see setModifierSourceId()) unlocks a SECOND
+    "Gamepad0.LeftTrigger", see setModifierSourceId()) unlocks a SECOND
     mapping layer (bank 1) -- the same physical control can drive a
     different parameter depending on whether the modifier is currently
     held, exactly the same "a held modifier changes what a gesture means"
@@ -42,6 +42,15 @@ struct MappingBinding
     specific code. Exactly two banks (0 = default, 1 = modified) --
     matches the project's own "a second mapping layer" framing, not an
     arbitrary N-bank system.
+
+    Default deliberately NOT a shoulder button: GamepadDriver's own fixed
+    default scheme already gives Left/Right Shoulder a built-in, always-on
+    meaning (Orbit Shot/Slingshot, see its class comment) -- reusing either
+    one here would double-book the same physical button for two unrelated
+    behaviors out of the box. Left Trigger has no built-in behavior of its
+    own (see GamepadDriver.h), so it's free; canonicalInputReceived() below
+    treats any source's value>=0.5 as "held," which works identically for
+    an analog trigger axis as it did for a digital shoulder button.
 
     Bindings persist as their own file format (see
     MappingProfileManager.h), a separate schema from Presets/schema/ --
@@ -97,7 +106,7 @@ private:
     const ParameterRegistry& registry;
     std::vector<MappingBinding> bindings;
 
-    juce::String modifierSourceId = "Gamepad0.RightShoulder";
+    juce::String modifierSourceId = "Gamepad0.LeftTrigger";
     bool modifierHeld = false;
 
     juce::String learningParameterId; // empty = not currently learning

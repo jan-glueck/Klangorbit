@@ -65,11 +65,16 @@ int main()
         float mass = 1.0f, gain = 1.0f;
         auto registry = makeTestRegistry (&mass, &gain);
         MappingEngine engine (registry);
-        engine.addBinding ({ "Gamepad0.LeftTrigger", "selectedObject.mass", 0 });
+        // RightTrigger, not LeftTrigger -- LeftTrigger is MappingEngine's own
+        // default modifierSourceId (see its class comment), which is never
+        // itself bindable (canonicalInputReceived() intercepts it before any
+        // binding lookup); this test needs an ordinary, non-modifier unipolar
+        // source instead.
+        engine.addBinding ({ "Gamepad0.RightTrigger", "selectedObject.mass", 0 });
 
         // Unipolar source (trigger, 0..1) -> Unipolar target (mass, 0.01..20):
         // 0.5 normalized should land at the target's own midpoint.
-        engine.canonicalInputReceived ({ "Gamepad0.LeftTrigger", Kind::Continuous, 0.5f, Polarity::Unipolar });
+        engine.canonicalInputReceived ({ "Gamepad0.RightTrigger", Kind::Continuous, 0.5f, Polarity::Unipolar });
         check (approxEqual (mass, 0.01f + 0.5f * (20.0f - 0.01f), 0.1f), "a bound unipolar source writes its denormalized value to the target parameter");
     }
 

@@ -156,20 +156,29 @@ void GamepadDriver::driveObjectManagement (int& selectedObjectIndex, const Gamep
     // Edge-triggered: only the down-transition of each press fires, exactly
     // once, regardless of how many ticks the button stays held (matching
     // an ordinary UI button click, not a rate control like the stick).
-    const bool cyclePressed  = current.buttonX && ! previous.buttonX;
+    // D-pad Up/Down (not Button X -- moved here so cycling is bidirectional
+    // and shares the D-pad's own "navigate a list" feel; Button X no longer
+    // has a built-in behavior, still available for a MappingEngine binding
+    // like any other raw source). D-pad Left/Right independently drive
+    // camera zoom, see PluginEditor::updateGamepadCamera().
+    const bool cycleNextPressed = current.dpadUp && ! previous.dpadUp;
+    const bool cyclePrevPressed = current.dpadDown && ! previous.dpadDown;
     const bool addPressed    = current.buttonA && ! previous.buttonA;
     const bool removePressed = current.buttonB && ! previous.buttonB;
 
-    if (cyclePressed && engine.getNumActiveObjects() > 0)
+    if ((cycleNextPressed || cyclePrevPressed) && engine.getNumActiveObjects() > 0)
     {
-        // Scans forward from the current selection (wrapping), landing on
-        // the next ACTIVE slot -- starting from -1 (nothing selected)
-        // naturally lands on slot 0 first, no special-casing needed.
+        // Scans forward or backward from the current selection (wrapping),
+        // landing on the next ACTIVE slot in that direction -- starting
+        // from -1 (nothing selected), a forward cycle naturally lands on
+        // slot 0 first, no special-casing needed (unchanged from before
+        // this became bidirectional).
         const int count = engine.getNumObjects();
+        const int step = cycleNextPressed ? 1 : -1;
         int idx = selectedObjectIndex;
-        for (int step = 0; step < count; ++step)
+        for (int s = 0; s < count; ++s)
         {
-            idx = (idx + 1) % count;
+            idx = ((idx + step) % count + count) % count; // wrap into [0, count) for either sign of step
             if (engine.getObject (idx).inputChannel >= 0)
             {
                 selectedObjectIndex = idx;

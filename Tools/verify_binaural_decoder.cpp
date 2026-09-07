@@ -203,6 +203,84 @@ int main()
         }
     }
 
+    // ==================================================================
+    // Loudness calibration (BinauralDecoder::calibrateOutputGain(), see its
+    // own comment): reported bug -- Binaural came out substantially louder
+    // than every other decode mode, and inconsistently so between HRTF
+    // datasets (SADIE II louder than KEMAR). Checks both halves directly:
+    // the calibrated RMS sits in a sane absolute range (not e.g. 5-10x what
+    // an un-normalized 50-virtual-speaker sum would produce), AND the two
+    // bundled datasets -- which have genuinely different absolute
+    // measurement levels baked into their raw IRs -- come out within a
+    // small factor of each other after calibration.
+    //
+    // Averaged over several source directions (front/back/left/right/up),
+    // not a single one: calibrateOutputGain() equalizes the AVERAGE energy
+    // across a spread of directions (32 of them), not any one direction in
+    // isolation -- two real, differently-measured datasets can still
+    // legitimately disagree at any SINGLE direction after calibration (real
+    // per-direction spectral/level differences are exactly what
+    // Normalise::no preserves, see BinauralDecoder.cpp), so this has to
+    // measure the same thing the calibration actually targets to be a fair
+    // comparison.
+    // ==================================================================
+    {
+        auto measureAverageRms = [&] (const juce::File& sofaFile) -> float
+        {
+            HrtfDataset hrtf;
+            juce::String error;
+            if (! hrtf.load (sofaFile, 44100.0, error))
+                return -1.0f;
+
+            constexpr int blockSize = 512;
+            BinauralDecoder decoder;
+            decoder.prepare (hrtf, 44100.0, blockSize);
+
+            AmbisonicsEncoder encoder;
+            encoder.setOrder (3);
+            const int numAmbiCh = encoder.getNumChannels();
+
+            std::vector<float> mono ((size_t) blockSize);
+            for (int i = 0; i < blockSize; ++i)
+                mono[(size_t) i] = std::sin (2.0f * juce::MathConstants<float>::pi * 300.0f * (float) i / 44100.0f);
+
+            const float testAzimuths[]   = { 0.0f, juce::MathConstants<float>::pi, juce::MathConstants<float>::halfPi, -juce::MathConstants<float>::halfPi, 0.0f };
+            const float testElevations[] = { 0.0f, 0.0f, 0.0f, 0.0f, juce::MathConstants<float>::halfPi };
+
+            double sumOfRmsSquares = 0.0;
+            for (size_t d = 0; d < 5; ++d)
+            {
+                juce::AudioBuffer<float> ambi (numAmbiCh, blockSize);
+                ambi.clear();
+                std::vector<float> prevGains ((size_t) numAmbiCh, 0.0f);
+                encoder.encodeBlock (mono.data(), blockSize, testAzimuths[d], testElevations[d], 1.0f, 1.0f, ambi, prevGains);
+
+                juce::AudioBuffer<float> stereo (2, blockSize);
+                decoder.decode (ambi, stereo, blockSize);
+
+                double sum = 0.0;
+                for (int ch = 0; ch < 2; ++ch)
+                {
+                    const float* out = stereo.getReadPointer (ch);
+                    for (int i = 0; i < blockSize; ++i)
+                        sum += (double) out[i] * (double) out[i];
+                }
+                sumOfRmsSquares += sum / (double) (2 * blockSize);
+            }
+            return (float) std::sqrt (sumOfRmsSquares / 5.0);
+        };
+
+        const float rmsKemar = measureAverageRms (hrtfDir.getChildFile ("kemar_44100.sofa"));
+        const float rmsSadie = measureAverageRms (hrtfDir.getChildFile ("sadie_d1_44100.sofa"));
+        std::printf ("       calibrated RMS averaged over 5 directions: KEMAR=%.4f, SADIE II D1=%.4f\n", rmsKemar, rmsSadie);
+
+        check (rmsKemar > 0.02f && rmsKemar < 1.0f, "BinauralDecoder: KEMAR calibrated output RMS is in a sane absolute range (not un-normalized-loud, not silent)");
+        check (rmsSadie > 0.02f && rmsSadie < 1.0f, "BinauralDecoder: SADIE II D1 calibrated output RMS is in a sane absolute range (not un-normalized-loud, not silent)");
+
+        const float ratio = (rmsKemar > 0.0f && rmsSadie > 0.0f) ? juce::jmax (rmsKemar, rmsSadie) / juce::jmin (rmsKemar, rmsSadie) : 1000.0f;
+        check (ratio < 2.0f, "BinauralDecoder: KEMAR and SADIE II D1's direction-averaged output level calibrates to within 2x of each other (datasets' own raw-level differences are compensated)");
+    }
+
     // decode() called on a BinauralDecoder that was never successfully
     // prepare()d (or was prepared with an unloaded dataset) must be a
     // safe no-op -- clears whatever garbage was already in the output

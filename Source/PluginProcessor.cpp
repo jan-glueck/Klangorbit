@@ -826,6 +826,7 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             {
                 state.lastSeenGeneration = snap.spawnGeneration;
                 state.samplesPlayed = 0;
+                state.readPosition = (double) snap.bufferReadStartSample;
                 std::fill (state.previousChannelGains.begin(), state.previousChannelGains.end(), 0.0f);
             }
 
@@ -841,7 +842,7 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                 effectivePlaybackRate *= GrainDoppler::computeDopplerRatio (snap.position, snap.velocity,
                                                                              obj.dopplerFactor, sceneSettings.speedOfSound);
 
-            renderGrainBlock (ringData, ringSize, snap.bufferReadStartSample, effectivePlaybackRate,
+            renderGrainBlock (ringData, ringSize, state.readPosition, effectivePlaybackRate,
                                snap.grainLengthSamples, state.samplesPlayed, grainOut, numSamples);
 
             float azimuth, elevation, distance;
@@ -1146,9 +1147,10 @@ void KlangorbitProcessor::buildParameterRegistry()
     // velocity, orbitPhase, attractionPulsePhase, orbitRadiusNoiseSmoothed,
     // slingshotTargetId/Strength) and every enum-valued field (SoundObject
     // ::mode/directivityPattern, GrainCloudSettings::windowShape/
-    // movementMode/grainReadDepthDistribution, SceneSettings::
-    // boundaryBehavior) -- a single float range doesn't naturally fit a
-    // fixed choice of N discrete options; see the class comment.
+    // movementMode/grainReadDepthDistribution/pitchJitterMode/
+    // pitchQuantizeScale, SceneSettings::boundaryBehavior) -- a single
+    // float range doesn't naturally fit a fixed choice of N discrete
+    // options; see the class comment.
 
     // --- Scene (Global scope) -------------------------------------------
     // Display names only, below -- the id strings (first argument:

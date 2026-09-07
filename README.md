@@ -363,6 +363,29 @@ the output. See `BinauralDecoder.h` for the full two-stage breakdown and
 its own disclosed limitations (CPU cost not measured on real hardware,
 interaural delay not applied -- see "Known limitations" below).
 
+**Loudness calibration.** Reported bug: Binaural came out substantially
+louder than every other Output Format, above 0dB often enough to matter,
+and inconsistently so between the two bundled datasets (SADIE II louder
+than KEMAR) -- because summing 50 un-normalized HRIR convolutions (each
+one deliberately left un-normalized, `Normalise::no`, since a direction's
+own level -- e.g. head-shadow attenuation behind the listener -- is real,
+physically meaningful content) has no reason to land anywhere near the
+same overall level as, say, a 2-channel VBAP pan. Fixed the same way
+`AmbisonicsDecoder::calibrateDecodeMatrix()` already calibrates every
+other decode mode: `BinauralDecoder::prepare()` now also builds, per
+virtual speaker, each speaker's own combined impulse response toward 32
+test source directions (weighted by that direction's own SH decode
+gain), measures the resulting two-ear output ENERGY across all of them,
+and scales the final L/R sum by one constant so the average comes out to
+roughly unit energy -- `BinauralDecoder::calibrateOutputGain()`, applied
+in `decode()`. A practical measurement, not an analytical derivation
+(same "practical, disclosed approximation" precedent as
+`calibrateDecodeMatrix()` itself), but it now compensates for a given
+HRTF dataset's own absolute measurement level along with everything
+else. See `Tools/verify_binaural_decoder.cpp`'s loudness-calibration
+section, which checks both that the calibrated RMS lands in a sane
+absolute range and that KEMAR/SADIE II land within 2x of each other.
+
 A dataset picker appears in the Output window whenever Binaural is
 selected ("HRTF Dataset"), reading HRIRs via `HrtfDataset` (a thin wrapper
 around [libmysofa](https://github.com/hoene/libmysofa), BSD-3-Clause):
@@ -672,8 +695,8 @@ any other bindable control:
 |---|---|
 | Left stick | Rate-controls the selected object's position on the ground plane: deflection sets its current velocity continuously, in whichever direction you push; centering the stick (its own spring-back is enough) stops the object exactly where it is, immediately, with no drift and no snapping back to where it started. Touching the stick switches the selected object into Manual mode automatically, the same mode a mouse drag uses. |
 | Right stick | Orbits the camera view (azimuth/elevation) -- the gamepad equivalent of dragging empty space with the mouse. Editor-only (there's nothing to look at with the window closed). |
-| D-pad Up/Down | Zooms the camera in/out. Left/Right are unused. Editor-only, same reasoning as the right stick above. |
-| Button X | Cycles the selection to the next active object, wrapping around. |
+| D-pad Left/Right | Zooms the camera in/out. Editor-only, same reasoning as the right stick above. |
+| D-pad Up/Down | Cycles the selection to the next/previous active object, wrapping around (bidirectional). |
 | Button A | Activates the next inactive object slot and selects it -- the gamepad equivalent of the "+ Object" button in the object list. |
 | Button B | Deactivates the currently selected object and clears the selection -- the gamepad equivalent of "- Remove Object". |
 | Button Y (hold) | Aims a **Free Throw**: while held, the left stick's direction and magnitude set the launch direction/strength (push the stick the way you want the object to fly); releasing fires it. |
@@ -691,6 +714,10 @@ Slingshot always auto-targets the first other active object -- pick a
 specific center/target by using the mouse gesture instead. Holding a
 throw button suspends the left stick's own movement control for that
 object until you release.
+
+Button X has no built-in behavior -- free for a Learn-mode binding of
+your own, same as any other raw control (see "Controller mapping"
+below).
 
 Camera control aside (which needs the editor open to mean anything),
 everything above runs independent of the editor window (see "Runs whole
@@ -742,11 +769,13 @@ whatever is selected) is possible but only via hand-editing a saved
 mapping profile's JSON for now, not through this picker.
 
 **Paging**: hold the modifier control shown under "Paging modifier"
-(default the right shoulder button) to unlock a second layer of
-bindings -- the same stick can drive one parameter normally and a
-different one while the modifier is held. Exactly two layers. Learn a
-binding while holding the modifier to place it in the second layer;
-Learn without holding it to place it in the first (default) layer.
+(default the left trigger -- deliberately not a shoulder button, since
+Left/Right Shoulder already have a built-in meaning of their own, see
+"Gamepad control" above) to unlock a second layer of bindings -- the
+same stick can drive one parameter normally and a different one while
+the modifier is held. Exactly two layers. Learn a binding while holding
+the modifier to place it in the second layer; Learn without holding it
+to place it in the first (default) layer.
 
 The left stick's own built-in rate-control movement (see "Gamepad
 control" above) is a real default, not a fixed one: binding either of
@@ -851,6 +880,21 @@ purely random.
   granulation is on). A spawned grain reads a short, Hann-windowed burst
   from it, with its own pitch (`pitchJitter`) and random start-position
   offset (`positionJitterInBuffer`).
+- **Pitch Jitter Mode.** `pitchJitter` (0..1) is the REACH, shared by two
+  modes (`GrainCloudSettings::pitchJitterMode`): `Random` (default) applies
+  it as the original continuous, uniformly random +/- playback-rate
+  deviation; `Scale` instead quantizes -- each grain's pitch snaps onto a
+  random degree of `pitchQuantizeScale` (standard interval sets: `Octaves`,
+  `Fifths`, `MajorTriad`, `MinorTriad`, `MajorScale`, `Dorian`, `Lydian`,
+  `Mixolydian`, `Aeolian`, `WholeTone`, `Octatonic`, `Hexatonic`,
+  `Acoustic` -- the "overtone scale"/Lydian Dominant, the closest standard
+  12-TET scale to the real, inharmonic overtone series) within `pitchJitter`
+  * one octave of reach, root = the grain's own natural pitch (no separate
+  key/note picker -- see `Source/Grain.h`'s own comment on both enums and
+  `GrainCloud.cpp`'s `pickQuantizedSemitoneOffset()`). Reach is capped at
+  one octave in both modes so a grain's `playbackRate` never exceeds the
+  same `GrainLimits::maxPitchJitterPlaybackRate` (2.0) the ring buffer is
+  sized against.
 - **Read-depth range.** `grainReadDepthRangeMin`/`grainReadDepthRangeMax`
   independently control how far into the ring buffer's *past* a grain's
   start point may be drawn from, additive with `positionJitterInBuffer`
@@ -940,13 +984,30 @@ purely random.
   cheaper approximation than `PropagationProcessor`'s delay-line-based
   Doppler -- a single classic-Doppler-formula pitch ratio computed once
   per grain per audio block from its control-rate position/velocity
-  snapshot, multiplied into the existing `pitchJitter`-based playback
+  snapshot, multiplied into the existing pitch-jitter-based playback
   rate, no delay line and no per-sample cost. Uses the parent object's own
   `dopplerFactor` (Doppler parameter category) to scale strength, so it's
   one familiar knob, not a second one. Off by default because it's a real
   (if small) added cost per grain per block, and at up to 256 concurrent
   grains that adds up -- opt-in rather than silently changing existing
   grain-cloud sound.
+  - **Read-position continuity fix.** Reported bug: enabling Doppler
+    produced audible clicks. Root cause: `GrainRenderer.h`'s
+    `renderGrainBlock()` used to compute each sample's ring-buffer read
+    position as `bufferReadStartSample + samplesPlayed * playbackRate` --
+    correct only if `playbackRate` never changes for a grain's whole life
+    (true of `pitchJitter`, which is fixed once at spawn, but NOT of
+    Doppler's own ratio, recomputed fresh every block from the grain's
+    live position/velocity). Whenever the rate changed, that formula
+    recomputed the ENTIRE elapsed read position at the new rate, jumping
+    the read pointer discontinuously every block the ratio changed --
+    audible as a click. Fixed by making the read position a persistent,
+    caller-owned accumulator (`PluginProcessor::GrainAudioState::
+    readPosition`, advanced by `playbackRate` per rendered sample rather
+    than recomputed from scratch each call) -- only the RATE of advance
+    changes at a block boundary now, not the position itself. See the
+    mid-grain-rate-change regression check added to
+    `Tools/verify_grain_cloud.cpp`'s `testRenderGrainBlock()`.
 - **Global spawn budget.** `maxConcurrentGrains` caps each cloud
   individually (up to 256, default raised 8 -> 32 -> 256 over time --
   comfortably covers common `grainRate * grainDuration` combinations

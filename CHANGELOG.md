@@ -7,6 +7,122 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Fixed
+- **Grain Doppler produced audible clicks.** Root cause:
+  `GrainRenderer.h`'s `renderGrainBlock()` computed each sample's ring
+  buffer read position as `bufferReadStartSample + samplesPlayed *
+  playbackRate` -- correct only if `playbackRate` stays constant for a
+  grain's whole life (true of `pitchJitter`, fixed once at spawn) but NOT
+  of per-grain Doppler (`GrainDoppler.h`), whose ratio is recomputed
+  fresh every block from the grain's live position/velocity. Whenever
+  the rate changed, the old formula recomputed the ENTIRE elapsed read
+  position at the new rate, jumping the read pointer discontinuously
+  every block the ratio changed -- an audible click, specific to Doppler
+  (not `pitchJitter` alone, which never changes rate mid-grain). Fixed by
+  making the read position a persistent, caller-owned accumulator
+  (`PluginProcessor::GrainAudioState::readPosition`, advanced by
+  `playbackRate` per sample rather than recomputed from scratch each
+  call) -- only the RATE of advance changes at a block boundary now, not
+  the position itself. `renderGrainBlock()`'s signature changed
+  accordingly (`double& readPosition` replaces the old `int
+  bufferReadStartSample` parameter); `Tools/verify_grain_cloud.cpp`
+  updated to match, plus a new mid-grain-rate-change regression check.
+- **Binaural (HRTF) output came out substantially louder than every
+  other Output Format**, often pushing the plugin's output above 0dB,
+  and inconsistently so between the two bundled HRTF datasets (SADIE II
+  louder than KEMAR). Root cause: `BinauralDecoder::decode()` sums 50
+  virtual speakers' worth of deliberately un-normalized HRIR convolutions
+  (`Normalise::no` is correct and unchanged -- a direction's own level,
+  e.g. head-shadow attenuation, is real content, not something to flatten
+  away) with no calibration on the SUM's overall level, unlike every
+  other decode mode (`AmbisonicsDecoder::calibrateDecodeMatrix()` already
+  calibrates AllRAD's own decode matrix the same way). Fixed with the
+  same recipe: `BinauralDecoder::prepare()` now also builds, per virtual
+  speaker, its own combined impulse response toward 32 test source
+  directions (weighted by that direction's own SH decode gain), measures
+  the resulting two-ear energy across all of them, and scales the final
+  L/R sum (`BinauralDecoder::calibrateOutputGain()`, applied once per
+  `decode()` call) by one constant so the average lands at roughly unit
+  energy -- now compensating for a given dataset's own absolute
+  measurement level along with everything else. `Tools/
+  verify_binaural_decoder.cpp` gained a loudness-calibration section
+  (sane absolute RMS range, and KEMAR/SADIE II land within 2x of each
+  other).
+- **Output/Mappings window sometimes didn't come back after closing it**
+  (open the plugin editor, open Output or Mappings, close it -- the
+  plugin editor's own window sometimes then failed to reappear/refront,
+  only recovering once the editor itself was closed and reopened).
+  `OutputWindow`/`MappingWindow`/`HelpWindow`'s `closeButtonPressed()`
+  used to just `setVisible (false)` and nothing else -- hiding an
+  always-on-top window doesn't itself hand focus/z-order back to
+  whatever was behind it in every host, so nothing was ever asking the
+  editor's own window to reactivate. Fixed with a new `onClosed`
+  callback on all three windows, wired by `KlangorbitEditor` to a new
+  `bringEditorToFront()` (`toFront (true)`, synchronous + a deferred
+  retry via `MessageManager::callAsync`, same "first attempt sometimes
+  loses the race" pattern `WindowUtils::forceToFront()` already uses for
+  the opposite direction).
+### Changed
+- **Gamepad default control scheme: D-pad reassigned, and the Learn-mode
+  paging modifier moved off the shoulder buttons.** Reported: Left/Right
+  Shoulder held for Orbit Shot/Slingshot (`GamepadDriver::
+  driveThrowGesture()`) wasn't working, and object cycling should move to
+  the D-pad's Up/Down buttons.
+  - **D-pad Up/Down** now cycles the selection to the next/previous
+    active object (`GamepadDriver::driveObjectManagement()`), replacing
+    Button X (which now has no built-in behavior, free for a Learn-mode
+    binding like any other raw source) -- and is now bidirectional,
+    which Button X's cycle never was.
+  - **D-pad Left/Right** now drives camera zoom (`KlangorbitEditor::
+    updateGamepadCamera()`), taking over from Up/Down (previously
+    unused).
+  - **`MappingEngine`'s default paging-modifier source** changed from
+    `Gamepad0.RightShoulder` to `Gamepad0.LeftTrigger`. Root design flaw
+    found while investigating the shoulder-button report: Right Shoulder
+    was double-booked by default -- both `GamepadDriver`'s own built-in
+    Slingshot trigger AND `MappingEngine`'s "hold to unlock bank 2"
+    modifier, out of the box, with no user configuration involved. Left
+    Trigger has no built-in behavior of its own, and
+    `MappingEngine::canonicalInputReceived()` already treats any source's
+    value >= 0.5 as "held" generically, so an analog trigger axis works
+    exactly like the old digital shoulder button did. This is a genuine,
+    disclosed fix for a real design conflict, confirmed by code
+    inspection -- **not independently confirmed to be the full
+    explanation for "doesn't work with the shoulder buttons" without a
+    physical controller in this environment**; please re-test Orbit
+    Shot/Slingshot after this change and report back if the shoulder
+    buttons still don't fire.
+### Added
+- **Pitch Jitter Mode: quantize per-grain pitch jitter to a musical scale
+  instead of continuous random deviation.** New `GrainCloudSettings::
+  pitchJitterMode` (`PitchJitterMode`, `Source/Grain.h`): `Random`
+  (default, unchanged original behavior) or `Scale`. In Scale mode, each
+  grain's pitch snaps exactly onto a random degree of
+  `GrainCloudSettings::pitchQuantizeScale` (`PitchQuantizeScale`, 13
+  standard interval sets: Octaves, Fifths, Major/Minor Triad, Major/
+  Dorian/Lydian/Mixolydian/Aeolian Scale, Whole-Tone, Octatonic,
+  Hexatonic, Acoustic -- the "overtone scale"/Lydian Dominant, the
+  closest standard 12-TET scale to the real overtone series, included
+  specifically to cover "tune grain pitch jitter to the overtone series")
+  within `pitchJitter`'s existing 0..1 reach, now reinterpreted for this
+  mode as up to one octave of semitone reach either direction --
+  `GrainCloud.cpp`'s new `scaleSemitones()`/`pickQuantizedSemitoneOffset()`.
+  The grain's own natural pitch (ratio 1.0) is always the scale's root --
+  no separate key/note picker, since these are intervals relative to the
+  source material's own pitch, not absolute pitches. Reach capped at one
+  octave in both modes so `playbackRate` never exceeds the same
+  `GrainLimits::maxPitchJitterPlaybackRate` (2.0) the grain ring buffer
+  is already sized against. New "Pitch Jitter Mode"/"Pitch Quantize
+  Scale" rows in the parameter panel's Grains category (the latter only
+  shown while Pitch Jitter Mode == Scale, mirroring the existing Binaural
+  HRTF-dataset/Circular-Array-slider conditional-visibility pattern);
+  both persisted in presets (`PresetManager`); both deliberately excluded
+  from `ParameterRegistry`/Learn-mode mapping, same as every other
+  enum-valued field in this project. `Tools/verify_grain_cloud.cpp`'s new
+  `testPitchJitterScaleQuantizes` confirms every Scale-mode grain lands
+  on an exact scale degree (Major Triad case), that `pitchJitter=0`
+  always yields the root regardless of scale, and that a bare-interval
+  scale (Octaves) only ever produces octave-multiple offsets.
+### Fixed
 - **AU never appeared as insertable on ANY track in Logic Pro, despite
   `auval` fully passing and Logic's own Plugin Manager showing it as
   installed/compatible.** All the input/output bus-flexibility work

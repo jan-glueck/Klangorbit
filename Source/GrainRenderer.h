@@ -4,16 +4,34 @@
 
 /**
     Renders numSamples of one grain's windowed, pitch-shifted playback from
-    a circular ring buffer, advancing samplesPlayed in place. Real-time-safe
-    (no allocation, no locking). Shared between PluginProcessor (the real
-    audio path) and Tools/verify_grain_cloud.cpp (DSP correctness tests),
-    so the tests exercise the exact same code the plugin runs, not a
-    reimplementation of it.
+    a circular ring buffer, advancing samplesPlayed AND readPosition in
+    place. Real-time-safe (no allocation, no locking). Shared between
+    PluginProcessor (the real audio path) and Tools/verify_grain_cloud.cpp
+    (DSP correctness tests), so the tests exercise the exact same code the
+    plugin runs, not a reimplementation of it.
 
     ringBufferData/ringBufferSize: the circular buffer to read from.
-    bufferReadStartSample: absolute (not wrapped) sample index in the ring
-        buffer's write-position timeline where this grain started reading.
-    playbackRate: pitch ratio, 1 = normal speed.
+    readPosition: absolute (not wrapped) sample position in the ring
+        buffer's write-position timeline, owned by the CALLER (one persistent
+        double per grain slot, see PluginProcessor::GrainAudioState) and
+        advanced BY THIS CALL, by playbackRate per rendered sample. The
+        caller initializes it to the grain's bufferReadStartSample once, when
+        the grain spawns, and must not otherwise touch it. This is
+        deliberately an accumulator, not a per-call "start + samplesPlayed *
+        playbackRate" formula: that formula is only continuous across calls
+        if playbackRate never changes for the grain's whole life, which
+        (per-grain) pitchJitter satisfies but per-grain Doppler (see
+        GrainDoppler.h, recomputed fresh every block from the grain's
+        current position/velocity) does not -- with the old formula, a
+        changed playbackRate on the next call recomputed the read position
+        for the ENTIRE elapsed samplesPlayed at the new rate, jumping the
+        read pointer discontinuously and producing an audible click every
+        block Doppler's ratio changed. Accumulating instead means only the
+        RATE of advance changes at a block boundary, not the position
+        itself -- continuous, like the real physical effect it approximates.
+    playbackRate: pitch ratio, 1 = normal speed. May differ from call to
+        call for the same grain (e.g. Doppler); readPosition's accumulation
+        is what keeps that safe.
     grainLengthSamples: total length of this grain's envelope, in samples.
     samplesPlayed: how many samples of this grain have already been
         rendered in previous calls; advanced by this call, up to
@@ -22,7 +40,7 @@
         envelope is exhausted).
 */
 inline void renderGrainBlock (const float* ringBufferData, int ringBufferSize,
-                               int bufferReadStartSample, float playbackRate, int grainLengthSamples,
+                               double& readPosition, float playbackRate, int grainLengthSamples,
                                int& samplesPlayed, float* destBlock, int numSamples)
 {
     for (int i = 0; i < numSamples; ++i)
@@ -33,9 +51,8 @@ inline void renderGrainBlock (const float* ringBufferData, int ringBufferSize,
             continue;
         }
 
-        const float readPosF = (float) bufferReadStartSample + (float) samplesPlayed * playbackRate;
-        const int idx0raw = (int) std::floor (readPosF);
-        const float frac = readPosF - (float) idx0raw;
+        const int idx0raw = (int) std::floor (readPosition);
+        const float frac = (float) (readPosition - (double) idx0raw);
         const int idx0 = ((idx0raw % ringBufferSize) + ringBufferSize) % ringBufferSize;
         const int idx1 = (idx0 + 1) % ringBufferSize;
         const float sample = ringBufferData[idx0] * (1.0f - frac) + ringBufferData[idx1] * frac;
@@ -64,6 +81,7 @@ inline void renderGrainBlock (const float* ringBufferData, int ringBufferSize,
         const float envelope = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * t);
 
         destBlock[i] = sample * envelope;
+        readPosition += (double) playbackRate;
         ++samplesPlayed;
     }
 }

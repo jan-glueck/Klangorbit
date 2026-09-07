@@ -232,7 +232,40 @@ that object's live input. Turn on with Enabled.
                                   overlapping at once (audible whenever
                                   Grain Rate x Duration > 1). Each has its
                                   own Jitter slider right below it.
-  Pitch Jitter                   random per-grain playback-rate deviation
+  Pitch Jitter                   how far each grain's pitch may deviate
+                                  from the source material's own pitch --
+                                  the REACH, shared by both Pitch Jitter
+                                  Mode settings below (0 = no deviation).
+  Pitch Jitter Mode              Random (default): a continuous, uniformly
+                                  random +/- playback-rate deviation, the
+                                  original behavior.
+                                  Scale: quantizes instead -- each grain's
+                                  pitch snaps exactly onto a degree of the
+                                  Pitch Quantize Scale below, picked at
+                                  random from every degree within Pitch
+                                  Jitter's reach (up to one octave up/down
+                                  at Pitch Jitter = 1.0). Use this to keep
+                                  a jittered grain cloud musically "in
+                                  tune" with its own source instead of
+                                  detuning arbitrarily.
+  Pitch Quantize Scale           Only shown while Pitch Jitter Mode ==
+                                  Scale. The grain's own natural pitch is
+                                  always the scale's root (no separate
+                                  key/note picker -- these are intervals
+                                  relative to whatever the source material
+                                  already sounds like, not absolute
+                                  pitches). Octaves/Fifths are bare
+                                  intervals rather than full scales
+                                  (Octaves alone removes all pitch
+                                  variation except octave jumps). Acoustic
+                                  Scale is the "overtone scale" (Lydian
+                                  Dominant) -- the closest standard
+                                  12-tone-equal-tempered scale to the
+                                  natural overtone series (the real,
+                                  inharmonic harmonic series has no exact
+                                  equal-tempered equivalent, so this is a
+                                  practical approximation, tune grain
+                                  pitch jitter toward it with this option).
   Position Jitter / Read Depth   how far back into recent audio a grain
    Min/Max/Distribution           reads from, and the depth distribution
   Max Concurrent Grains          hard cap on simultaneously alive grains
@@ -411,8 +444,9 @@ see the next section):
                                into Manual mode.
   Right stick                 Orbit the camera (look-around). Editor
                                only -- nothing to look at otherwise.
-  D-pad Up/Down                Zoom the camera in/out. Editor only.
-  Button X                     Cycle to the next active object.
+  D-pad Left/Right              Zoom the camera in/out. Editor only.
+  D-pad Up/Down                Cycle the selection to the next/previous
+                               active object (bidirectional).
   Button A                     Activate the next inactive object slot
                                and select it (same as "+ Object").
   Button B                     Deactivate the selected object (same as
@@ -432,7 +466,12 @@ Only one controller read at a time. Everything above except camera
 look/zoom keeps working with the editor closed, since the whole
 simulation runs independent of it. An optional inertia mode for the
 left stick's movement exists (movement continues after release,
-decelerating like a thrown object) but has no UI toggle yet.
+decelerating like a thrown object) but has no UI toggle yet. Button X
+has no built-in behavior -- free for a Learn-mode binding of your own,
+same as any other raw control. The Learn-mode "second bank" modifier
+(hold to access an alternate set of bindings, see the next section)
+defaults to Left Trigger, not a shoulder button, so it never competes
+with Orbit Shot/Slingshot above.
 
 
 == 15. CONTROLLER MAPPING (toolbar -> Mappings...) ==
@@ -449,7 +488,7 @@ Target picker only offers scene-wide and "whichever object is
 currently selected" parameters, not one specific object regardless of
 selection (possible by hand-editing a saved profile's JSON only).
 
-Paging: hold the shown modifier control (right shoulder by default) to
+Paging: hold the shown modifier control (left trigger by default) to
 unlock a second layer of bindings -- same stick, different parameter
 while held. Learn while holding it to place a binding in that layer.
 

@@ -156,13 +156,14 @@ void GamepadDriver::driveObjectManagement (int& selectedObjectIndex, const Gamep
     // Edge-triggered: only the down-transition of each press fires, exactly
     // once, regardless of how many ticks the button stays held (matching
     // an ordinary UI button click, not a rate control like the stick).
-    // D-pad Up/Down (not Button X -- moved here so cycling is bidirectional
-    // and shares the D-pad's own "navigate a list" feel; Button X no longer
-    // has a built-in behavior, still available for a MappingEngine binding
-    // like any other raw source). D-pad Left/Right independently drive
-    // camera zoom, see PluginEditor::updateGamepadCamera().
-    const bool cycleNextPressed = current.dpadUp && ! previous.dpadUp;
-    const bool cyclePrevPressed = current.dpadDown && ! previous.dpadDown;
+    // D-pad Left/Right (not Button X -- moved here so cycling is
+    // bidirectional and shares the D-pad's own "navigate a list" feel;
+    // Button X no longer has a built-in behavior, still available for a
+    // MappingEngine binding like any other raw source). D-pad Up/Down
+    // independently drive camera zoom, see
+    // PluginEditor::updateGamepadCamera().
+    const bool cycleNextPressed = current.dpadRight && ! previous.dpadRight;
+    const bool cyclePrevPressed = current.dpadLeft && ! previous.dpadLeft;
     const bool addPressed    = current.buttonA && ! previous.buttonA;
     const bool removePressed = current.buttonB && ! previous.buttonB;
 

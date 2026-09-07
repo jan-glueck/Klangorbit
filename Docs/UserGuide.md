@@ -547,8 +547,8 @@ them can still be rebound to something else via Learn mode (section 17):
 - **Right stick**: orbits the camera (look-around) -- the gamepad
   equivalent of dragging empty space with the mouse. Only does anything
   with the editor window open (there's nothing to look at otherwise).
-- **D-pad Left/Right**: zooms the camera in/out. Also editor-only.
-- **D-pad Up/Down**: cycles the selection to the next/previous active
+- **D-pad Up/Down**: zooms the camera in/out. Also editor-only.
+- **D-pad Left/Right**: cycles the selection to the next/previous active
   object, wrapping around (bidirectional).
 - **Button A**: activates the next inactive object slot and selects it
   (same as the "+ Object" button in the object list).

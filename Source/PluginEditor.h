@@ -80,14 +80,14 @@
     CPU-load readout, gamepad camera control, and repaint().
 
     Gamepad: see GamepadDriver.h for its full fixed default control scheme
-    (left stick movement, D-pad Up/Down/A/B cycle/add/remove selected
+    (left stick movement, D-pad Left/Right/A/B cycle/add/remove selected
     object, Y/Left Shoulder/Right Shoulder held + left stick for Free
     Throw/Orbit Shot/Slingshot -- a gamepad-driven equivalent of this
     editor's own Shift+drag sling gesture above, direction/strength chosen
     by pushing the stick rather than pulling the mouse back). All of that
     runs from KlangorbitProcessor's own timer and keeps working with this
     editor closed, same as gamepad movement always has. Only the right
-    stick (camera look) and D-pad Left/Right (camera zoom) are handled here
+    stick (camera look) and D-pad Up/Down (camera zoom) are handled here
     instead, in updateGamepadCamera() below -- Camera3D is purely this
     editor's own view state (see its own class comment), so unlike
     everything else above, camera control is meaningless without an editor
@@ -143,7 +143,7 @@ private:
     // selectObject()/refresh() themselves at the point of the change.
     void resyncFromBackgroundObjectChanges();
 
-    // Right stick (look-around) + D-pad Left/Right (zoom) camera control -- polled
+    // Right stick (look-around) + D-pad Up/Down (zoom) camera control -- polled
     // directly from GamepadDriver::getLastState() each tick, entirely
     // separate from GamepadDriver itself (see its class comment for why:
     // Camera3D is editor-only view state, meaningless with no editor open,

@@ -23,13 +23,14 @@
       - Left stick: rate-controls the selected object's position on the
         ground plane (driveSelectedObjectMovement(), unchanged from before
         this class grew the rest of this scheme).
-      - D-pad Up/Down (edge-triggered): cycle the selection to the next/
-        previous ACTIVE object, wrapping (bidirectional -- was Button X
-        only, forward-only, before; moved here for a more natural "navigate
-        a list" feel and freed Button X for a future/MappingEngine
-        binding). D-pad Left/Right independently drive camera zoom, polled
-        separately by KlangorbitEditor (see below) -- the two axes don't
-        interact. Button A: activate the next inactive object slot (mirrors
+      - D-pad Left/Right (edge-triggered): cycle the selection to the
+        previous/next ACTIVE object, wrapping (bidirectional -- was Button X
+        only, forward-only, before; moved here so cycling gets its own D-pad
+        axis and freed Button X for a future/MappingEngine binding). D-pad
+        Up/Down independently drive camera zoom, polled separately by
+        KlangorbitEditor (see below) -- the two axes don't interact, and
+        Up/Down keeps its original zoom assignment. Button A: activate the
+        next inactive object slot (mirrors
         PluginEditor::addObjectClicked()) and select it. Button B:
         deactivate the currently selected object (mirrors
         removeObjectClicked()) and clear the selection. See
@@ -47,7 +48,7 @@
         setLeftStickOverrideQuery() already uses).
     None of the above touches Camera3D or requires an editor window --
     Camera3D is editor-only view state (see Camera3D's own class comment),
-    so the right stick (camera look) and D-pad Left/Right (camera zoom) are
+    so the right stick (camera look) and D-pad Up/Down (camera zoom) are
     instead polled directly by KlangorbitEditor's own timer via
     getLastState() below, entirely separately from this class -- see
     PluginEditor.cpp's updateGamepadCamera().

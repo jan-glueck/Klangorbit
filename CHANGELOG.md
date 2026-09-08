@@ -274,166 +274,74 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   (`updateSlingModifiers()`, gated by `slingActive`), so this has zero
   interaction with that gesture.
 ### Fixed
-- **VST3/Standalone stuck at Stereo (2ch) regardless of which Output
-  Format is selected, reported across multiple DAWs.** Root cause: two
-  individually-reasonable earlier changes combined to fully break
-  multi-channel output. (1) A much earlier fix (see this file's own
-  "Reaper (and potentially other hosts) could permanently negotiate the
-  plugin's output down to plain Stereo..." entry) restricted
-  `isBusesLayoutSupported()` to accept only `decoder.getMode()`'s own
-  CURRENT layout, to stop hosts probing multiple candidates from settling
-  on the wrong one -- this worked at the time because a fresh instance's
-  default mode was raw Ambisonics (16ch), so there was exactly one
-  candidate to negotiate to either way. (2) A later change (elsewhere in
-  this file) switched the construction-time default mode to Stereo for
-  every format. Combined: `isBusesLayoutSupported()`'s "only the current
-  mode" now means "only Stereo" for a fresh instance, and switching modes
-  afterward via the "Output..." window can never inform a VST3 host live
-  -- confirmed directly in JUCE's own VST3 client wrapper source
-  (`juce_audio_plugin_client_VST3.cpp`): there is no code path anywhere in
-  it that ever sends the VST3 SDK's `Vst::kIoChanged` restart flag: a
-  plugin genuinely cannot ask a VST3 host to live-rescan its bus layout in
-  this JUCE version, full stop. The result: every fresh VST3/Standalone
-  instance negotiates Stereo and stays there no matter what's picked in
-  the Output Format dropdown, in every host (not host-specific the way the
-  original Reaper report was).
-  - **Fix**: `isBusesLayoutSupported()` now accepts ALL 13 of
-    `AmbisonicsDecoder::Mode`'s output layouts at once again (restoring
-    the pre-regression-fix behavior), but this time WITHOUT reintroducing
-    the original symptom: `setDecoderMode()`/`setCircularArraySpeakerCount()`
-    never request a new layout from a live host after insertion (the same
-    "many layouts available at once, decode uses fewer channels than
-    negotiated, no live renegotiation attempted" model already proven for
-    AU/Logic, see the "AU never appeared as insertable..." entries below),
-    and `isOutputModeAvailable()` (previously an AU-only gate, now applied
-    to VST3/Standalone too, minus AU's named-layout-only restriction) greys
-    out any Output Format that doesn't fit within whatever channel count
-    the host/track actually negotiated at insertion. `setCircularArraySpeakerCount()`'s
-    own upper clamp now additionally respects `getTotalNumOutputChannels()`,
-    not just `[minCircularSpeakers, maxCircularSpeakers]`.
-  - **Practical effect, disclosed, not hidden**: getting more than Stereo
-    out of VST3/Standalone now requires setting the host's own track/bus
-    channel count first (or, for Standalone, having an audio device with
-    enough output channels) -- the plugin can advertise every format but
-    can never force a host to grant more channels live. This matches how
-    other multichannel Ambisonics/spatial-audio plugins already work in
-    practice (e.g. the SPARTA/IEM workflow this project's own README
-    already documents), and is now the same model AU/Logic already uses.
-    Not independently unit-tested (host bus-negotiation behavior isn't
-    something a headless test can exercise) -- verified via full rebuild,
-    the complete `Tools/verify_*`/`validate_presets` suite, and `auval`
-    (AU unaffected by this change beyond shared code); real VST3-host
-    behavior needs the reporting user's own re-test.
-  - **Follow-up, same symptom, real root cause found on re-test**:
-    reported again after the fix above, this time confirmed to persist
-    even after widening the track's own channel count in Reaper (the
-    documented workaround) -- so the "grant more channels at the host/
-    track level first" model itself wasn't broken, `isBusesLayoutSupported()`
-    was simply rejecting the specific layout Reaper actually offered.
-    Every non-Stereo mode's layout (`AmbisonicsDecoder::outputChannelSetFor()`)
-    is a NAMED/typed `juce::AudioChannelSet` (`create7point1()`,
-    `quadraphonic()`, etc.) -- but Reaper's own multichannel track routing
-    is channel-COUNT based, not "assign a named surround format", so
-    widening a track to N channels asks this plugin for a plain, unlabeled
-    `discreteChannels(N)` bus instead. `AudioChannelSet`'s `==` compares
-    identity, not just channel count, so `discreteChannels(8) !=
-    create7point1()` even though both are 8 channels -- `isBusesLayoutSupported()`
-    rejected the one layout Reaper actually asked for, leaving Stereo (the
-    only mode whose 2-channel identity a host request reliably matches)
-    as the sole option every time, independent of which DAW. This is the
-    same reasoning this file's own raw-Ambisonics `outputChannelSetFor()`
-    comment already gives for why THOSE modes use `discreteChannels()` in
-    the first place ("real user setups (Reaper routing...) are already
-    built around" it) -- it just wasn't applied to the named surround
-    formats too.
-    - **Fix**: `isBusesLayoutSupported()`'s VST3/Standalone branch now
-      matches each mode TWO ways -- its own named layout, OR a plain
-      `discreteChannels()` of the same channel count -- so a host that
-      offers either gets accepted. Safe: every downstream consumer
-      (`isOutputModeAvailable()`, `setDecoderMode()`, `decode()` itself)
-      already gates purely on `getTotalNumOutputChannels()`/channel count,
-      never on the negotiated `AudioChannelSet`'s own identity (exactly
-      what let Octophonic/CircularArray already work via `discreteChannels()`
-      alone). Same verification as above (full rebuild, `verify_*`/
-      `validate_presets`, `auval`) plus the same disclosed caveat: real
-      behavior in Reaper (and other hosts) needs the reporting user's own
-      re-test, not independently confirmed here.
-  - **Second follow-up, same symptom, still reproduced after both fixes
-    above -- this time root-caused with an actual VST3 host-in-the-loop
-    test, not just source reading.** Reported a third time, unchanged after
-    the `discreteChannels()`-matching fix. Rather than reason about JUCE's
-    VST3 wrapper from source alone again, built `Tools/vst3_bus_probe.cpp`
-    (new, manually-run diagnostic, not part of the automated suite): loads
-    a BUILT `Klangorbit.vst3` via JUCE's own VST3 HOSTING code
-    (`VST3PluginFormat`, full `juce_audio_processors`,
-    `JUCE_PLUGINHOST_VST3=1`) and drives the REAL VST3 ABI --
-    `IAudioProcessor::setBusArrangements()` on the actual compiled binary,
-    exactly what Reaper itself calls -- instead of calling
-    `isBusesLayoutSupported()` in-process. This surfaced the actual root
-    cause, invisible to source-reading alone: **`AudioChannelSet::
-    discreteChannels(N)` for `N > 1` has NO valid VST3 `SpeakerArrangement`
-    representation at all**, confirmed in JUCE's own conversion tables
-    (`juce_VST3Common.h`: `getSpeakerType()`/`getChannelType()` -- only
-    `discreteChannel0` maps to anything, via `kSpeakerM`; every other
-    discrete-channel index has no speaker bit). `IAudioProcessor::
-    setBusArrangements()` negotiates ALL buses -- input AND output -- in
-    ONE call. This plugin's INPUT bus (`makeBusLayout()`'s "Live Inputs",
-    `discreteChannels(SAPOC_MAX_LIVE_INPUTS)` = 8 channels) could
-    therefore never be converted to a valid outgoing `SpeakerArrangement`
-    by ANY host -- so ANY renegotiation attempt that resends the current
-    input arrangement alongside a new OUTPUT request (the standard,
-    spec-compliant way a host preserves a bus it isn't touching) failed at
-    the input side's conversion, before the output request was ever even
-    considered -- independent of which Output Format was picked or which
-    DAW was asking. Empirically confirmed with `vst3_bus_probe`: an
-    output-only renegotiation to Quad/5.1/7.1/Atmos/any raw-Ambisonics
-    order, with the input bus left at its `discreteChannels(8)` default,
-    failed every single time on the REAL compiled plugin binary; the exact
-    same output request with the input at a representable layout (e.g.
-    `stereo()`) succeeded every time. AU never hit this: its own
-    constructor already overrides the input bus to `stereo()` at startup
-    (a NAMED, auval-publishable layout) for an unrelated reason (CoreAudio
-    layout-tag publishing) -- VST3/Standalone kept the raw
-    `discreteChannels(8)` default, which happened to also be the thing
-    silently blocking ALL VST3 output renegotiation.
-    - **Fix**: the constructor now ALSO switches VST3 instances (not
-      Standalone) to a `stereo()` input bus at startup, mirroring the AU
-      block right above it for a different but related reason -- Standalone
-      never goes through VST3's `SpeakerArrangement` wire format at all (it
-      negotiates channels directly against a `juce::AudioIODevice`), so its
-      own `discreteChannels(numLiveInputs)` default was never actually
-      affected by this and is left untouched.
-      `isBusesLayoutSupported()`'s existing VST3/Standalone input check
-      (any count up to `numLiveInputs`, from the fix above) still lets a
-      host later widen input past Stereo up to the full `numLiveInputs` if
-      it offers something representable for that width -- only the
-      plugin's own STARTING point changed, not what a host may still
-      request. Separately, `AmbisonicsDecoder::outputChannelSetFor()`'s
-      raw Ambisonics Order 1-5 modes switched from `discreteChannels(N)` to
-      `juce::AudioChannelSet::ambisonic(order)` (ACN/SN3D) -- the same
-      unrepresentable-`discreteChannels()` problem applied to these output
-      layouts too; `ambisonic(order)` round-trips via VST3's own per-channel
-      ACN speaker bits (orders 1-4) or its dedicated `kAmbi5thOrderACN`
-      whole-bus constant (order 5), both confirmed via the same JUCE
-      conversion tables and re-verified with `vst3_bus_probe` (Ambisonics
-      O1/O3/O5 all now negotiate successfully). Octophonic and CircularArray
-      remain unfixable this way -- confirmed via `vst3_bus_probe` that
-      `discreteChannels(8)` output alone still fails, since neither format
-      has any VST3-representable named equivalent (an irregular/generic
-      loudspeaker ring isn't part of VST3's speaker vocabulary) -- a real,
-      disclosed limitation, not a further bug to chase; in practice these
-      two are only reachable in VST3/Standalone if a host happens to
-      negotiate a wide enough bus through some other means.
-    - **Verification, stronger than the previous two attempts**: beyond the
-      usual full rebuild + complete `verify_*`/`validate_presets` suite +
-      `auval` (AU unaffected, re-confirmed PASS), this fix is additionally
-      verified with `vst3_bus_probe` driving the REAL compiled
-      `Klangorbit.vst3` through JUCE's actual VST3 hosting code -- a
-      genuine VST3-protocol-level round trip, not an in-process call to our
-      own function. Still not a live Reaper session (unavailable in this
-      environment), so the reporting user's own re-test remains the final
-      word, but this is meaningfully stronger evidence than the source-
-      reading-only reasoning behind the two earlier, unsuccessful attempts.
+- **VST3/Standalone output stuck at (or shrinking back to) a small
+  channel count, ultimately traced to a fundamentally wrong bus
+  architecture and fixed by adopting the model real Ambisonics VST3
+  plugins already use.** Reported repeatedly, worsening across three
+  attempts within this same `[Unreleased]` section that each treated it
+  as a matching/negotiation bug rather than a design problem: (1)
+  advertise every Output Format's own layout up front instead of just the
+  current one, (2) also match a plain `discreteChannels()` alternative for
+  hosts that offer a generic channel count instead of a named layout, (3)
+  fix the plugin's own INPUT bus, which turned out to independently block
+  every output negotiation attempt (VST3 negotiates all buses in one
+  call). Each addressed something real, verified with a purpose-built
+  diagnostic (`Tools/vst3_bus_probe.cpp`, drives the actual VST3 ABI
+  against the real compiled `.vst3` rather than calling our own C++ in-
+  process) -- but the user's own controlled re-tests (Max/MSP `vst~`,
+  which lets you fix an exact requested in/out channel count) then showed
+  the deeper problem: **picking a smaller Output Format inside the plugin
+  permanently narrowed which OTHER formats stayed selectable afterward**
+  (Quad narrowed availability to <=4ch, Octophonic to <=8ch, neither ever
+  recovering), and 4th/5th-order Ambisonics (25/36ch) were unreachable
+  even with 64 output channels offered by the host. Root cause:
+  `setDecoderMode()`/`setCircularArraySpeakerCount()` ended with a
+  "best-effort" `setBusesLayout()` call requesting the newly selected
+  mode's own exact channel count as the new bus width -- framed in the
+  code as harmless ("not relied upon for correctness"), but it actually
+  *shrank* `getTotalNumOutputChannels()` immediately and permanently every
+  time, which `isOutputModeAvailable()` gates every format's availability
+  on. Combined with the earlier-established fact that most of the 13+
+  candidate layouts being offered (`discreteChannels(N > 1)`) have no
+  valid VST3 `SpeakerArrangement` representation at all and can never
+  actually be requested by a real host regardless of what we accept, the
+  whole "offer many candidates, let the host settle on one, then
+  live-renegotiate on every internal mode switch" design was unsound from
+  the start. The user pointed at the actual working pattern directly: IEM
+  Suite plugins always show a fixed channel count (e.g. "64ch") in
+  Reaper's plugin browser *regardless of the host's own track/bus size* --
+  real multichannel Ambisonics VST3 plugins don't negotiate dynamically at
+  all, they declare one generous fixed bus once and leave it alone.
+  - **Fix**: VST3/Standalone now declare exactly ONE fixed output bus, 36
+    channels wide (`AmbisonicsDecoder::outputChannelSetFor
+    (Mode::AmbisonicsRawOrder5)`, i.e. `AudioChannelSet::ambisonic(5)` --
+    this project's actual maximum channel need, and, per `vst3_bus_probe`,
+    confirmed to round-trip through real VST3 negotiation unlike a raw
+    `discreteChannels(36)`), declared in `makeBusLayout()` and never
+    touched again after construction. `isBusesLayoutSupported()`'s
+    VST3/Standalone branch collapsed from a 13-mode-plus-range loop down
+    to one equality check; `isOutputModeAvailable()` for VST3/Standalone
+    now unconditionally returns true (36 channels always fits every
+    mode); `setDecoderMode()`/`setCircularArraySpeakerCount()` no longer
+    call `setBusesLayout()` at all. Output Format selection is now a
+    purely internal decode-routing choice, fully decoupled from the bus --
+    `AmbisonicsDecoder::decode()`'s existing channel-clearing already
+    silences whichever part of the 36 channels the active mode doesn't
+    use, so no processing-code changes were needed for that part. AU is
+    unaffected: Logic's own per-track negotiation (a different, working
+    mechanism -- one small NAMED bus fixed once at insertion, never
+    renegotiated) already never called into the removed code path.
+  - **Verification**: full rebuild (AU/VST3/Standalone), the complete
+    `Tools/verify_*`/`validate_presets` suite, `auval` (still green,
+    unaffected), and `vst3_bus_probe` re-run against the real compiled
+    plugin to confirm the default layout is now the fixed 36ch bus, a
+    verbatim re-send of it succeeds, and every other candidate a host
+    might try (Quad/5.1/7.1/Atmos/lower Ambisonics orders/Octophonic) is
+    now correctly rejected -- a real regression test for the fixed-bus
+    invariant, not just a search for something that happens to work.
+    Needs the reporting user's own re-test in Max/MSP (their own, more
+    precise tool for this) and Reaper before being considered fully
+    confirmed.
 ### Added
 - **Third bundled Binaural HRTF dataset: "KU100 -- 2deg Grid (TH Koeln /
   Bernschuetz)".** `HRIR_FULL2DEG.sofa` from Benjamin Bernschütz's

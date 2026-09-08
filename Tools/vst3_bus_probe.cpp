@@ -7,11 +7,17 @@
     only tests our OWN C++ logic and never exercises JUCE's VST3<->
     SpeakerArrangement wire-format conversion a real host also depends on.
 
-    Written to get ground truth on a "VST3 output stuck at Stereo,
-    independent of DAW" report that survived two source-reading-only fixes.
-    Each check loads a FRESH plugin instance (matching what a real host does
-    -- instantiate once, then negotiate) so results from one check can't
-    leak into the next via mutated shared instance state.
+    Written during this project's "VST3 output stuck at Stereo" saga (see
+    CHANGELOG.md) to get ground truth rather than more source-reading
+    speculation. What it verifies now, after landing on the final
+    architecture (one fixed 36-channel output bus for VST3/Standalone,
+    never renegotiated -- see PluginProcessor.h's own class comment and
+    isBusesLayoutSupported()'s comment): the plugin's construction-time
+    default IS that fixed layout, a verbatim re-send of it succeeds (a
+    basic sanity check), and every OTHER candidate a host might try is
+    correctly rejected -- confirming a host has exactly one option to
+    settle on, matching how real fixed-wide-bus Ambisonics VST3 plugins
+    (e.g. IEM Suite) behave regardless of the host's own track/bus size.
 
     Usage: vst3_bus_probe <path-to-Klangorbit.vst3>
 */
@@ -33,12 +39,14 @@ static std::unique_ptr<AudioPluginInstance> loadFreshInstance (const String& pat
         format.createInstanceFromDescription (*found.getFirst(), 44100.0, 512, errorMessage));
 }
 
-// Mimics a host renegotiating ONLY the output bus: fetches the instance's
-// OWN current layout, changes just the output entry, and resends the
-// INPUT side completely UNTOUCHED -- the standard, spec-compliant way a
-// host signals "leave this bus alone" (see setBusArrangements()'s own
-// contract). This is the realistic case an Output Format dropdown change
-// actually produces in a live host, NOT an artificial override.
+// Mimics a host trying to negotiate a DIFFERENT output layout than the
+// plugin's own fixed default, with the input bus left completely
+// untouched -- the standard, spec-compliant way a host signals "leave
+// this bus alone" (see setBusArrangements()'s own contract). Every one of
+// these should now fail (the plugin only ever accepts its own one fixed
+// 36-channel layout) -- this is a regression test for "did the fixed-bus
+// model actually stick," not a search for a working wider layout the way
+// it was during the earlier multi-candidate architecture.
 static bool tryOutputOnlyChange (const String& path, const String& label, AudioChannelSet outSet)
 {
     auto instance = loadFreshInstance (path);
@@ -67,6 +75,7 @@ int main (int argc, char** argv)
     }
 
     const String path (argv[1]);
+    int failures = 0;
 
     {
         auto instance = loadFreshInstance (path);
@@ -84,20 +93,37 @@ int main (int argc, char** argv)
         std::cout << "  output: " << layout.getMainOutputChannelSet().getDescription()
                    << " (" << layout.getMainOutputChannelSet().size() << "ch)\n";
 
+        const auto expectedOutput = AudioChannelSet::ambisonic (5);
+        if (layout.getMainOutputChannelSet() != expectedOutput)
+        {
+            std::cout << "FAIL: default output is not the expected fixed 36ch ambisonic(5) layout\n";
+            ++failures;
+        }
+
         std::cout << "\n-- No-op: exact current layout re-sent verbatim (sanity check) --\n";
         const bool noopOk = instance->checkBusesLayoutSupported (layout) && instance->setBusesLayoutWithoutEnabling (layout);
-        std::cout << "no-op re-send: " << (noopOk ? "TRUE" : "FAILED (something more basic than widening is broken)") << "\n";
+        std::cout << "no-op re-send: " << (noopOk ? "TRUE" : "FAILED (something more basic than the fixed-bus model is broken)") << "\n";
+        if (! noopOk) ++failures;
     }
 
-    std::cout << "\n-- Realistic output-only renegotiation (fresh instance each time, input left untouched) --\n";
-    tryOutputOnlyChange (path, "Quad",           AudioChannelSet::quadraphonic());
-    tryOutputOnlyChange (path, "5.1",            AudioChannelSet::create5point1());
-    tryOutputOnlyChange (path, "7.1",            AudioChannelSet::create7point1());
-    tryOutputOnlyChange (path, "5.1.4 (Atmos)",  AudioChannelSet::create5point1point4());
-    tryOutputOnlyChange (path, "Ambisonics O1",  AudioChannelSet::ambisonic (1));
-    tryOutputOnlyChange (path, "Ambisonics O3",  AudioChannelSet::ambisonic (3));
-    tryOutputOnlyChange (path, "Ambisonics O5",  AudioChannelSet::ambisonic (5));
-    tryOutputOnlyChange (path, "Octophonic (discrete 8, no named layout exists)", AudioChannelSet::discreteChannels (8));
+    std::cout << "\n-- Regression check: every OTHER candidate must now be REJECTED (fixed-bus model) --\n";
+    struct Candidate { const char* label; AudioChannelSet set; };
+    const Candidate candidates[] = {
+        { "Quad",          AudioChannelSet::quadraphonic() },
+        { "5.1",           AudioChannelSet::create5point1() },
+        { "7.1",           AudioChannelSet::create7point1() },
+        { "5.1.4 (Atmos)", AudioChannelSet::create5point1point4() },
+        { "Ambisonics O1", AudioChannelSet::ambisonic (1) },
+        { "Ambisonics O3", AudioChannelSet::ambisonic (3) },
+        { "Octophonic (discrete 8)", AudioChannelSet::discreteChannels (8) },
+    };
+    for (const auto& c : candidates)
+        if (tryOutputOnlyChange (path, c.label, c.set))
+        {
+            std::cout << "FAIL: " << c.label << " was unexpectedly accepted -- fixed-bus model not enforced\n";
+            ++failures;
+        }
 
-    return 0;
+    std::cout << "\n" << (failures == 0 ? "ALL CHECKS PASSED" : "FAILURES: " + std::to_string (failures)) << "\n";
+    return failures == 0 ? 0 : 1;
 }

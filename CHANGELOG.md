@@ -324,6 +324,40 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     the complete `Tools/verify_*`/`validate_presets` suite, and `auval`
     (AU unaffected by this change beyond shared code); real VST3-host
     behavior needs the reporting user's own re-test.
+  - **Follow-up, same symptom, real root cause found on re-test**:
+    reported again after the fix above, this time confirmed to persist
+    even after widening the track's own channel count in Reaper (the
+    documented workaround) -- so the "grant more channels at the host/
+    track level first" model itself wasn't broken, `isBusesLayoutSupported()`
+    was simply rejecting the specific layout Reaper actually offered.
+    Every non-Stereo mode's layout (`AmbisonicsDecoder::outputChannelSetFor()`)
+    is a NAMED/typed `juce::AudioChannelSet` (`create7point1()`,
+    `quadraphonic()`, etc.) -- but Reaper's own multichannel track routing
+    is channel-COUNT based, not "assign a named surround format", so
+    widening a track to N channels asks this plugin for a plain, unlabeled
+    `discreteChannels(N)` bus instead. `AudioChannelSet`'s `==` compares
+    identity, not just channel count, so `discreteChannels(8) !=
+    create7point1()` even though both are 8 channels -- `isBusesLayoutSupported()`
+    rejected the one layout Reaper actually asked for, leaving Stereo (the
+    only mode whose 2-channel identity a host request reliably matches)
+    as the sole option every time, independent of which DAW. This is the
+    same reasoning this file's own raw-Ambisonics `outputChannelSetFor()`
+    comment already gives for why THOSE modes use `discreteChannels()` in
+    the first place ("real user setups (Reaper routing...) are already
+    built around" it) -- it just wasn't applied to the named surround
+    formats too.
+    - **Fix**: `isBusesLayoutSupported()`'s VST3/Standalone branch now
+      matches each mode TWO ways -- its own named layout, OR a plain
+      `discreteChannels()` of the same channel count -- so a host that
+      offers either gets accepted. Safe: every downstream consumer
+      (`isOutputModeAvailable()`, `setDecoderMode()`, `decode()` itself)
+      already gates purely on `getTotalNumOutputChannels()`/channel count,
+      never on the negotiated `AudioChannelSet`'s own identity (exactly
+      what let Octophonic/CircularArray already work via `discreteChannels()`
+      alone). Same verification as above (full rebuild, `verify_*`/
+      `validate_presets`, `auval`) plus the same disclosed caveat: real
+      behavior in Reaper (and other hosts) needs the reporting user's own
+      re-test, not independently confirmed here.
 ### Added
 - **Third bundled Binaural HRTF dataset: "KU100 -- 2deg Grid (TH Koeln /
   Bernschuetz)".** `HRIR_FULL2DEG.sofa` from Benjamin Bernschütz's

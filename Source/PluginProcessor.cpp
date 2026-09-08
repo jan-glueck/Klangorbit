@@ -409,53 +409,95 @@ bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
             || outSet == juce::AudioChannelSet::create7point1point4();
     }
 
-    // VST3/Standalone: output must match the CURRENTLY ACTIVE decoder
-    // mode's layout -- NOT any of AmbisonicsDecoder::Mode's other fixed
-    // target formats. This used to accept all 13 (deliberately, so a host
-    // could switch modes via its own native bus-negotiation UI instead of
-    // only this plugin's own "Output..." picker) -- reverted after a
-    // real-world regression: some hosts (confirmed: Reaper) probe several
-    // candidate layouts on first insertion and simply settle on whichever
-    // one this function accepts first (often plain Stereo, a common
-    // host-side default probe), permanently stuck there regardless of
-    // which mode the decoder itself -- and the "Output..." window's own
-    // dropdown -- actually show as selected. Accepting only the current
-    // mode's own layout closes that gap: a host has exactly one valid
-    // layout to negotiate to, the same "no ambiguity" guarantee the
-    // plugin's original single-format (Ambisonics-only) version always
-    // had, which never exhibited this symptom. setDecoderMode() switching
-    // modes still works from OUR OWN UI: it calls decoder.setMode(newMode)
-    // BEFORE calling setBusesLayout() below, so by the time that call's
-    // internal validation reaches this function, decoder.getMode()
-    // already equals the NEW mode -- the layout being requested and the
-    // "currently active" mode this function checks against agree.
-    if (decoder.getMode() == AmbisonicsDecoder::Mode::CircularArray)
+    // VST3/Standalone: accept EVERY AmbisonicsDecoder::Mode's own output
+    // layout at once (all 13, including CircularArray's full
+    // [minCircularSpeakers, maxCircularSpeakers] count range and the raw
+    // Ambisonics/Octophonic discreteChannels() layouts) -- the same "many
+    // layouts available at once, never request live renegotiation, decode
+    // uses fewer channels than whatever was actually negotiated" model the
+    // AU branch above already uses successfully (see setDecoderMode()'s
+    // own comment).
+    //
+    // This REPLACES an earlier "only the CURRENTLY ACTIVE mode" version of
+    // this branch (see CHANGELOG). That version targeted a real Reaper
+    // symptom -- some hosts probe several candidate layouts on first
+    // insertion and simply settle on whichever one this function accepts
+    // first (often plain Stereo, a common host-side default probe) -- but
+    // traded it for a WORSE, universal regression: reported as "VST3
+    // always outputs 2 channels, no matter which Output Format is
+    // selected, tested in multiple DAWs". Root cause, confirmed by reading
+    // JUCE's own VST3 client wrapper source (juce_audio_plugin_client_
+    // VST3.cpp): there is NO code path anywhere in it that ever sends the
+    // VST3 SDK's Vst::kIoChanged restart flag to the host --
+    // updateHostDisplay()'s ChangeDetails::nonParameterStateChanged only
+    // ever maps to a private "mark the host's project dirty" flag, nothing
+    // I/O-related. So restricting this function to one single layout
+    // didn't actually prevent the "stuck at whatever was negotiated at
+    // insertion" problem -- it just guaranteed BOTH that stuck layout AND
+    // this plugin's own Output Format dropdown would always be Stereo
+    // (this plugin's own construction-time default, see makeBusLayout()),
+    // since a host has no way to learn a wider layout even EXISTS once
+    // decoder.getMode() has moved off Stereo internally.
+    //
+    // The fix: accept every layout up front (this function), so a host's
+    // OWN native multichannel routing UI (e.g. Reaper's per-track channel
+    // count, common practice for Ambisonics/spatial-audio plugins the user
+    // already uses, per "Testing with Reaper + SPARTA/IEM" above) can
+    // negotiate whichever one the user actually wants for that track/bus
+    // BEFORE or independently of anything picked in this plugin's own
+    // "Output..." window; setDecoderMode()/setCircularArraySpeakerCount()
+    // below then never attempt to request a different layout live, and
+    // isOutputModeAvailable() (extended below to also gate VST3/Standalone
+    // the same way it already gated AU) greys out whichever Output Formats
+    // don't fit within whatever channel count the host actually gave the
+    // bus -- exactly AU's already-proven model, now shared by every
+    // format. The tradeoff, same as AU's: Output Format selection is
+    // bounded by the host/track's own channel count, not freely switchable
+    // by a plugin-side click alone without reconfiguring that first.
+    for (int i = 0; i < AmbisonicsDecoder::numModes; ++i)
     {
-        // CircularArray's own channel count is independently adjustable
-        // (setCircularArraySpeakerCount()) without a decoder mode change,
-        // so accept any count in its supported range while this mode is
-        // active, not just the exact count currently configured.
-        for (int n = AmbisonicsDecoder::minCircularSpeakers; n <= AmbisonicsDecoder::maxCircularSpeakers; ++n)
-            if (outSet == juce::AudioChannelSet::discreteChannels (n))
-                return true;
-        return false;
+        const auto mode = (AmbisonicsDecoder::Mode) i;
+        if (mode == AmbisonicsDecoder::Mode::CircularArray)
+        {
+            for (int n = AmbisonicsDecoder::minCircularSpeakers; n <= AmbisonicsDecoder::maxCircularSpeakers; ++n)
+                if (outSet == juce::AudioChannelSet::discreteChannels (n))
+                    return true;
+            continue;
+        }
+        if (outSet == AmbisonicsDecoder::outputChannelSetFor (mode))
+            return true;
     }
-
-    return outSet == AmbisonicsDecoder::outputChannelSetFor (decoder.getMode());
+    return false;
 }
 
 bool KlangorbitProcessor::isOutputModeAvailable (AmbisonicsDecoder::Mode mode) const
 {
-    if (wrapperType != wrapperType_AudioUnit && wrapperType != wrapperType_AudioUnitv3)
-        return true;
-
     using Mode = AmbisonicsDecoder::Mode;
-    const bool namedAndInRange = mode == Mode::Stereo || mode == Mode::Binaural
-        || mode == Mode::Quad || mode == Mode::Surround5_1 || mode == Mode::Surround7_1
-        || mode == Mode::Atmos5_1_2 || mode == Mode::Atmos5_1_4
-        || mode == Mode::Atmos7_1_2 || mode == Mode::Atmos7_1_4;
-    if (! namedAndInRange)
-        return false;
+
+    if (wrapperType == wrapperType_AudioUnit || wrapperType == wrapperType_AudioUnitv3)
+    {
+        const bool namedAndInRange = mode == Mode::Stereo || mode == Mode::Binaural
+            || mode == Mode::Quad || mode == Mode::Surround5_1 || mode == Mode::Surround7_1
+            || mode == Mode::Atmos5_1_2 || mode == Mode::Atmos5_1_4
+            || mode == Mode::Atmos7_1_2 || mode == Mode::Atmos7_1_4;
+        if (! namedAndInRange)
+            return false;
+
+        return AmbisonicsDecoder::numOutputChannels (mode) <= getTotalNumOutputChannels();
+    }
+
+    // VST3/Standalone: same "fits within whatever the host/device actually
+    // gave the output bus" gating as AU just above, but every mode stays a
+    // candidate -- not just AU/Logic's named-layout-safe 9 -- since
+    // isBusesLayoutSupported()'s own VST3/Standalone branch now accepts
+    // all of them (CircularArray/Octophonic/raw Ambisonics included, see
+    // its own comment). CircularArray's own channel count is independently
+    // adjustable (setCircularArraySpeakerCount(), itself now clamped to
+    // this same ceiling below) -- available here as long as at least the
+    // minimum count fits; the exact count the user then dials in is
+    // separately clamped.
+    if (mode == Mode::CircularArray)
+        return AmbisonicsDecoder::minCircularSpeakers <= getTotalNumOutputChannels();
 
     return AmbisonicsDecoder::numOutputChannels (mode) <= getTotalNumOutputChannels();
 }
@@ -501,21 +543,25 @@ void KlangorbitProcessor::setDecoderMode (AmbisonicsDecoder::Mode newMode)
     if (wrapperType == wrapperType_AudioUnit || wrapperType == wrapperType_AudioUnitv3)
         return;
 
-    // Best-effort request for the host to renegotiate the output bus to
-    // match. This JUCE version's VST3 wrapper has no dedicated "please
-    // rescan my bus layout" restart flag a plugin can raise on its own
-    // (Vst::kIoChanged is never sent) -- updateHostDisplay() below can at
-    // most mark the plugin's non-parameter state dirty, which some hosts
-    // (Reaper, confirmed) use as a cue to recheck buses live; others will
-    // only pick up the new layout the next time they call
-    // checkBusesLayoutSupported() themselves (e.g. on project reload, or
-    // after the plugin is removed and reinserted). Calling setBusesLayout()
-    // here still matters even then: it keeps this AudioProcessor's own
-    // reported bus layout consistent with the active decode mode, so a
-    // host that DOES rescan sees the right answer immediately. This
-    // tradeoff (per-mode bus layouts, live-switch reliability varies by
-    // host) was chosen deliberately over a fixed always-16-channel bus --
-    // see CHANGELOG.
+    // Best-effort, VST3/Standalone only: try to ask the host to renegotiate
+    // the output bus to match, purely as a bonus for whichever hosts might
+    // pick it up -- NOT relied upon anymore for correctness (see
+    // isBusesLayoutSupported()'s own comment: this plugin now advertises
+    // every format up front specifically so nothing downstream of this
+    // point needs to work for Output Format switching to actually take
+    // effect). Confirmed directly in JUCE's own VST3 client wrapper source
+    // (juce_audio_plugin_client_VST3.cpp): there is no code path that ever
+    // sends the VST3 SDK's Vst::kIoChanged restart flag to the host --
+    // updateHostDisplay() below can at most mark the plugin's non-parameter
+    // state dirty (a private JUCE flag, not an I/O-change notification),
+    // which some hosts (Reaper, confirmed) use as a cue to recheck buses
+    // live anyway; others simply won't. Calling setBusesLayout() here still
+    // matters regardless: it keeps this AudioProcessor's own reported bus
+    // layout consistent with the active decode mode, so a host that DOES
+    // rescan (a project reload, or the plugin being removed/reinserted)
+    // sees the right answer immediately, and so getTotalNumOutputChannels()
+    // (isOutputModeAvailable()'s own gating) reflects reality for THIS
+    // process instance even when nothing external changed.
     auto layouts = getBusesLayout();
     if (! layouts.outputBuses.isEmpty())
         layouts.outputBuses.getReference (0) = AmbisonicsDecoder::outputChannelSetFor (newMode, decoder.getCircularArraySpeakerCount());
@@ -525,7 +571,14 @@ void KlangorbitProcessor::setDecoderMode (AmbisonicsDecoder::Mode newMode)
 
 void KlangorbitProcessor::setCircularArraySpeakerCount (int n)
 {
-    const int clamped = juce::jlimit (AmbisonicsDecoder::minCircularSpeakers, AmbisonicsDecoder::maxCircularSpeakers, n);
+    // Upper bound additionally capped to whatever the host/device actually
+    // gave the output bus (see isBusesLayoutSupported()'s own VST3/
+    // Standalone comment) -- requesting more than that would just mean
+    // the extra channels get silently cleared by AmbisonicsDecoder::
+    // decode()'s own channel-clearing fix, so there's no reason to let the
+    // slider go there in the first place.
+    const int hostLimit = juce::jmin (AmbisonicsDecoder::maxCircularSpeakers, getTotalNumOutputChannels());
+    const int clamped = juce::jlimit (AmbisonicsDecoder::minCircularSpeakers, juce::jmax (AmbisonicsDecoder::minCircularSpeakers, hostLimit), n);
     if (clamped == decoder.getCircularArraySpeakerCount())
         return;
 

@@ -235,9 +235,10 @@ AU's "Manufacturer String").
    straight to that many channels, no external decoder plugin needed --
    Binaural (HRTF) specifically does its own HRTF convolution in-plugin
    (see "Binaural (HRTF) output" below), no external
-   AmbiBIN/BinauralDecoder needed for that path -- but changing modes live
-   may need the plugin removed and reinserted in some hosts, see the
-   CHANGELOG.
+   AmbiBIN/BinauralDecoder needed for that path -- a format needing more
+   than 2 channels needs the TRACK'S OWN channel count set accordingly
+   first (Reaper: the track's I/O/channel count), see "Known limitations"
+   below for why.
 3. Drag object 0 in the scene view with the mouse -> the position change
    should show up as a change in direction in the binaural playback.
 4. Double-clicking an object starts an orbit motion around the origin
@@ -1162,21 +1163,28 @@ Docs/WORKFLOW.md.
   confirmed-by-eye ones. Each is a one-line sign flip if it turns out
   inverted, same situation as the mouse camera drag/zoom convention
   above.
-- **Output format switching is host-dependent to take effect live.**
-  `KlangorbitProcessor::setDecoderMode()` (the "Output..." window's
-  "Output Format" dropdown) DOES change the encoder order, rebuild the decode
-  matrix, and request a host bus-layout renegotiation at runtime -- but
-  VST3's mechanism for a PLUGIN-initiated bus change is weaker than a
-  host-initiated one (this JUCE version's wrapper has no dedicated
-  "rescan my bus layout" restart flag). Confirmed working live in Reaper;
-  other hosts may only pick up a new mode's channel count after the
-  plugin is removed and reinserted, or the project reloaded. See the
-  CHANGELOG entry for why this bus-per-mode approach was chosen anyway
-  over a fixed always-16-channel bus. The same applies to changing
-  Circular Array's Speaker Count while that format is already active --
-  it's a channel-count change too, `KlangorbitProcessor::
-  setCircularArraySpeakerCount()` requests the same best-effort
-  renegotiation.
+- **Output Format selection is bounded by the host/track's own channel
+  count (VST3/Standalone/AU alike).** `isBusesLayoutSupported()` now
+  advertises every Output Format's layout to the host at once (see the
+  CHANGELOG entry -- this replaced an earlier "only the currently active
+  mode" version, after confirming directly in JUCE's own VST3 client
+  wrapper source that a plugin can never ask a VST3 host to live-rescan
+  its bus layout; `Vst::kIoChanged` is never sent). This plugin then never
+  requests a NEW output channel count after whatever the host/track
+  negotiated at insertion -- switching modes in the "Output..." window
+  just uses fewer of those channels for a smaller format (unused channels
+  cleared, see `AmbisonicsDecoder::decode()`'s own comment), the same
+  model AU/Logic already uses. Practical effect: to use, say, 7.1
+  (8 channels), set the VST3 host's own track/bus channel count to at
+  least 8 BEFORE or independently of anything picked in this plugin's own
+  dropdown (standard practice for multichannel Ambisonics/spatial-audio
+  plugins, e.g. the SPARTA/IEM workflow above) -- the dropdown itself
+  greys out any format that doesn't fit within what's actually available
+  (`isOutputModeAvailable()`), so there's no way to select something
+  silently unreachable. The same channel-count ceiling applies to Circular
+  Array's Speaker Count slider (`KlangorbitProcessor::
+  setCircularArraySpeakerCount()`, now also clamped to the host's own
+  channel count, not just `[minCircularSpeakers, maxCircularSpeakers]`).
 - **Circular arrays (Octophonic, Circular Array) are horizontal-only.**
   Neither can reproduce elevation/height content at all -- a property of
   a flat ring of speakers, not something a better decoder could fix.

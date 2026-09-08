@@ -6,6 +6,57 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Fixed
+- **VST3/Standalone stuck at Stereo (2ch) regardless of which Output
+  Format is selected, reported across multiple DAWs.** Root cause: two
+  individually-reasonable earlier changes combined to fully break
+  multi-channel output. (1) A much earlier fix (see this file's own
+  "Reaper (and potentially other hosts) could permanently negotiate the
+  plugin's output down to plain Stereo..." entry) restricted
+  `isBusesLayoutSupported()` to accept only `decoder.getMode()`'s own
+  CURRENT layout, to stop hosts probing multiple candidates from settling
+  on the wrong one -- this worked at the time because a fresh instance's
+  default mode was raw Ambisonics (16ch), so there was exactly one
+  candidate to negotiate to either way. (2) A later change (elsewhere in
+  this file) switched the construction-time default mode to Stereo for
+  every format. Combined: `isBusesLayoutSupported()`'s "only the current
+  mode" now means "only Stereo" for a fresh instance, and switching modes
+  afterward via the "Output..." window can never inform a VST3 host live
+  -- confirmed directly in JUCE's own VST3 client wrapper source
+  (`juce_audio_plugin_client_VST3.cpp`): there is no code path anywhere in
+  it that ever sends the VST3 SDK's `Vst::kIoChanged` restart flag: a
+  plugin genuinely cannot ask a VST3 host to live-rescan its bus layout in
+  this JUCE version, full stop. The result: every fresh VST3/Standalone
+  instance negotiates Stereo and stays there no matter what's picked in
+  the Output Format dropdown, in every host (not host-specific the way the
+  original Reaper report was).
+  - **Fix**: `isBusesLayoutSupported()` now accepts ALL 13 of
+    `AmbisonicsDecoder::Mode`'s output layouts at once again (restoring
+    the pre-regression-fix behavior), but this time WITHOUT reintroducing
+    the original symptom: `setDecoderMode()`/`setCircularArraySpeakerCount()`
+    never request a new layout from a live host after insertion (the same
+    "many layouts available at once, decode uses fewer channels than
+    negotiated, no live renegotiation attempted" model already proven for
+    AU/Logic, see the "AU never appeared as insertable..." entries below),
+    and `isOutputModeAvailable()` (previously an AU-only gate, now applied
+    to VST3/Standalone too, minus AU's named-layout-only restriction) greys
+    out any Output Format that doesn't fit within whatever channel count
+    the host/track actually negotiated at insertion. `setCircularArraySpeakerCount()`'s
+    own upper clamp now additionally respects `getTotalNumOutputChannels()`,
+    not just `[minCircularSpeakers, maxCircularSpeakers]`.
+  - **Practical effect, disclosed, not hidden**: getting more than Stereo
+    out of VST3/Standalone now requires setting the host's own track/bus
+    channel count first (or, for Standalone, having an audio device with
+    enough output channels) -- the plugin can advertise every format but
+    can never force a host to grant more channels live. This matches how
+    other multichannel Ambisonics/spatial-audio plugins already work in
+    practice (e.g. the SPARTA/IEM workflow this project's own README
+    already documents), and is now the same model AU/Logic already uses.
+    Not independently unit-tested (host bus-negotiation behavior isn't
+    something a headless test can exercise) -- verified via full rebuild,
+    the complete `Tools/verify_*`/`validate_presets` suite, and `auval`
+    (AU unaffected by this change beyond shared code); real VST3-host
+    behavior needs the reporting user's own re-test.
 ### Added
 - **Third bundled Binaural HRTF dataset: "KU100 -- 2deg Grid (TH Koeln /
   Bernschuetz)".** `HRIR_FULL2DEG.sofa` from Benjamin Bernschütz's

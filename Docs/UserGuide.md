@@ -479,11 +479,15 @@ window (toolbar -> **Output...**) rather than the parameter panel:
   irregular 5.1/7.1/Atmos layouts, a simpler direct decode for
   Stereo/Quad/Octophonic/Circular Array -- see the CHANGELOG for the
   method and why it differs); there is no need to route to an external
-  decoder plugin for any of these. Switching formats (or changing
-  Circular Array's Speaker Count while it's active) changes the plugin's
-  output channel count -- most hosts (Reaper confirmed) pick this up
-  live, some need the plugin removed and reinserted, or the project
-  reloaded, to fully apply it.
+  decoder plugin for any of these. Output Format selection is bounded by
+  the host/track's own channel count, set via the host's own native
+  routing UI, NOT switchable purely by picking something in this
+  dropdown alone -- the plugin advertises every format up front so the
+  host/track can be configured for whichever one you want (standard
+  practice for multichannel Ambisonics/spatial-audio plugins), and this
+  dropdown then greys out anything that doesn't fit within what's
+  actually available. See the CHANGELOG for why (a real JUCE/VST3
+  limitation, not a design choice).
 - **Bass Management (LFE from W)** -- **only shown for formats with an
   LFE channel** (5.1/7.1/5.1.2/5.1.4/7.1.2/7.1.4). Off by default --
   Ambisonics has no dedicated LFE signal, so this is a real, audible

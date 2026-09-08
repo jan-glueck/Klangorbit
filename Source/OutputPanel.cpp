@@ -17,10 +17,11 @@ namespace
 OutputPanel::OutputPanel()
 {
     styleHintLabel (decoderModeHintLabel,
-                     "Switching output format changes the plugin's output "
-                     "channel count. Most hosts pick this up live; some need "
-                     "the plugin removed and reinserted (or the project "
-                     "reloaded) to fully apply it.");
+                     "Switching output format changes which of the plugin's "
+                     "output channels carry audio, not the channel count "
+                     "itself -- no host action needed to apply it. In Logic "
+                     "specifically, only formats fitting the track's own "
+                     "channel count are selectable.");
     addAndMakeVisible (decoderModeHintLabel);
 
     decoderModeRow = std::make_unique<ComboRowComponent> ("Output Format");
@@ -28,20 +29,28 @@ OutputPanel::OutputPanel()
     // (0-based, from getSelectedItemIndex() below) is cast directly to the
     // enum. addItem()'s IDs (1, 2, 3, ...) are just JUCE's required
     // 1-based ComboBox item IDs, unrelated to the enum's own values.
-    decoderModeRow->combo.addItem ("Stereo", 1);
-    decoderModeRow->combo.addItem ("Binaural (HRTF)", 2);
-    decoderModeRow->combo.addItem ("Quad", 3);
-    decoderModeRow->combo.addItem ("Octophonic", 4);
-    decoderModeRow->combo.addItem ("Circular Array (adjustable)", 5);
-    decoderModeRow->combo.addItem ("5.1", 6);
-    decoderModeRow->combo.addItem ("7.1", 7);
-    decoderModeRow->combo.addItem ("5.1.2", 8);
-    decoderModeRow->combo.addItem ("5.1.4", 9);
-    decoderModeRow->combo.addItem ("7.1.2", 10);
-    decoderModeRow->combo.addItem ("7.1.4", 11);
-    decoderModeRow->combo.addItem ("FOA (1st Order Ambisonics, 4ch)", 12);
-    decoderModeRow->combo.addItem ("SOA (2nd Order Ambisonics, 9ch)", 13);
-    decoderModeRow->combo.addItem ("TOA (3rd Order Ambisonics, 16ch)", 14);
+    // Naming convention, applied uniformly (previously inconsistent --
+    // some entries showed a channel count, some didn't; Ambisonics orders
+    // 1-3 used the FOA/SOA/TOA abbreviations while 4-5 spelled out "Nth
+    // Order Ambisonics", an unrelated style for the same family): every
+    // entry is "Name (qualifiers, channel count)". Circular Array shows
+    // its adjustable RANGE instead of one fixed count (the actual count is
+    // set via the Circular Array Speaker Count slider below, once this
+    // format is selected).
+    decoderModeRow->combo.addItem ("Stereo (2ch)", 1);
+    decoderModeRow->combo.addItem ("Binaural (HRTF, 2ch)", 2);
+    decoderModeRow->combo.addItem ("Quad (4ch)", 3);
+    decoderModeRow->combo.addItem ("Octophonic (8ch)", 4);
+    decoderModeRow->combo.addItem ("Circular Array (4-24ch, adjustable)", 5);
+    decoderModeRow->combo.addItem ("5.1 (6ch)", 6);
+    decoderModeRow->combo.addItem ("7.1 (8ch)", 7);
+    decoderModeRow->combo.addItem ("5.1.2 (Atmos, 8ch)", 8);
+    decoderModeRow->combo.addItem ("5.1.4 (Atmos, 10ch)", 9);
+    decoderModeRow->combo.addItem ("7.1.2 (Atmos, 10ch)", 10);
+    decoderModeRow->combo.addItem ("7.1.4 (Atmos, 12ch)", 11);
+    decoderModeRow->combo.addItem ("1st Order Ambisonics (4ch)", 12);
+    decoderModeRow->combo.addItem ("2nd Order Ambisonics (9ch)", 13);
+    decoderModeRow->combo.addItem ("3rd Order Ambisonics (16ch)", 14);
     decoderModeRow->combo.addItem ("4th Order Ambisonics (25ch)", 15);
     decoderModeRow->combo.addItem ("5th Order Ambisonics (36ch)", 16);
     decoderModeRow->onSelected = [this] (int index)

@@ -42,6 +42,8 @@ actual spatial audio.
   Click + drag an object       move it live by hand (ground plane, X/Y)
   Alt + drag an object         move it in height (Z) instead of X/Y
   Release while dragging       keeps the implied velocity, throws it
+                                 (disable via Scene -> "Mouse Drag Throws
+                                 Object" for plain pick-and-place panning)
   Double-click an object       quick demo: start/stop a circular orbit
   Click empty space (no drag)  clear selection
 
@@ -174,6 +176,10 @@ permanent gravity well, not just a single thrown object's temporary one.
 
   Show Boundary          purely visual toggle -- sits above Boundary
                          Size/Behavior below (see first)
+  Mouse Drag Throws       default ON -- turn off for plain pick-and-place
+   Object                  panning (release always leaves the object
+                          exactly where the mouse was, no throw). Only
+                          affects plain drag, not sling/gamepad throws.
   Boundary Size           radius (m) of an invisible spherical boundary;
    (was "Room Size")       0 disables it -- physics boundary, not an
                           acoustic "room" (no reverb tied to it)
@@ -347,14 +353,14 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
                             (both within BS.775-4's permitted sectors --
                             side 90-110deg, rear 135-150deg). Channel
                             order L R C LFE Lss Rss Lrs Rrs.
-                           5.1.2 -- 5.1 bed (above) + top-side L/R,
-                            8ch total.
-                           5.1.4 -- 5.1 bed + top-front L/R + top-rear
+                           5.1.2 (Atmos) -- 5.1 bed (above) + top-side
+                            L/R, 8ch total.
+                           5.1.4 (Atmos) -- 5.1 bed + top-front L/R +
+                            top-rear L/R, 10ch total.
+                           7.1.2 (Atmos) -- 7.1 bed (above) + top-side
                             L/R, 10ch total.
-                           7.1.2 -- 7.1 bed (above) + top-side L/R,
-                            10ch total.
-                           7.1.4 -- 7.1 bed + top-front L/R + top-rear
-                            L/R, 12ch total -- the largest
+                           7.1.4 (Atmos) -- 7.1 bed + top-front L/R +
+                            top-rear L/R, 12ch total -- the largest
                             non-Ambisonics format.
                             Height angles for all four (top-front
                             +-45deg/+45deg elevation, top-rear
@@ -369,17 +375,13 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
                             consumer height-speaker guidance (45deg
                             front / 135deg rear, 45deg elevation cited
                             as "ideal").
-                           FOA (1st Order Ambisonics, 4ch) -- raw
-                            B-format, no decoding, ACN/SN3D.
-                           SOA (2nd Order Ambisonics, 9ch) -- raw
-                            B-format, no decoding, ACN/SN3D.
-                           TOA (3rd Order Ambisonics, 16ch) -- raw
-                            B-format, no decoding, ACN/SN3D.
-                           4th Order Ambisonics (25ch) -- raw B-format,
-                            no decoding, ACN/SN3D. Higher precision for
-                            external decoding only -- nothing in this
-                            plugin's own decode paths uses it.
-                           5th Order Ambisonics (36ch) -- same, 36ch.
+                           1st/2nd/3rd Order Ambisonics (4ch/9ch/16ch)
+                            -- raw B-format, no decoding, ACN/SN3D.
+                           4th/5th Order Ambisonics (25ch/36ch) -- same,
+                            raw B-format, no decoding, ACN/SN3D. Higher
+                            precision for external decoding only --
+                            nothing in this plugin's own decode paths
+                            uses either.
 
                           Octophonic/Circular Array are HORIZONTAL ONLY
                           -- a flat speaker ring cannot reproduce
@@ -388,12 +390,14 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
                           pans each object DIRECTLY to the real speakers
                           (VBAP) instead of decoding a shared Ambisonics
                           bus -- sharper localization, no external
-                          decoder plugin needed. In VST3/Standalone every
-                          Output Format is always available (fixed
-                          36-channel output bus); routing those channels
-                          somewhere audible is the host's own job. In AU
-                          (Logic), availability is still bounded by which
-                          track type Klangorbit was inserted on.
+                          decoder plugin needed. Every Output Format is
+                          always available (fixed 36-channel output bus)
+                          in VST3/Standalone AND in AU hosted by anything
+                          other than Logic; routing those channels
+                          somewhere audible is the host's own job. In
+                          Logic specifically, availability is still
+                          bounded by which track type Klangorbit was
+                          inserted on.
   Circular Array:         4-24 -- only shown while Output Format is
    Speaker Count           "Circular Array".
   Bass Management         only shown for formats with an LFE channel
@@ -538,7 +542,7 @@ yet to change the OSC port from its default.
 Separate from -- and alongside -- the gamepad/MIDI/OSC Learn-mode
 mapping above: every field exposed there is ALSO a real, host-
 automatable parameter, in AU, VST3, and Standalone alike. Draw/record
-automation for it directly in the host's own automation lanes -- 517
+automation for it directly in the host's own automation lanes -- 518
 parameters total, grouped per object ("Object 1".."Object 8", each
 subgrouped by category: Object Physics/Attraction/Orbit/Doppler/Grain
 Cloud) plus one "Global" group for scene-wide parameters.

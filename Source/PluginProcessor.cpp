@@ -1406,6 +1406,7 @@ void KlangorbitProcessor::buildParameterRegistry()
     // ParameterPanel.cpp's matching label renames for the same reasoning).
     registerSceneFloatParam ("roomSize", "Boundary Size", "Global", &SceneSettings::roomSize, 0.0f, 50.0f);
     registerSceneBoolParam ("showRoomBoundary", "Show Boundary", "Global", &SceneSettings::showRoomBoundary);
+    registerSceneBoolParam ("mouseDragThrowEnabled", "Mouse Drag Throws Object", "Global", &SceneSettings::mouseDragThrowEnabled);
     registerSceneVec3Param ("globalField", "Force Field", "Global", &SceneSettings::globalField, -20.0f, 20.0f);
     registerSceneFloatParam ("timeScale", "Time Scale", "Global", &SceneSettings::timeScale, 0.05f, 5.0f);
     registerSceneFloatParam ("speedOfSound", "Speed of Sound", "Global", &SceneSettings::speedOfSound, 1.0f, 400.0f);

@@ -219,6 +219,7 @@ namespace
         obj->setProperty ("roomSize", (double) s.roomSize);
         obj->setProperty ("boundaryBehavior", boundaryBehaviorToString (s.boundaryBehavior));
         obj->setProperty ("showRoomBoundary", s.showRoomBoundary);
+        obj->setProperty ("mouseDragThrowEnabled", s.mouseDragThrowEnabled);
         obj->setProperty ("globalField", vecToVar (s.globalField));
         obj->setProperty ("timeScale", (double) s.timeScale);
 
@@ -254,6 +255,9 @@ namespace
 
         if (sceneVar.hasProperty ("showRoomBoundary"))
             out.showRoomBoundary = (bool) sceneVar.getProperty ("showRoomBoundary", out.showRoomBoundary);
+
+        if (sceneVar.hasProperty ("mouseDragThrowEnabled"))
+            out.mouseDragThrowEnabled = (bool) sceneVar.getProperty ("mouseDragThrowEnabled", out.mouseDragThrowEnabled);
 
         if (sceneVar.hasProperty ("globalField"))
         {

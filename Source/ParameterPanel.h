@@ -279,6 +279,7 @@ private:
     std::unique_ptr<Vec3RowComponent> positionRow; // SoundObject::position -- custom setter, see constructor for why
     std::unique_ptr<ComboRowComponent> boundaryRow;
     std::unique_ptr<ToggleRowComponent> showRoomBoundaryRow;
+    std::unique_ptr<ToggleRowComponent> mouseDragThrowEnabledRow;
     std::unique_ptr<Vec3RowComponent> globalFieldRow; // SceneSettings::globalField, not a SoundObject field -> its own binding
     std::unique_ptr<ComboRowComponent> orbitRefRow;
     std::unique_ptr<ToggleRowComponent> dopplerEnabledRow; // SoundObject::dopplerEnabled -- top of the Doppler category

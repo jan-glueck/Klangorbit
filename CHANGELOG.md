@@ -7,6 +7,21 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Changed
+- **Output Format naming unified across the dropdown and all docs.**
+  Reported as inconsistent: some entries showed a channel count, some
+  didn't; raw Ambisonics orders 1-3 used the FOA/SOA/TOA abbreviations
+  while 4th/5th order spelled out "Nth Order Ambisonics" instead -- an
+  unrelated style for the same format family. Every `OutputPanel` dropdown
+  entry now follows one pattern, "Name (qualifiers, channel count)":
+  `Stereo (2ch)`, `Binaural (HRTF, 2ch)`, `Quad (4ch)`, `Octophonic (8ch)`,
+  `Circular Array (4-24ch, adjustable)`, `5.1 (6ch)`, `7.1 (8ch)`, the four
+  Atmos-bed layouts now labeled `5.1.2 (Atmos, 8ch)` etc. (the "Atmos"
+  qualifier was previously implicit/missing from the dropdown itself), and
+  `1st Order Ambisonics (4ch)` through `5th Order Ambisonics (36ch)` --
+  FOA/SOA/TOA removed entirely. `README.md`/`Docs/UserGuide.md`/
+  `Source/HelpContent.h` updated to match throughout, including several
+  now-stale "AU"-vs-"Logic" wording spots left over from the AU/non-Logic
+  host-detection split (see the "Added" section below).
 - **Quad/Octophonic/CircularArray/5.1/7.1/all four Atmos-bed formats now
   pan each object DIRECTLY to the real speakers (VBAP), instead of
   decoding a shared, fixed-order-3 Ambisonics bus.** Reported and
@@ -87,9 +102,22 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     sharper localization is the direct, intended goal here, not
     incidental.
 ### Added
+- **New "Mouse Drag Throws Object" toggle (Scene category, default on --
+  `SceneSettings::mouseDragThrowEnabled`).** Requested: releasing a plain
+  mouse drag while still in motion always throws the object (`Mode::
+  Impulse`, coasting under damping/drag afterward) -- wanted a way to turn
+  this off entirely for simple pick-and-place panning, where the object
+  always ends up exactly where the mouse was released, regardless of
+  release speed. Only gates `KlangorbitEditor::mouseUp()`'s plain-drag
+  branch -- the deliberate Shift+drag sling gesture and gamepad
+  throw-button gestures are separate, explicit throw actions and are
+  unaffected either way. Persisted in presets (`PresetManager`) and
+  exposed for controller mapping/DAW automation via the same
+  `registerSceneBoolParam()` path `showRoomBoundary` already uses (518
+  automation parameters now, up from 517).
 - **Two new raw Ambisonics output options: 4th order (25ch) and 5th
-  order (36ch)**, alongside the existing FOA/SOA/TOA (1st/2nd/3rd order)
-  -- for higher precision when decoding externally via a third-party tool
+  order (36ch)**, alongside the existing 1st/2nd/3rd order -- for higher
+  precision when decoding externally via a third-party tool
   (IEM Plugin Suite, SPARTA). Purely additive and low-risk: the existing
   raw-passthrough architecture already generalized to any order with zero
   pipeline changes needed (`AmbisonicsEncoder::setOrder()` was already

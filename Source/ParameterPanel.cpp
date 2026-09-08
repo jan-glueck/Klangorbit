@@ -203,6 +203,15 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*showRoomBoundaryRow);
     addToLayout (*showRoomBoundaryRow, ToggleRowComponent::preferredHeight, Category::Scene);
 
+    // See SceneSettings::mouseDragThrowEnabled's own comment -- only
+    // affects a plain mouse drag's release behavior, not the Shift+drag
+    // sling gesture or gamepad throw buttons (both stay deliberate,
+    // explicit throws regardless of this toggle).
+    mouseDragThrowEnabledRow = std::make_unique<ToggleRowComponent> ("Mouse Drag Throws Object");
+    mouseDragThrowEnabledRow->onToggled = [this] (bool v) { if (sceneSettings != nullptr) sceneSettings->mouseDragThrowEnabled = v; };
+    content.addAndMakeVisible (*mouseDragThrowEnabledRow);
+    addToLayout (*mouseDragThrowEnabledRow, ToggleRowComponent::preferredHeight, Category::Scene);
+
     // Renamed from "Room Size" -- this sphere is a physics boundary
     // (reflect/wrap/absorb, see SceneSettings::boundaryBehavior), not a
     // "room" in any acoustic-modeling sense (no reverb/reflection audio
@@ -761,6 +770,7 @@ void ParameterPanel::refreshFromModel()
 
         boundaryRow->combo.setSelectedItemIndex ((int) sceneSettings->boundaryBehavior, juce::dontSendNotification);
         showRoomBoundaryRow->setValueQuiet (sceneSettings->showRoomBoundary);
+        mouseDragThrowEnabledRow->setValueQuiet (sceneSettings->mouseDragThrowEnabled);
         globalFieldRow->setValueQuiet (sceneSettings->globalField);
     }
 

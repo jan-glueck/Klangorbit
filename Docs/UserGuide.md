@@ -64,7 +64,12 @@ your viewpoint, not the listener's.
   reach the 3rd axis with the mouse.
 - **Release while dragging** -- the object keeps whatever velocity your
   drag implied and continues moving under physics (*Impulse* mode) --
-  a simple throw.
+  a simple throw. Turn off **Scene -> "Mouse Drag Throws Object"** to
+  disable this: a plain drag then always leaves the object exactly where
+  the mouse was released, regardless of release speed -- simple
+  pick-and-place panning, no momentum. Only affects this plain drag; the
+  Shift+drag sling gesture (below) and gamepad throws are unrelated,
+  deliberate throw actions and always keep working.
 - **Double-click an object** -- start (or stop, if already orbiting) a
   circular orbit around the origin, as a quick demo/shortcut. For more
   control over an orbit's shape, use the parameter panel's Orbit
@@ -240,6 +245,12 @@ Apply to the whole scene, not one object:
   physically even if hidden. Sits above Boundary Size/Behavior below --
   the natural first question ("do I even see this?") before tuning the
   boundary itself.
+- **Mouse Drag Throws Object** (default on) -- when on, releasing a plain
+  mouse drag with enough speed throws the object (see section 2's
+  "Release while dragging"). Turn off for plain pick-and-place panning:
+  releasing always leaves the object exactly where the mouse was. Only
+  affects this plain drag, not the Shift+drag sling gesture or gamepad
+  throws.
 - **Boundary Size** (formerly "Room Size") -- radius (meters) of an
   invisible spherical boundary around the origin. 0 disables it (objects
   can drift unbounded). Renamed since it's a physics boundary
@@ -473,8 +484,8 @@ window (toolbar -> **Output...**) rather than the parameter panel:
     bed + top-side L/R (10ch); 7.1.4 = 7.1 bed + top-front L/R +
     top-rear L/R (12ch -- the largest non-Ambisonics format, and Logic
     Pro's own channel ceiling, see the AU sections above).
-  - **FOA (1st Order Ambisonics, 4ch) / SOA (2nd Order, 9ch) / TOA (3rd
-    Order, 16ch) / 4th Order (25ch) / 5th Order (36ch)** -- raw B-format
+  - **1st Order Ambisonics (4ch) / 2nd Order (9ch) / 3rd Order (16ch) /
+    4th Order (25ch) / 5th Order (36ch)** -- raw B-format
     output (ACN channel ordering, SN3D normalization, AmbiX-compatible),
     no decoding at all; route to an external decoder (SPARTA AmbiBIN/
     AmbiDEC, IEM BinauralDecoder) as before. 4th/5th order exist purely
@@ -492,13 +503,14 @@ window (toolbar -> **Output...**) rather than the parameter panel:
   the regular ones) that measured too diffuse; see the CHANGELOG for the
   full story and why. Stereo keeps its own simple 2-point Ambisonics
   decode. Either way, there is no need to route to an external decoder
-  plugin for any of these. In VST3/Standalone, Output Format selection is
+  plugin for any of these. In VST3/Standalone, and in AU hosted by
+  anything other than Logic (e.g. Reaper), Output Format selection is
   always available (the plugin exposes a fixed 36-channel output bus
   regardless of which format is picked) -- switching formats never needs
   the host/track reconfigured first anymore. Getting a wider format's
   channels actually routed somewhere audible (real speakers, or an
   external decoder plugin) is still the host's own native routing job,
-  same as for any wide-bus plugin. In AU (Logic), Output Format
+  same as for any wide-bus plugin. In Logic specifically, Output Format
   availability IS still bounded by which track type you inserted
   Klangorbit on (Logic negotiates a small, named bus once per track). See
   the CHANGELOG for the full history.
@@ -652,7 +664,7 @@ mapping in sections 16-18: every field exposed there is ALSO a real,
 host-automatable parameter, in AU, VST3, and Standalone alike. Draw or
 record automation for any object's Mass, Gain, Attraction, Orbit,
 Doppler, or Grain Cloud parameters, or any scene-wide parameter, directly
-in the host's own automation lanes -- 517 parameters total, grouped in
+in the host's own automation lanes -- 518 parameters total, grouped in
 the host's parameter picker as "Object 1".."Object 8" (each subgrouped by
 category: Object Physics/Attraction/Orbit/Doppler/Grain Cloud) plus one
 "Global" group.

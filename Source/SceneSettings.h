@@ -26,6 +26,19 @@ struct SceneSettings
     // drawShadedBoundarySphere() call is skipped when false.
     bool showRoomBoundary = true;
 
+    // When true (default, existing behavior): releasing a plain mouse drag
+    // (KlangorbitEditor::mouseUp()) with enough residual velocity throws
+    // the object -- Mode::Impulse, coasting/decelerating under
+    // damping/dragCoefficient like SlingGesture's own Free Throw. When
+    // false: a plain drag always just leaves the object exactly where the
+    // mouse was released (Mode::Static, zero velocity), regardless of how
+    // fast the release motion was -- simple pick-and-place panning, no
+    // momentum. Only affects the PLAIN drag gesture -- the deliberate
+    // Shift+drag sling gesture and gamepad throw-button gestures are
+    // unrelated, explicit "throw" actions and always keep working exactly
+    // as before regardless of this setting.
+    bool mouseDragThrowEnabled = true;
+
     // Constant force/mass (like wind/gravity), only affects objects in
     // Impulse/Attracted (the force-integrated modes) -- Orbit is defined
     // kinematically and an extra force would just look inconsistent there,

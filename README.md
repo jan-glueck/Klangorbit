@@ -221,23 +221,24 @@ communication -- so a multi-object scene with real inter-object
 interaction still needs a single instance fed by a wide enough live-input
 bus, same as the existing Reaper workflow.
 
-The OUTPUT side is flexible too, but works differently: Logic fixes the
-output channel COUNT once, at insertion (based on which track/bus type
-was chosen), and Klangorbit never asks to change it afterward while
-running as AU. Of the 14 Output Formats, only the 9 with both a NAMED
-channel layout and `<= 12` channels (Logic's own ceiling, 7.1.4) are ever
-usable in Logic: Stereo, Binaural (HRTF), Quad, 5.1, 7.1, and the four
-Atmos-bed formats. The Output window's "Output Format" dropdown greys out
-(`ComboBox::setItemEnabled`) anything needing more channels than what
-Logic actually negotiated -- switching among the remaining, AVAILABLE
-formats works live, using fewer channels internally rather than
-requesting a different bus. FOA/SOA/TOA (raw Ambisonics), Octophonic, and
-Circular Array are never available in AU at all (unnamed channel sets
-Logic's own layout-tag matching can't recognize, and TOA alone already
-exceeds the 12-channel ceiling) -- see `KlangorbitProcessor::
-isOutputModeAvailable()` and the CHANGELOG entry for the full reasoning,
-including why this design was chosen specifically to avoid repeating the
-Reaper bus-negotiation regression noted above.
+The OUTPUT side works differently in Logic specifically (see "AU bus
+flexibility" above for the full Logic-vs-other-AU-hosts split): Logic
+fixes the output channel COUNT once, at insertion (based on which
+track/bus type was chosen), and Klangorbit never asks to change it
+afterward. Of the 16 Output Formats, only the 9 with both a NAMED channel
+layout and `<= 12` channels (Logic's own ceiling, 7.1.4) are ever usable
+in Logic: Stereo, Binaural (HRTF), Quad, 5.1, 7.1, and the four Atmos-bed
+formats (5.1.2/5.1.4/7.1.2/7.1.4). The Output window's "Output Format"
+dropdown greys out (`ComboBox::setItemEnabled`) anything needing more
+channels than what Logic actually negotiated -- switching among the
+remaining, AVAILABLE formats works live, using fewer channels internally
+rather than requesting a different bus. 1st-5th Order Ambisonics,
+Octophonic, and Circular Array are never available in Logic (unnamed
+channel sets Logic's own layout-tag matching can't recognize, and 3rd
+Order alone already exceeds the 12-channel ceiling) -- see
+`KlangorbitProcessor::isOutputModeAvailable()` and the CHANGELOG entry
+for the full reasoning. In AU hosted by anything other than Logic, all 16
+formats are always available, same as VST3/Standalone.
 
 Every format -- AU, VST3, and Standalone alike -- now starts up in Stereo
 output rather than raw Ambisonics B-format (see the CHANGELOG entry): a
@@ -260,7 +261,7 @@ AU's "Manufacturer String").
 1. Start the plugin/standalone app, connect a live input (microphone or
    audio interface channel) to Input 0.
 2. The default Output Format is Stereo (audible immediately) -- switch to
-   TOA (3rd Order Ambisonics, 16ch, toolbar -> "Output...") to route the
+   3rd Order Ambisonics (16ch, toolbar -> "Output...") to route the
    output to a bus with AmbiBIN (SPARTA) or the IEM BinauralDecoder
    instead. Every other format (Binaural/Quad/Octophonic/Circular
    Array/5.1/7.1/an Atmos-bed variant) sends already-decoded audio
@@ -379,8 +380,7 @@ unrelated to any of this (see their own sections below).
   top-rear L/R (12ch, `create7point1point4()`) -- the largest
   non-Ambisonics format, at Logic Pro's own channel ceiling (see the AU
   section above).
-- **FOA / SOA / TOA / 4th Order / 5th Order** (1st-5th Order Ambisonics,
-  4/9/16/25/36ch) -- raw B-format, no decoding at all: ACN channel
+- **1st-5th Order Ambisonics** (4/9/16/25/36ch) -- raw B-format, no decoding at all: ACN channel
   ordering, SN3D normalization (AmbiX-compatible). Not a loudspeaker
   layout -- feed an external decoder (SPARTA AmbiDEC/AmbiBIN, IEM Plugin
   Suite) or one of the formats above instead. 4th/5th order exist purely
@@ -892,7 +892,7 @@ mapping system above: every registered `ParameterRegistry` field (see
 `Source/AutomationParameterBridge.h/.cpp`). Draw/write automation for any
 object's Mass, Gain, Attraction, Orbit, Doppler, or Grain Cloud parameters,
 or any scene-wide (Global) parameter, in the host's own automation lanes --
-517 parameters in total, grouped in the host's parameter picker as
+518 parameters in total, grouped in the host's parameter picker as
 `"Object 1".."Object 8"` (each subgrouped by category: Object Physics/
 Attraction/Orbit/Doppler/Grain Cloud) plus one `"Global"` group.
 

@@ -1361,11 +1361,11 @@ void KlangorbitEditor::mouseUp (const juce::MouseEvent&)
         auto& engine = audioProcessor.getTrajectoryEngine();
 
         // If there's still noticeable momentum on release: interpret it as
-        // a throw -- unless SceneSettings::mouseDragThrowEnabled is off,
-        // in which case a plain drag always just leaves the object exactly
+        // a throw -- unless this object's own SoundObject::momentumEnabled
+        // is off, in which case a plain drag always just leaves it exactly
         // where it was released (own comment there for why this doesn't
         // affect the Shift+drag sling gesture or gamepad throws).
-        if (engine.getSceneSettings().mouseDragThrowEnabled && estimatedDragVelocity.length() > 0.3f)
+        if (engine.getObject (draggedObjectIndex).momentumEnabled && estimatedDragVelocity.length() > 0.3f)
             engine.throwObject (draggedObjectIndex, estimatedDragVelocity);
         else
             engine.endDrag (draggedObjectIndex);

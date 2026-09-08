@@ -102,19 +102,42 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     sharper localization is the direct, intended goal here, not
     incidental.
 ### Added
-- **New "Mouse Drag Throws Object" toggle (Scene category, default on --
-  `SceneSettings::mouseDragThrowEnabled`).** Requested: releasing a plain
-  mouse drag while still in motion always throws the object (`Mode::
-  Impulse`, coasting under damping/drag afterward) -- wanted a way to turn
-  this off entirely for simple pick-and-place panning, where the object
-  always ends up exactly where the mouse was released, regardless of
-  release speed. Only gates `KlangorbitEditor::mouseUp()`'s plain-drag
-  branch -- the deliberate Shift+drag sling gesture and gamepad
-  throw-button gestures are separate, explicit throw actions and are
-  unaffected either way. Persisted in presets (`PresetManager`) and
-  exposed for controller mapping/DAW automation via the same
-  `registerSceneBoolParam()` path `showRoomBoundary` already uses (518
-  automation parameters now, up from 517).
+- **New per-object "Momentum" toggle (Object category, default on --
+  `SoundObject::momentumEnabled`).** Requested: releasing a plain mouse
+  drag while still in motion always throws the object (`Mode::Impulse`,
+  coasting under damping/drag afterward) -- wanted a way to turn this off
+  for simple pick-and-place panning instead, where the object always ends
+  up exactly where the mouse was released, regardless of release speed.
+  Went through two design iterations before landing here: first shipped
+  as a single, scene-wide toggle (`SceneSettings::mouseDragThrowEnabled`),
+  then moved to a per-object `SoundObject` field instead so individual
+  objects can differ (one object stays simple pick-and-place while others
+  keep throwing) -- also discussed and rejected folding this into the
+  Mode dropdown itself (e.g. a dedicated "Momentum mode"), since Mode is
+  dynamic runtime state (an object drifts through Orbit/Static/Impulse on
+  its own) while this needed to be a STABLE per-object preference,
+  independent of whatever the object happens to be doing at any moment.
+  Only gates `KlangorbitEditor::mouseUp()`'s plain-drag branch -- the
+  deliberate Shift+drag sling gesture and gamepad throw-button gestures
+  are separate, explicit throw actions and are unaffected either way.
+  Persisted in presets (`PresetManager`) and exposed for controller
+  mapping/DAW automation via the same `registerObjectBoolParam()` path
+  `dopplerEnabled`/`muted`/`soloed` already use (525 automation parameters
+  now, up from 517 -- +8, one per object slot).
+- **`SoundObject::Mode::Attracted` merged into `Mode::Impulse`.**
+  Reconsidering the Mode system while designing the toggle above surfaced
+  a genuine redundancy: `Attracted` and `Impulse` were byte-for-byte
+  identical in `TrajectoryEngine::update()` (the exact same `case` block),
+  differing only in which situation auto-assigned them -- an explicit
+  throw/sling/gamepad-throw vs. `TrajectoryEngine::setAttraction()`
+  promoting a `Static` object once given a nonzero `attractionStrength` --
+  a purely cosmetic distinction with zero physics difference, and both
+  were also independently selectable from the same Mode dropdown to no
+  different effect. Removed the separate enum value/dropdown entry;
+  `setAttraction()`'s auto-promotion now targets `Impulse` directly.
+  Old presets/state with the now-gone `"attracted"` mode string still
+  load correctly -- `PresetManager::modeFromString()` keeps accepting it
+  on read (mapped to `Impulse`), just never writes it again.
 - **Two new raw Ambisonics output options: 4th order (25ch) and 5th
   order (36ch)**, alongside the existing 1st/2nd/3rd order -- for higher
   precision when decoding externally via a third-party tool

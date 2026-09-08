@@ -42,8 +42,8 @@ actual spatial audio.
   Click + drag an object       move it live by hand (ground plane, X/Y)
   Alt + drag an object         move it in height (Z) instead of X/Y
   Release while dragging       keeps the implied velocity, throws it
-                                 (disable via Scene -> "Mouse Drag Throws
-                                 Object" for plain pick-and-place panning)
+                                 (disable per object via Object ->
+                                 "Momentum" for plain pick-and-place panning)
   Double-click an object       quick demo: start/stop a circular orbit
   Click empty space (no drag)  clear selection
 
@@ -80,9 +80,8 @@ Below: one row per active object: "Object N" (numbered from 1) plus M
   Static      sits still
   Manual      being actively dragged by the mouse (automatic)
   Orbit       circles/ellipses around a point or another object
-  Impulse     moves freely under velocity + forces (thrown objects)
-  Attracted   same physics as Impulse, for objects mainly reacting
-              to other objects' attraction rather than being thrown
+  Impulse     moves freely under velocity + forces -- thrown objects,
+              or objects reacting to another object's attraction
 
 
 == 4. SLING LAUNCH GESTURE ==
@@ -146,6 +145,11 @@ right in the panel as a reminder instead of silently doing nothing.
 
 == 6. OBJECT PHYSICS (panel -> Object) ==
 
+  Momentum              default ON -- turn off for plain pick-and-place
+                         panning: releasing a mouse drag then always
+                         leaves THIS object exactly where the mouse was,
+                         never throws it. Only affects plain drag, not
+                         the sling gesture or gamepad throws.
   Mass                 how strongly gravity/attraction pulls it, and
                          (as a source) how strongly IT pulls others
   Gain                  manual per-object volume
@@ -159,7 +163,7 @@ right in the panel as a reminder instead of silently doing nothing.
 == 7. ATTRACTION / GRAVITY (panel -> Attraction) ==
 
 Makes an object act as a gravity SOURCE pulling (or pushing) every
-other Impulse/Attracted object in the scene:
+other Impulse-mode object in the scene:
 
   Strength                pull strength; negative = repel
   Force Exponent           2 = classic inverse-square gravity
@@ -176,16 +180,12 @@ permanent gravity well, not just a single thrown object's temporary one.
 
   Show Boundary          purely visual toggle -- sits above Boundary
                          Size/Behavior below (see first)
-  Mouse Drag Throws       default ON -- turn off for plain pick-and-place
-   Object                  panning (release always leaves the object
-                          exactly where the mouse was, no throw). Only
-                          affects plain drag, not sling/gamepad throws.
   Boundary Size           radius (m) of an invisible spherical boundary;
    (was "Room Size")       0 disables it -- physics boundary, not an
                           acoustic "room" (no reverb tied to it)
   Boundary Behavior      Reflect (bounce, via Restitution) / Wrap
                          (reappear opposite side) / Absorb (stop+silence)
-  Force Field             constant force/mass on every Impulse/Attracted
+  Force Field             constant force/mass on every Impulse-mode
    (Wind/Gravity,          object, like directional wind or gravity --
    was "Global Field")     genuinely moves objects (unlike Propagation
                           Wind below, which only affects sound)
@@ -542,7 +542,7 @@ yet to change the OSC port from its default.
 Separate from -- and alongside -- the gamepad/MIDI/OSC Learn-mode
 mapping above: every field exposed there is ALSO a real, host-
 automatable parameter, in AU, VST3, and Standalone alike. Draw/record
-automation for it directly in the host's own automation lanes -- 518
+automation for it directly in the host's own automation lanes -- 525
 parameters total, grouped per object ("Object 1".."Object 8", each
 subgrouped by category: Object Physics/Attraction/Orbit/Doppler/Grain
 Cloud) plus one "Global" group for scene-wide parameters.

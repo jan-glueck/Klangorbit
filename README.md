@@ -497,7 +497,7 @@ not saved in a preset, see "Presets" and the Known Limitations note on
   just a fixed point (`orbitReferenceObjectId`).
 - **Force field & time scale:** `SceneSettings::globalField` (shown in
   the panel as "Force Field" -- constant force/mass, like wind/gravity,
-  affects Impulse/Attracted objects; not the same thing as
+  affects Impulse-mode objects; not the same thing as
   `windVector`/"Propagation Wind" below, which only affects sound
   propagation, never actual object movement) and `timeScale`
   (fast-forward/slow-motion for the whole simulation).
@@ -512,7 +512,14 @@ not saved in a preset, see "Presets" and the Known Limitations note on
   active preset) fights the write on the next tick. Like every other row
   here it's only refreshed on selection change/preset load, not live, so
   it goes stale while the object moves on its own and doesn't track
-  Orbit/Impulse/Attracted motion in real time.
+  Orbit/Impulse motion in real time. **Momentum** (`SoundObject::
+  momentumEnabled`, default true, also automatable/mappable via
+  `registerObjectBoolParam()`) governs only `KlangorbitEditor::mouseUp()`'s
+  plain-drag-release branch: on, a fast release throws the object into
+  Impulse mode as before; off, releasing always leaves it exactly where
+  the mouse was, regardless of release speed. Per-object, and unrelated to
+  the Shift+drag sling gesture or gamepad throw buttons, both of which
+  stay deliberate, unaffected throw actions either way.
 - **Object list** (left side of the editor window, `Source/ObjectListPanel.h/.cpp`):
   lists every currently active object by id, click a row to select it --
   an alternative to clicking the object directly in the scene view, for
@@ -892,7 +899,7 @@ mapping system above: every registered `ParameterRegistry` field (see
 `Source/AutomationParameterBridge.h/.cpp`). Draw/write automation for any
 object's Mass, Gain, Attraction, Orbit, Doppler, or Grain Cloud parameters,
 or any scene-wide (Global) parameter, in the host's own automation lanes --
-518 parameters in total, grouped in the host's parameter picker as
+525 parameters in total, grouped in the host's parameter picker as
 `"Object 1".."Object 8"` (each subgrouped by category: Object Physics/
 Attraction/Orbit/Doppler/Grain Cloud) plus one `"Global"` group.
 

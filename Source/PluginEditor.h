@@ -25,12 +25,12 @@
       height (Z) axis instead -- X/Y stay fixed, only vertical mouse
       movement counts. See mouseDrag()/screenToGroundWorld().
     - Release with momentum: impulse (Mode::Impulse) -- simple throw gesture.
-      Disable via SceneSettings::mouseDragThrowEnabled ("Mouse Drag Throws
-      Object" in the Scene parameter panel) for plain pick-and-place
-      panning instead -- releasing then always leaves the object exactly
-      where the mouse was, regardless of release speed. Only affects this
-      plain drag; the Shift+drag sling gesture below and gamepad throws
-      are unrelated, deliberate throw actions and keep working either way.
+      Disable per-object via SoundObject::momentumEnabled ("Momentum" in
+      the Object parameter panel) for plain pick-and-place panning instead
+      -- releasing then always leaves that object exactly where the mouse
+      was, regardless of release speed. Only affects this plain drag; the
+      Shift+drag sling gesture below and gamepad throws are unrelated,
+      deliberate throw actions and keep working either way.
     - Double-click on an object: start/stop an orbit around the origin (demo)
     - Shift+left-click+drag on an object: "sling" launch gesture -- pull the
       object away from its rest position like a catapult; releasing fires it

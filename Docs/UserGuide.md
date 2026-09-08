@@ -64,12 +64,14 @@ your viewpoint, not the listener's.
   reach the 3rd axis with the mouse.
 - **Release while dragging** -- the object keeps whatever velocity your
   drag implied and continues moving under physics (*Impulse* mode) --
-  a simple throw. Turn off **Scene -> "Mouse Drag Throws Object"** to
-  disable this: a plain drag then always leaves the object exactly where
-  the mouse was released, regardless of release speed -- simple
-  pick-and-place panning, no momentum. Only affects this plain drag; the
-  Shift+drag sling gesture (below) and gamepad throws are unrelated,
-  deliberate throw actions and always keep working.
+  a simple throw. Turn off that object's own **Object -> "Momentum"**
+  toggle to disable this: a plain drag then always leaves that object
+  exactly where the mouse was released, regardless of release speed --
+  simple pick-and-place panning, no momentum. Per-object, not global --
+  other objects keep throwing unless you turn it off for them too. Only
+  affects this plain drag; the Shift+drag sling gesture (below) and
+  gamepad throws are unrelated, deliberate throw actions and always keep
+  working.
 - **Double-click an object** -- start (or stop, if already orbiting) a
   circular orbit around the origin, as a quick demo/shortcut. For more
   control over an orbit's shape, use the parameter panel's Orbit
@@ -116,8 +118,7 @@ panel's **Object -> Mode** dropdown:
 | **Static** | Sits still at its current position. |
 | **Manual** | Being actively moved by the mouse (set automatically while dragging). |
 | **Orbit** | Circles/ellipses around a center point or another object, kinematically (see section 6). |
-| **Impulse** | Moves freely under velocity + forces (gravity/attraction/drag) -- what a throw or the Slingshot gesture puts an object into. |
-| **Attracted** | Same physics as Impulse, but meant for objects that mainly react to *other* objects' attraction rather than being thrown. |
+| **Impulse** | Moves freely under velocity + forces (gravity/attraction/drag) -- what a throw or the Slingshot gesture puts an object into, and also what a resting object is promoted to once it's given a nonzero Attraction Strength (so the attraction actually takes effect). |
 
 You can also set a mode directly from the dropdown, e.g. to park an
 object in Static after it's drifted somewhere interesting.
@@ -197,8 +198,14 @@ For any object in Orbit mode, the parameter panel exposes:
 
 ## 7. Object physics parameters (parameter panel -> Object category)
 
-Apply to Impulse/Attracted motion (thrown or attracted objects):
+Apply to Impulse-mode motion (thrown or attracted objects):
 
+- **Momentum** (default on) -- when on, releasing a plain mouse drag with
+  enough speed throws this object (section 2's "Release while dragging").
+  Turn off for plain pick-and-place panning: releasing always leaves the
+  object exactly where the mouse was, regardless of release speed. Only
+  affects the plain drag, not the Shift+drag sling gesture or gamepad
+  throws. Per-object -- other objects are unaffected.
 - **Mass** -- affects how strongly the object is pulled by gravity/
   attraction sources, and, when this object is itself a source, how
   strongly it pulls others.
@@ -217,7 +224,7 @@ Apply to Impulse/Attracted motion (thrown or attracted objects):
 ## 8. Attraction / gravity parameters (parameter panel -> Attraction category)
 
 These make an object act as a gravity/attraction *source* that pulls (or
-pushes) every other Impulse/Attracted object in the scene:
+pushes) every other Impulse-mode object in the scene:
 
 - **Strength** -- how strongly it attracts others; negative = repels
   instead.
@@ -245,12 +252,6 @@ Apply to the whole scene, not one object:
   physically even if hidden. Sits above Boundary Size/Behavior below --
   the natural first question ("do I even see this?") before tuning the
   boundary itself.
-- **Mouse Drag Throws Object** (default on) -- when on, releasing a plain
-  mouse drag with enough speed throws the object (see section 2's
-  "Release while dragging"). Turn off for plain pick-and-place panning:
-  releasing always leaves the object exactly where the mouse was. Only
-  affects this plain drag, not the Shift+drag sling gesture or gamepad
-  throws.
 - **Boundary Size** (formerly "Room Size") -- radius (meters) of an
   invisible spherical boundary around the origin. 0 disables it (objects
   can drift unbounded). Renamed since it's a physics boundary
@@ -261,7 +262,7 @@ Apply to the whole scene, not one object:
   Restitution), **Wrap** (reappears on the opposite side), or
   **Absorb** (stops there and goes silent).
 - **Force Field (Wind/Gravity)** (formerly "Global Field") -- a constant
-  force/mass applied to every Impulse/Attracted object, like a
+  force/mass applied to every Impulse-mode object, like a
   directional wind or gravity -- genuinely pushes objects around. Not
   the same thing as Propagation Wind (Acoustics category, below), which
   only affects sound, never movement -- renamed, and moved to a separate
@@ -664,7 +665,7 @@ mapping in sections 16-18: every field exposed there is ALSO a real,
 host-automatable parameter, in AU, VST3, and Standalone alike. Draw or
 record automation for any object's Mass, Gain, Attraction, Orbit,
 Doppler, or Grain Cloud parameters, or any scene-wide parameter, directly
-in the host's own automation lanes -- 518 parameters total, grouped in
+in the host's own automation lanes -- 525 parameters total, grouped in
 the host's parameter picker as "Object 1".."Object 8" (each subgrouped by
 category: Object Physics/Attraction/Orbit/Doppler/Grain Cloud) plus one
 "Global" group.

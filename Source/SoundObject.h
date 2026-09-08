@@ -27,16 +27,37 @@ struct SoundObject
     Vec3 velocity   { 0.0f, 0.0f, 0.0f };
     float mass = 1.0f; // for n-body attraction/repulsion
 
-    // Motion mode, evaluated by TrajectoryEngine
+    // Motion mode, evaluated by TrajectoryEngine. Attracted was removed
+    // (merged into Impulse) -- the two were byte-for-byte identical in
+    // TrajectoryEngine::update() (same case block), differing only in
+    // which situation auto-assigned them (an explicit throw vs.
+    // TrajectoryEngine::setAttraction() promoting a Static object once it
+    // gets a nonzero attractionStrength) -- a purely cosmetic distinction
+    // with no physics difference, not worth the extra enum value/dropdown
+    // entry. Old presets/state with the now-gone "attracted" string still
+    // load fine, mapped to Impulse -- see PresetManager's own
+    // modeToString()/modeFromString().
     enum class Mode
     {
         Static,       // stays at position (e.g. dragged by mouse)
         Manual,       // currently being moved live via mouse/MIDI/gamepad rate-control, no physics
         Orbit,        // circles around orbitCenter with orbitRadius/orbitSpeed
-        Impulse,      // was "thrown", moves freely under velocity + force field
-        Attracted     // subject to n-body forces from other objects/points
+        Impulse       // was thrown, or is subject to n-body forces -- moves freely under velocity + force field
     };
     Mode mode = Mode::Static;
+
+    // Whether releasing a plain mouse drag (KlangorbitEditor::mouseUp())
+    // while still in motion throws this object (Mode::Impulse, coasting
+    // under damping/dragCoefficient/attraction like any other Impulse
+    // object) or always just leaves it exactly where the mouse was
+    // released (Mode::Static, regardless of release speed) -- true is the
+    // existing, default behavior (momentum on, dragging can throw).
+    // Per-object, not global: lets one object stay simple pick-and-place
+    // while others keep throwing. Only affects THIS plain drag gesture --
+    // the deliberate Shift+drag sling gesture and gamepad throw-button
+    // gestures are separate, explicit throw actions and always work the
+    // same regardless of this flag.
+    bool momentumEnabled = true;
 
     // True while a rate-control driver (a gamepad, see GamepadDriver) is
     // actively setting manualVelocity below every tick -- lets

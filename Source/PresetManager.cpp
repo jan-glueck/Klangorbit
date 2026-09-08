@@ -31,18 +31,21 @@ namespace
             case SoundObject::Mode::Manual:    return "manual";
             case SoundObject::Mode::Orbit:     return "orbit";
             case SoundObject::Mode::Impulse:   return "impulse";
-            case SoundObject::Mode::Attracted: return "attracted";
         }
         return "static";
     }
 
+    // "attracted" is accepted on READ only, for backward compatibility
+    // with presets saved before Mode::Attracted was merged into Impulse
+    // (identical physics, see SoundObject.h's own comment) -- never
+    // written again by modeToString() above.
     bool modeFromString (const juce::String& s, SoundObject::Mode& out)
     {
-        if (s == "static")    { out = SoundObject::Mode::Static;    return true; }
-        if (s == "manual")    { out = SoundObject::Mode::Manual;    return true; }
-        if (s == "orbit")     { out = SoundObject::Mode::Orbit;     return true; }
-        if (s == "impulse")   { out = SoundObject::Mode::Impulse;   return true; }
-        if (s == "attracted") { out = SoundObject::Mode::Attracted; return true; }
+        if (s == "static")    { out = SoundObject::Mode::Static;  return true; }
+        if (s == "manual")    { out = SoundObject::Mode::Manual;  return true; }
+        if (s == "orbit")     { out = SoundObject::Mode::Orbit;   return true; }
+        if (s == "impulse")   { out = SoundObject::Mode::Impulse; return true; }
+        if (s == "attracted") { out = SoundObject::Mode::Impulse; return true; }
         return false;
     }
 
@@ -219,7 +222,6 @@ namespace
         obj->setProperty ("roomSize", (double) s.roomSize);
         obj->setProperty ("boundaryBehavior", boundaryBehaviorToString (s.boundaryBehavior));
         obj->setProperty ("showRoomBoundary", s.showRoomBoundary);
-        obj->setProperty ("mouseDragThrowEnabled", s.mouseDragThrowEnabled);
         obj->setProperty ("globalField", vecToVar (s.globalField));
         obj->setProperty ("timeScale", (double) s.timeScale);
 
@@ -255,9 +257,6 @@ namespace
 
         if (sceneVar.hasProperty ("showRoomBoundary"))
             out.showRoomBoundary = (bool) sceneVar.getProperty ("showRoomBoundary", out.showRoomBoundary);
-
-        if (sceneVar.hasProperty ("mouseDragThrowEnabled"))
-            out.mouseDragThrowEnabled = (bool) sceneVar.getProperty ("mouseDragThrowEnabled", out.mouseDragThrowEnabled);
 
         if (sceneVar.hasProperty ("globalField"))
         {
@@ -452,6 +451,7 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         objVar->setProperty ("inputChannel", obj.inputChannel);
         objVar->setProperty ("position", vecToVar (obj.position));
         objVar->setProperty ("mode", modeToString (obj.mode));
+        objVar->setProperty ("momentumEnabled", obj.momentumEnabled);
         objVar->setProperty ("orbitCenter", vecToVar (obj.orbitCenter));
         objVar->setProperty ("orbitRadius", (double) obj.orbitRadius);
         objVar->setProperty ("orbitAngularSpeed", (double) obj.orbitAngularSpeed);
@@ -569,6 +569,9 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         const auto modeStr = element.getProperty ("mode", juce::var()).toString();
         if (! modeFromString (modeStr, obj.mode))
             return juce::Result::fail ("Preset object " + juce::String (id) + ": unknown mode '" + modeStr + "'.");
+
+        if (element.hasProperty ("momentumEnabled"))
+            obj.momentumEnabled = (bool) element.getProperty ("momentumEnabled", obj.momentumEnabled);
 
         varToVec (element.getProperty ("orbitCenter", juce::var()), obj.orbitCenter); // optional, default stays {0,0,0}
         obj.orbitRadius        = (float) element.getProperty ("orbitRadius", (double) obj.orbitRadius);

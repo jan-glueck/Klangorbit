@@ -144,8 +144,7 @@ void GamepadDriver::driveSelectedObjectMovement (int selectedObjectIndex, double
         // scripted inertia model.
         if (sticksActive)
         {
-            if (obj.mode != SoundObject::Mode::Impulse && obj.mode != SoundObject::Mode::Attracted)
-                obj.mode = SoundObject::Mode::Impulse;
+            obj.mode = SoundObject::Mode::Impulse;
             obj.velocity += shapedStick * inertiaAcceleration * fdt;
         }
     }

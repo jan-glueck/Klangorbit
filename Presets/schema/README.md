@@ -50,7 +50,7 @@ defaults for everything new.
     "roomSize": 5.0,                  // meters, radius of the spherical boundary; <= 0 = no boundary
     "boundaryBehavior": "reflect",    // reflect | wrap | absorb
     "showRoomBoundary": true,         // purely visual -- the boundary still applies physically even when hidden
-    "globalField": [0.0, 0.0, 0.0],   // constant force/mass (like wind/gravity), only affects impulse/attracted
+    "globalField": [0.0, 0.0, 0.0],   // constant force/mass (like wind/gravity), only affects impulse-mode objects
     "timeScale": 1.0,                 // fast-forward (>1) / slow-motion (<1) for the whole simulation
 
     // Acoustic propagation (medium properties, see PropagationProcessor)
@@ -66,7 +66,8 @@ defaults for everything new.
       "id": 0,                        // required, 0-based
       "inputChannel": 0,
       "position": [1.0, 0.0, 0.0],    // required, x=front, y=left, z=up, meters
-      "mode": "orbit",                // required, static | manual | orbit | impulse | attracted
+      "mode": "orbit",                // required, static | manual | orbit | impulse ("attracted" still accepted on read, maps to impulse -- identical physics, merged)
+      "momentumEnabled": true,        // if false, releasing a mouse drag on this object always leaves it exactly where released (no throw), regardless of release speed
 
       "orbitCenter": [0.0, 0.0, 0.0],
       "orbitRadius": 1.5,

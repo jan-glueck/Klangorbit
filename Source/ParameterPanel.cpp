@@ -203,15 +203,6 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*showRoomBoundaryRow);
     addToLayout (*showRoomBoundaryRow, ToggleRowComponent::preferredHeight, Category::Scene);
 
-    // See SceneSettings::mouseDragThrowEnabled's own comment -- only
-    // affects a plain mouse drag's release behavior, not the Shift+drag
-    // sling gesture or gamepad throw buttons (both stay deliberate,
-    // explicit throws regardless of this toggle).
-    mouseDragThrowEnabledRow = std::make_unique<ToggleRowComponent> ("Mouse Drag Throws Object");
-    mouseDragThrowEnabledRow->onToggled = [this] (bool v) { if (sceneSettings != nullptr) sceneSettings->mouseDragThrowEnabled = v; };
-    content.addAndMakeVisible (*mouseDragThrowEnabledRow);
-    addToLayout (*mouseDragThrowEnabledRow, ToggleRowComponent::preferredHeight, Category::Scene);
-
     // Renamed from "Room Size" -- this sphere is a physics boundary
     // (reflect/wrap/absorb, see SceneSettings::boundaryBehavior), not a
     // "room" in any acoustic-modeling sense (no reverb/reflection audio
@@ -234,8 +225,8 @@ ParameterPanel::ParameterPanel()
 
     // "Force Field" (not "Global Field") specifically to disambiguate from
     // "Propagation Wind" below (SceneSettings::windVector) -- this one is
-    // a real physical force that pushes moving objects around (Impulse/
-    // Attracted modes); that one only shifts the effective speed of sound
+    // a real physical force that pushes moving objects around (Impulse
+    // mode); that one only shifts the effective speed of sound
     // for propagation delay/Doppler and never touches object motion at
     // all. Both are scene-wide (SceneSettings, Scope::Global -- see
     // buildParameterRegistry()), not per-object, so both stay here in
@@ -277,7 +268,6 @@ ParameterPanel::ParameterPanel()
     modeRow->combo.addItem ("Manual", 2);
     modeRow->combo.addItem ("Orbit", 3);
     modeRow->combo.addItem ("Impulse", 4);
-    modeRow->combo.addItem ("Attracted", 5);
     modeRow->onSelected = [this] (int index)
     {
         if (editedObject != nullptr)
@@ -296,7 +286,7 @@ ParameterPanel::ParameterPanel()
     // registerObjectPositionParam() in PluginProcessor.cpp, which this
     // mirrors for the GUI side. Like every other row here, this is NOT
     // refreshed on a timer (see class comment), so its shown value goes
-    // stale while the object moves on its own (Orbit/Impulse/Attracted) --
+    // stale while the object moves on its own (Orbit/Impulse) --
     // it reflects the position as of the last selection/preset-load, and
     // setting it always switches the object into Manual first.
     positionRow = std::make_unique<Vec3RowComponent> ("Position", -20.0, 20.0, 0.01);
@@ -310,6 +300,14 @@ ParameterPanel::ParameterPanel()
     positionRow->setDefaultValue (SoundObject{}.position);
     content.addAndMakeVisible (*positionRow);
     addToLayout (*positionRow, Vec3RowComponent::preferredHeight, Category::Object);
+
+    // See SoundObject::momentumEnabled's own comment -- only affects a
+    // plain mouse drag's release behavior (KlangorbitEditor::mouseUp()),
+    // not the Shift+drag sling gesture or gamepad throw buttons.
+    momentumEnabledRow = std::make_unique<ToggleRowComponent> ("Momentum");
+    momentumEnabledRow->onToggled = [this] (bool v) { if (editedObject != nullptr) editedObject->momentumEnabled = v; };
+    content.addAndMakeVisible (*momentumEnabledRow);
+    addToLayout (*momentumEnabledRow, ToggleRowComponent::preferredHeight, Category::Object);
 
     addObjectFloatRow ("Mass", &SoundObject::mass, 0.01, 20.0, 0.01, Category::Object);
     addObjectFloatRow ("Gain", &SoundObject::gain, 0.0, 2.0, 0.01, Category::Object);
@@ -770,7 +768,6 @@ void ParameterPanel::refreshFromModel()
 
         boundaryRow->combo.setSelectedItemIndex ((int) sceneSettings->boundaryBehavior, juce::dontSendNotification);
         showRoomBoundaryRow->setValueQuiet (sceneSettings->showRoomBoundary);
-        mouseDragThrowEnabledRow->setValueQuiet (sceneSettings->mouseDragThrowEnabled);
         globalFieldRow->setValueQuiet (sceneSettings->globalField);
     }
 
@@ -783,6 +780,7 @@ void ParameterPanel::refreshFromModel()
         b.row->setValueQuiet (editedObject->*b.member);
 
     positionRow->setValueQuiet (editedObject->position);
+    momentumEnabledRow->setValueQuiet (editedObject->momentumEnabled);
     modeRow->combo.setSelectedItemIndex ((int) editedObject->mode, juce::dontSendNotification);
     orbitRefRow->combo.setSelectedItemIndex (editedObject->orbitReferenceObjectId + 1, juce::dontSendNotification);
     dopplerEnabledRow->setValueQuiet (editedObject->dopplerEnabled);

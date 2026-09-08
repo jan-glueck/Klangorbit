@@ -104,7 +104,7 @@ public:
     void startOrbit (int objectIndex, Vec3 center, float semiMajorAxis, float angularSpeed,
                       float eccentricity = 0.0f, float orientation = 0.0f, int referenceObjectId = -1);
 
-    // Activates n-body attraction/repulsion towards all other "Attracted"/Orbit objects
+    // Activates n-body attraction/repulsion towards all other Impulse/Orbit objects
     void setAttraction (int objectIndex, float strength);
 
     // Lock-free snapshot for the audio thread: position + velocity per object.

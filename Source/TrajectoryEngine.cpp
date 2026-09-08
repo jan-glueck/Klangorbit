@@ -143,8 +143,13 @@ void TrajectoryEngine::setAttraction (int objectIndex, float strength)
 {
     auto& o = getObject (objectIndex);
     o.attractionStrength = strength;
+    // Promote a resting object into Impulse once it has a nonzero pull --
+    // otherwise Static's own integrate() case is a no-op and the new
+    // attraction would silently never take effect. Was Mode::Attracted, a
+    // separate enum value with identical physics to Impulse (see
+    // SoundObject.h's own comment) -- merged away.
     if (o.mode == SoundObject::Mode::Static)
-        o.mode = SoundObject::Mode::Attracted;
+        o.mode = SoundObject::Mode::Impulse;
 }
 
 Vec3 TrajectoryEngine::computeAttractionForce (const SoundObject& obj) const
@@ -323,7 +328,6 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
         }
 
         case SoundObject::Mode::Impulse:
-        case SoundObject::Mode::Attracted:
         {
             auto force = computeAttractionForce (obj);
             force += sceneSettings.globalField * obj.mass; // globalField is force/mass, like gravity

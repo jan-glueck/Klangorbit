@@ -103,19 +103,34 @@ juce::AudioChannelSet AmbisonicsDecoder::outputChannelSetFor (Mode mode, int cir
 {
     switch (mode)
     {
-        // discreteChannels(), NOT the named ambisonic() set -- this matches
-        // the plugin's pre-existing raw-Ambisonics output bus declaration
-        // exactly (see PluginProcessor's original makeBusLayout()), which
-        // real user setups (Reaper routing, Max/MSP vst~/mcs.vst~ channel
-        // counts) are already built around. Switching to the named set
-        // would have the same channel count but a different AudioChannelSet
-        // identity, breaking isBusesLayoutSupported() for those existing
-        // sessions.
-        case Mode::AmbisonicsRawOrder1: return juce::AudioChannelSet::discreteChannels (4);
-        case Mode::AmbisonicsRawOrder2: return juce::AudioChannelSet::discreteChannels (9);
-        case Mode::AmbisonicsRawOrder3: return juce::AudioChannelSet::discreteChannels (16);
-        case Mode::AmbisonicsRawOrder4: return juce::AudioChannelSet::discreteChannels (25);
-        case Mode::AmbisonicsRawOrder5: return juce::AudioChannelSet::discreteChannels (36);
+        // AudioChannelSet::ambisonic(order) (ACN/SN3D), NOT discreteChannels()
+        // -- this REPLACES an earlier discreteChannels()-based declaration
+        // that matched the plugin's own original raw-Ambisonics bus (see
+        // PluginProcessor's makeBusLayout()) but, confirmed by reading
+        // JUCE's own VST3<->SpeakerArrangement conversion
+        // (juce_VST3Common.h: getVst3SpeakerArrangement()/getChannelType()),
+        // can NEVER actually be negotiated as a wider VST3 output bus: no
+        // VST3 speaker bit exists for a generic "channel N" beyond
+        // discreteChannel0 (kSpeakerM), so getBusArrangement() can't
+        // report such a bus's layout to a host and no host can construct
+        // a matching setBusArrangements() request for it either --
+        // isBusesLayoutSupported() accepting this identity was therefore
+        // never reachable via real VST3 bus negotiation to begin with (see
+        // the CHANGELOG's "VST3 output stuck at Stereo..." follow-up
+        // entry). AudioChannelSet::ambisonic(order) IS representable:
+        // orders 1-4 round-trip via individual per-channel ACN speaker
+        // bits (kSpeakerACN0..24, all individually defined), and order 5
+        // via VST3's own dedicated kAmbi5thOrderACN whole-bus arrangement
+        // constant -- both confirmed present in JUCE's own conversion
+        // tables. Channel COUNT is unaffected (numOutputChannels() returns
+        // the same 4/9/16/25/36 regardless, independent of this method) --
+        // only the bus's reported IDENTITY changes, so nothing that reads
+        // audio by channel index is affected.
+        case Mode::AmbisonicsRawOrder1: return juce::AudioChannelSet::ambisonic (1);
+        case Mode::AmbisonicsRawOrder2: return juce::AudioChannelSet::ambisonic (2);
+        case Mode::AmbisonicsRawOrder3: return juce::AudioChannelSet::ambisonic (3);
+        case Mode::AmbisonicsRawOrder4: return juce::AudioChannelSet::ambisonic (4);
+        case Mode::AmbisonicsRawOrder5: return juce::AudioChannelSet::ambisonic (5);
         case Mode::Stereo:              return juce::AudioChannelSet::stereo();
         // Binaural also declares a plain stereo() bus -- deliberately the
         // SAME identity as Mode::Stereo (both are, from the host's

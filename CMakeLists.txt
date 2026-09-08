@@ -697,3 +697,36 @@ target_link_libraries(verify_binaural_decoder
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
 )
+
+# --- VST3 bus-negotiation diagnostic (not a pass/fail verify_* test) --------
+# Loads a BUILT Klangorbit.vst3 the way a real VST3 host would, via JUCE's
+# own hosting code (full juce_audio_processors, JUCE_PLUGINHOST_VST3=1) --
+# exercises the REAL VST3 ABI (IAudioProcessor::setBusArrangements()/
+# getBusArrangement() on the actual compiled binary), not just our own
+# PluginProcessor::isBusesLayoutSupported() called in-process. Written to
+# get ground truth on a "VST3 output stuck at Stereo, independent of DAW"
+# report that survived two source-reading-only fixes -- prints which
+# candidate output layouts a real negotiation attempt actually succeeds or
+# fails for. Run manually (`vst3_bus_probe <path-to-.vst3>`), not part of
+# the automated verify_*/validate_presets suite.
+juce_add_console_app(vst3_bus_probe
+    PRODUCT_NAME "vst3_bus_probe"
+)
+
+target_compile_definitions(vst3_bus_probe
+    PRIVATE
+        JUCE_PLUGINHOST_VST3=1
+)
+
+target_sources(vst3_bus_probe
+    PRIVATE
+        Tools/vst3_bus_probe.cpp
+)
+
+target_link_libraries(vst3_bus_probe
+    PRIVATE
+        juce::juce_audio_processors
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)

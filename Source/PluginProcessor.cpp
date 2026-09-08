@@ -91,6 +91,53 @@ KlangorbitProcessor::KlangorbitProcessor()
         setBusesLayout (auDefaultLayout);
     }
 
+    // VST3 specifically (NOT Standalone -- see below): same "switch the
+    // default input bus away from makeBusLayout()'s own fixed 8-channel
+    // discrete Live Inputs default" move as the AU block above, for a
+    // DIFFERENT but related reason. Root cause, confirmed empirically with
+    // a purpose-built host-mimicking probe tool (Tools/vst3_bus_probe.cpp,
+    // loads the actual built .vst3 via JUCE's own VST3 HOST code and
+    // exercises the real IAudioProcessor::setBusArrangements() wire call,
+    // rather than reasoning about isBusesLayoutSupported() in isolation):
+    // discreteChannels(N) for N > 1 has NO VST3 SpeakerArrangement
+    // representation at all -- confirmed by reading JUCE's own VST3<->
+    // SpeakerArrangement conversion (juce_VST3Common.h), no speaker bit
+    // exists for a generic "channel N" beyond discreteChannel0. VST3's
+    // IAudioProcessor::setBusArrangements() negotiates ALL buses in ONE
+    // call (inputs[] and outputs[] together) -- so ANY output-only
+    // renegotiation attempt that also resends the CURRENT input
+    // arrangement unchanged (the standard, spec-compliant way a host
+    // preserves a bus it isn't touching) fails immediately at the input
+    // side's SpeakerArrangement conversion, before the output request is
+    // ever even considered by isBusesLayoutSupported() below -- REGARDLESS
+    // of which Output Format was requested or which host is asking.
+    // Reported: VST3 output stuck at Stereo in Reaper no matter which
+    // Output Format was picked, surviving two earlier fixes that only
+    // touched the OUTPUT-side matching logic -- this input-side blocker
+    // is what those missed. Empirically verified with vst3_bus_probe:
+    // requesting a wider output layout together with the unmodified
+    // discreteChannels(8) input fails every time; the SAME output request
+    // together with a representable input (e.g. stereo()) succeeds. Fix:
+    // start VST3 instances on a representable input bus too, exactly like
+    // AU already does above (Standalone doesn't need this -- it never
+    // goes through VST3's SpeakerArrangement wire format at all, using
+    // juce::AudioIODevice channel negotiation instead, so its own
+    // discreteChannels(numLiveInputs) default was never actually affected
+    // by this issue and is left untouched here). isBusesLayoutSupported()'s
+    // VST3/Standalone input branch below still accepts any input width up
+    // to numLiveInputs, so a host that offers more than Stereo (e.g. by
+    // widening the track's own input channel count first, the same
+    // workflow already documented for output) can still negotiate up to
+    // the full numLiveInputs, exactly as before -- only the plugin's OWN
+    // starting point changes, not what a host may later request.
+    if (wrapperType == wrapperType_VST3)
+    {
+        auto vst3DefaultLayout = getBusesLayout();
+        if (! vst3DefaultLayout.inputBuses.isEmpty())
+            vst3DefaultLayout.inputBuses.getReference (0) = juce::AudioChannelSet::stereo();
+        setBusesLayout (vst3DefaultLayout);
+    }
+
     // Stereo, matching makeBusLayout()'s own new default -- see that
     // method's own comment. ambisonicsOrderFor(Stereo) is 3, the fixed
     // internal order every decoded mode already uses regardless of the
@@ -372,7 +419,41 @@ bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
     }
     else
     {
-        if (inSet != juce::AudioChannelSet::discreteChannels (numLiveInputs))
+        // VST3/Standalone: accept ANY input channel count up to
+        // numLiveInputs, not just discreteChannels(numLiveInputs) exactly
+        // -- this REPLACES an exact-match-only requirement that,
+        // confirmed by reading JUCE's own VST3<->SpeakerArrangement
+        // conversion (juce_VST3Common.h's getVst3SpeakerArrangement()/
+        // getChannelType()), could never actually be satisfied by a real
+        // VST3 host: discreteChannels(N) for N > 1 has NO VST3
+        // SpeakerArrangement representation at all (no per-channel
+        // speaker bit is defined for a generic "input N", only
+        // discreteChannel0 maps to anything, via kSpeakerM) -- so
+        // getBusArrangement() can never report this bus's CURRENT layout
+        // to a host that queries it, and no host can construct a
+        // matching setBusArrangements() request for it either, even one
+        // that only means to leave this bus unchanged. Separately, a host
+        // renegotiating ONLY the output bus may legitimately send
+        // numIns=0 (see IAudioProcessor::setBusArrangements()'s own
+        // contract) -- JUCE's VST3 client wrapper then hands this
+        // function an EMPTY inputBuses array, so getMainInputChannelSet()
+        // returns AudioChannelSet() (the disabled/empty set), which the
+        // old exact-match requirement also rejected outright, vetoing an
+        // otherwise-fine OUTPUT negotiation for a bus this function was
+        // never even asked to change. Reported: VST3 output stuck at
+        // Stereo in Reaper regardless of which Output Format was
+        // selected, even after widening the track's own channel count --
+        // consistent with every bus-negotiation attempt failing at this
+        // input check before the output request was ever considered,
+        // independent of which output layout was tried. Live input
+        // reading has no equivalent stored-state dependency the way
+        // output decoding does (see the AU branch's own comment above) --
+        // it already self-adapts every block to however many channels are
+        // ACTUALLY present (processBlock()'s own numInCh clamp), so
+        // there's nothing to lose accepting a broader range purely by
+        // count here, same "count is what matters, not exact identity"
+        // reasoning the output side below already uses throughout.
+        if (inSet.size() > numLiveInputs)
             return false;
     }
 

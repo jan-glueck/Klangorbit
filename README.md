@@ -817,6 +817,53 @@ workflow described above, no separate MIDI-Learn or OSC-Learn step.
   same kind of gap already noted above for gamepad deadzone/curve/
   inertia tuning, not an oversight.
 
+## DAW automation
+
+Separate from -- and complementary to -- the gamepad/MIDI/OSC Learn-mode
+mapping system above: every registered `ParameterRegistry` field (see
+"Controller mapping") is ALSO exposed as a real, host-automatable
+`juce::AudioProcessorParameter`, in AU, VST3, and Standalone alike (see
+`Source/AutomationParameterBridge.h/.cpp`). Draw/write automation for any
+object's Mass, Gain, Attraction, Orbit, Doppler, or Grain Cloud parameters,
+or any scene-wide (Global) parameter, in the host's own automation lanes --
+493 parameters in total, grouped in the host's parameter picker as
+`"Object 1".."Object 8"` (each subgrouped by category: Object Physics/
+Attraction/Orbit/Doppler/Grain Cloud) plus one `"Global"` group.
+
+- **What's automatable**: exactly what `ParameterRegistry` already exposes
+  for controller mapping (`Scope::Global`/`Scope::SpecificObject`) -- see
+  "Controller mapping" below for the full field list. `Scope::SelectedObject`
+  entries (e.g. binding a MIDI knob to "whichever object is currently
+  selected") are deliberately NOT automatable -- a host automation lane
+  needs an identity-stable target, which by design that scope isn't (it
+  retargets which object it resolves to).
+- **What's not (yet) automatable**: enum-valued fields (`SoundObject::mode`,
+  `GrainCloudSettings::movementMode`, etc. -- a single float range doesn't
+  naturally fit a fixed choice of N options) and pure runtime physics state
+  (position, velocity, etc.) -- same exclusions `ParameterRegistry` itself
+  already makes, for the same reasons.
+- **Writing automation into these parameters DOES change the actual sound**
+  -- they delegate straight through to the same fields the parameter panel/
+  gamepad/MIDI/OSC already read and write, no separate storage.
+- **Manual tweaks (mouse/gamepad/MIDI/OSC) don't themselves get recorded
+  as host automation** -- this plugin's own GUI/controller-mapping code
+  doesn't call `setValueNotifyingHost()` when the user changes something,
+  so a host's automation lane reflects automation IT plays back or writes,
+  not every manual nudge. A separate, larger follow-up would be needed to
+  wire that up.
+- **Session save/reload** now actually preserves the scene (see
+  `getStateInformation()`/`setStateInformation()`, reusing the same
+  serialization "Save Preset..."/"Load Preset..." already use) -- this was
+  a separate, previously-unimplemented gap, fixed alongside automation
+  since a host reloading a project with no state to restore would
+  otherwise be inconsistent with whatever automation lanes it has. Both
+  go through `juce::MessageManager::callSync()` before touching
+  `TrajectoryEngine` -- a host may call either from any thread, but
+  `TrajectoryEngine::getObject()` (which the underlying `PresetManager`
+  calls use) is message-thread-only, the same thread the ~90Hz physics
+  tick also runs on (see "Known limitations" below for why this is the
+  reason these were stubs before, not an oversight).
+
 ## Acoustic propagation: Doppler, delay, air absorption, directivity
 
 Runs in `PropagationProcessor` (`Source/PropagationProcessor.h/.cpp`), on
@@ -1258,15 +1305,18 @@ Docs/WORKFLOW.md.
   center (e.g. via a separate marking click) was considered but
   deliberately left out to keep the gesture to a single, uninterrupted
   Shift+drag+release motion.
-- **DAW session persistence is still missing.** `getStateInformation`/
-  `setStateInformation` are still stubs -- the scene is NOT automatically
-  saved/restored in the host project. Deliberately not short-circuited
-  with the preset JSON: the host can call `setStateInformation` from any
-  thread, but `TrajectoryEngine::getObject()` is not safe for that (see
-  the class comment, "only from the message thread"). Without additional
-  synchronization of the object list itself (currently only the
-  audio-thread snapshot is locked), that would be a race. Loading a preset
-  via the GUI is not affected by this (always runs on the message thread).
+- **DAW session persistence is now implemented** (see the CHANGELOG's
+  "DAW automation"/"Session state save/restore" entries) --
+  `getStateInformation`/`setStateInformation` reuse `PresetManager`'s own
+  JSON serialization. The threading concern that originally left these as
+  stubs (a host can call either from any thread, but
+  `TrajectoryEngine::getObject()` is message-thread-only, the same thread
+  the ~90Hz physics tick also runs on -- see its own class comment) is
+  addressed via `juce::MessageManager::callSync()`, not by adding new
+  locking to `TrajectoryEngine` itself (which would be a much larger,
+  separate change touching every existing `getObject()` call site).
+  Loading a preset via the GUI was never affected by this (always runs on
+  the message thread already).
 - **Loading/saving presets is implemented.** `PresetManager`
   (`Source/PresetManager.h/.cpp`) reads/writes scenes in the schemaVersion-2
   format (see `Presets/schema/README.md`), via two buttons in the editor

@@ -521,5 +521,29 @@ button message (no arguments) binds as a button.
 
 No on-screen indicator yet for MIDI/OSC connection status, and no UI
 yet to change the OSC port from its default.
+
+
+== 17. DAW AUTOMATION ==
+
+Separate from -- and alongside -- the gamepad/MIDI/OSC Learn-mode
+mapping above: every field exposed there is ALSO a real, host-
+automatable parameter, in AU, VST3, and Standalone alike. Draw/record
+automation for it directly in the host's own automation lanes -- 493
+parameters total, grouped per object ("Object 1".."Object 8", each
+subgrouped by category: Object Physics/Attraction/Orbit/Doppler/Grain
+Cloud) plus one "Global" group for scene-wide parameters.
+
+  What's automatable      exactly the fields Learn mode already exposes
+                           for a SPECIFIC object slot or globally
+  What's NOT automatable  "whichever object is selected" bindings (no
+                           fixed target for a host lane), enum settings
+                           (Movement Mode, Output Format, etc.), pure
+                           runtime physics state (position, velocity)
+  Manual tweaks            mouse/gamepad/MIDI/OSC changes are NOT
+                           themselves recorded as host automation --
+                           only automation the host plays back or
+                           writes shows up
+  Session save/reload      now actually preserves the whole scene
+                           (previously did not)
 )HELPTEXT";
 }

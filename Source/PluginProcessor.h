@@ -11,6 +11,7 @@
 #include "PropagationProcessor.h"
 #include "GrainCloud.h"
 #include "ParameterRegistry.h"
+#include "AutomationParameterBridge.h"
 #include "CanonicalInput.h"
 #include "GamepadDriver.h"
 #include "MidiDriver.h"
@@ -299,6 +300,16 @@ private:
     void timerCallback() override;
 
     void buildParameterRegistry();
+
+    // Bridges every Scope::Global/Scope::SpecificObject entry already in
+    // parameterRegistry (built by buildParameterRegistry(), which MUST run
+    // first) to a real, host-automatable juce::AudioProcessorParameter --
+    // see AutomationParameterBridge.h's own comment (RegistryAutomationParameter/
+    // buildAutomationParameterGroups()) for the actual "why" and the
+    // grouping/exclusion logic; this method is just the addParameterGroup()
+    // glue. Called once from the constructor, immediately after
+    // buildParameterRegistry().
+    void buildAutomationParameters();
 
     // Registration helpers for buildParameterRegistry() -- each registers
     // ONE field as multiple ParameterRegistry entries: one

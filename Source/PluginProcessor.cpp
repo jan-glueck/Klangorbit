@@ -4,6 +4,7 @@
 #include "GrainDoppler.h"
 #include "MuteSoloLogic.h"
 #include "MappingProfileManager.h"
+#include "PresetManager.h"
 #include "BinaryData.h"
 #include <algorithm>
 #include <cmath>
@@ -127,6 +128,7 @@ KlangorbitProcessor::KlangorbitProcessor()
         wh.store (0, std::memory_order_relaxed);
 
     buildParameterRegistry();
+    buildAutomationParameters(); // MUST run after buildParameterRegistry() -- bridges its own descriptors, see this method's own comment
 
     // Wires the mapping engine into the canonical input hub (so it sees
     // every event any driver posts -- currently just gamepadDriver) and
@@ -1288,13 +1290,70 @@ void KlangorbitProcessor::buildParameterRegistry()
     registerGrainFloatParam ("attractionStrength", "Attraction Strength", "Grain Cloud", &GrainCloudSettings::attractionStrength, -10.0f, 10.0f, ParameterRegistry::Polarity::Bipolar);
 }
 
+void KlangorbitProcessor::buildAutomationParameters()
+{
+    // The actual grouping/bridging logic lives in
+    // buildAutomationParameterGroups() (AutomationParameterBridge.h/.cpp)
+    // -- pure/standalone (no KlangorbitProcessor dependency), so it's
+    // independently unit-tested (Tools/verify_automation_parameters.cpp)
+    // without needing to construct the full processor. This is just the
+    // glue that hands each resulting top-level group to this
+    // AudioProcessor.
+    for (auto& group : buildAutomationParameterGroups (parameterRegistry.all()))
+        addParameterGroup (std::move (group));
+}
+
 juce::AudioProcessorEditor* KlangorbitProcessor::createEditor()
 {
     return new KlangorbitEditor (*this);
 }
 
-void KlangorbitProcessor::getStateInformation (juce::MemoryBlock&) { /* TODO: save object/trajectory presets */ }
-void KlangorbitProcessor::setStateInformation (const void*, int)   { /* TODO */ }
+void KlangorbitProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    // Reuses PresetManager's own JSON serialization verbatim (the exact
+    // same juce::var tree "Save Preset..." already writes to a .json file,
+    // see PluginEditor.cpp) -- no new format, no new schema to maintain.
+    // Empty name: this is a host session snapshot, not a named preset file.
+    //
+    // PresetManager::sceneToVar() touches TrajectoryEngine::getObject(),
+    // which is documented as message-thread-only (see its own comment) --
+    // update() (the ~90Hz physics tick) also runs there and would race
+    // with it otherwise. A host is free to call getStateInformation() from
+    // any thread (this is exactly why this method was left an empty stub
+    // before -- see this file's own git history / the CHANGELOG entry that
+    // filled it in), so this can't just call sceneToVar() directly.
+    // juce::MessageManager::callSync() runs the lambda inline if this IS
+    // already the message thread (the common case for a host's own "save
+    // project" action), or safely posts it and blocks until the message
+    // thread has run it otherwise -- either way, sceneToVar() only ever
+    // actually executes on the message thread.
+    const auto json = juce::MessageManager::callSync ([this]
+    {
+        return juce::JSON::toString (PresetManager::sceneToVar (trajectoryEngine, juce::String()));
+    });
+
+    if (json.has_value())
+        destData.append (json->toRawUTF8(), json->getNumBytesAsUTF8());
+}
+
+void KlangorbitProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    // See getStateInformation()'s own comment -- same reasoning, reverse
+    // direction. juce::JSON::parse() itself doesn't touch TrajectoryEngine
+    // at all (pure text parsing) so it's safe to run on whichever thread
+    // called this; only loadFromVar() (which does call getObject()) needs
+    // the message-thread guarantee, so only that part goes through
+    // callSync(). PresetManager::loadFromVar() already handles schema
+    // validation/migration; a malformed/corrupt block (e.g. a host
+    // presenting empty/garbage state on a fresh instance) just leaves the
+    // scene at its current defaults rather than crashing, same as an
+    // invalid preset file load already does.
+    const auto parsed = juce::JSON::parse (juce::String::fromUTF8 (static_cast<const char*> (data), sizeInBytes));
+    juce::MessageManager::callSync ([this, parsed]
+    {
+        PresetManager::loadFromVar (parsed, trajectoryEngine);
+    });
+}
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {

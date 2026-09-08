@@ -168,6 +168,7 @@ target_sources(Klangorbit
         Source/BinauralDecoder.cpp
         Source/VBAP.cpp
         Source/ParameterRegistry.cpp
+        Source/AutomationParameterBridge.cpp
         Source/CanonicalInput.cpp
         Source/GamepadBridge.mm
         Source/GamepadDriver.cpp
@@ -410,6 +411,45 @@ target_sources(verify_parameter_registry
 target_link_libraries(verify_parameter_registry
     PRIVATE
         juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- DAW automation-parameter bridge verification ---------------------------
+# Runs buildAutomationParameterGroups()/RegistryAutomationParameter
+# (AutomationParameterBridge.h/.cpp) against synthetic ParameterRegistry
+# descriptors -- grouping (one top-level group per object slot + one
+# "Global" group, subgrouped by category), Scope::SelectedObject entries
+# never bridged, and the actual get/set/range/default value bridging into a
+# real juce::RangedAudioParameter. Deliberately standalone, same
+# "no full juce::AudioProcessor outside a host context" reasoning
+# verify_parameter_registry's own comment above already gives -- needs
+# juce_audio_processors_headless (not the full juce_audio_processors) for
+# RangedAudioParameter/AudioProcessorParameterGroup/NormalisableRange, same
+# GUI-free module PluginProcessor.cpp's own VST3-wrapper investigation
+# found these classes actually live in.
+juce_add_console_app(verify_automation_parameters
+    PRODUCT_NAME "verify_automation_parameters"
+)
+
+target_sources(verify_automation_parameters
+    PRIVATE
+        Tools/verify_automation_parameters.cpp
+        Source/ParameterRegistry.cpp
+        Source/AutomationParameterBridge.cpp
+        # PresetManager/TrajectoryEngine/GrainCloud -- for the
+        # getStateInformation()/setStateInformation() JSON-text round-trip
+        # check (same three sources validate_presets' own target above
+        # already links, for the same PresetManager dependency).
+        Source/PresetManager.cpp
+        Source/TrajectoryEngine.cpp
+        Source/GrainCloud.cpp
+)
+
+target_link_libraries(verify_automation_parameters
+    PRIVATE
+        juce::juce_audio_processors_headless
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags

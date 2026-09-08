@@ -6,6 +6,135 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Added
+- **Real DAW-automatable parameters (AU/VST3/Standalone alike) -- 493 of
+  them.** Reported: "no parameter automation can be written" in Logic
+  (AU). Root cause: not a bug, a genuine, disclosed architectural gap --
+  ZERO parameters were ever registered via `juce::AudioProcessorParameter`/
+  `addParameter()` anywhere in this codebase (confirmed by grep: no
+  `AudioProcessorValueTreeState`/`AudioParameterFloat`/etc. exist in
+  `Source/`). The existing `ParameterRegistry` is a completely separate
+  system built only for gamepad/MIDI/OSC "Learn mode" controller mapping --
+  its own class comment already says outright: "This registry deliberately
+  has no host-automation ambition." DAW automation lanes need real
+  `AudioProcessorParameter` objects, which simply didn't exist, in any
+  format (this isn't AU-specific, the reporting user just found it while
+  testing AU first).
+  - **Design: bridge `ParameterRegistry`, don't duplicate it.**
+    `buildParameterRegistry()` already builds a complete, correctly-ranged/
+    named `Descriptor` for every automatable field, across all 8 object
+    slots (`SAPOC_MAX_LIVE_INPUTS`) and their grain clouds, plus every
+    `SceneSettings` field. New `Source/AutomationParameterBridge.h/.cpp`:
+    `RegistryAutomationParameter` (a `juce::RangedAudioParameter`
+    subclass) wraps one `Descriptor` and delegates `getValue()`/
+    `setValue()` straight to that descriptor's own `getValue`/`setValue`
+    closures -- no separate storage, so host automation writes into the
+    EXACT same `SoundObject`/`GrainCloudSettings`/`SceneSettings` field
+    the GUI/mapping system already touch. `buildAutomationParameterGroups()`
+    builds the actual `juce::AudioProcessorParameterGroup` hierarchy: one
+    top-level group per object slot ("Object 1".."Object 8", 1-based,
+    matching `ParameterPanel`'s own display convention), each subgrouped
+    by `Descriptor::category` (already exactly the right taxonomy --
+    "Object Physics"/"Attraction"/"Orbit"/"Doppler"/"Grain Cloud" -- reused
+    as-is), plus one "Global" top-level group for `SceneSettings`. AU can't
+    nest subgroups (JUCE's own doc comment) -- flattened automatically via
+    each group's separator string (`" | "`), no special-casing needed.
+    `KlangorbitProcessor::buildAutomationParameters()` (new, called once
+    from the constructor immediately after `buildParameterRegistry()`) is
+    just the `addParameterGroup()` glue.
+  - **`Scope::SelectedObject` descriptors (e.g. `"selectedObject.mass"`)
+    are deliberately never bridged** -- same reasoning `ParameterRegistry`'s
+    own class comment already gives for why that scope is a poor fit for
+    `juce::AudioProcessorParameter`: it retargets which object it resolves
+    to from one call to the next, incompatible with a host automation
+    lane's own identity-stable-parameter model. Only `Scope::Global`/
+    `Scope::SpecificObject` descriptors are bridged.
+  - **Count**: every currently-registered field, for every one of the 8
+    object slots (active or not, same "always exists" pool `TrajectoryEngine`
+    already uses) plus 13 `SceneSettings` fields = **493 parameters**,
+    confirmed directly by `auval`'s own "PUBLISHED PARAMETER INFO: # # #
+    493 Global Scope Parameters" output, matching the hand-computed total
+    exactly. Large, but not unusual for plugins with many voices/objects,
+    and requires no subjective "which fields matter enough" judgment call --
+    everything the mapping system already exposes becomes automatable too,
+    symmetric and simple to explain.
+  - **Threading**: a host may call `setValue()` from the audio thread
+    during automation playback -- the first time these fields would be
+    written from that specific thread, though they're already written
+    unsynchronized from the message thread (GUI) and the gamepad/MIDI/OSC
+    control paths today, per `ParameterRegistry`'s own "no abstraction
+    layer at all" design (see its class comment). A torn read on a
+    multi-field `Vec3` (three separate parameters for x/y/z) is a benign,
+    momentary glitch, not a crash -- the same concurrency model this
+    codebase already accepts everywhere else for this class of data, not a
+    new category of risk. No new synchronization was added.
+  - **Not in scope, disclosed**: the plugin's OWN GUI (`ParameterPanel`
+    sliders, gamepad, MIDI/OSC mapping) does not call
+    `setValueNotifyingHost()` when the user manually changes something --
+    so a host's automation lane won't show a written breakpoint from a
+    manual mouse-drag/gamepad/MIDI-mapped tweak, only from playing back
+    automation the host already has or from the host's own explicit
+    "write" mode. Wiring every existing control path to also notify the
+    host would be a substantially larger, separate follow-up. Also: the
+    editor's own `resyncFromBackgroundObjectChanges()` (polled at ~90Hz)
+    already re-syncs the object list/selection when a background change
+    (gamepad, and now also host automation/state restore) alters either,
+    but does NOT live-refresh `ParameterPanel`'s displayed slider VALUES
+    for whichever object is currently shown -- a pre-existing gap (already
+    true for gamepad/MIDI/OSC-driven background changes before this),
+    not something newly introduced here.
+  - **Verification**: new `Tools/verify_automation_parameters.cpp`
+    (own `verify_automation_parameters` CMake target, linking only
+    `juce_audio_processors_headless` -- not the full `juce_audio_processors`,
+    and not a full `KlangorbitProcessor`, same "no full juce::AudioProcessor
+    outside a host context" precedent `verify_parameter_registry`'s own
+    comment already establishes) exercises `buildAutomationParameterGroups()`/
+    `RegistryAutomationParameter` against synthetic descriptors: correct
+    top-level/category grouping, `Scope::SelectedObject` exclusion, value/
+    range/default bridging, and independent per-object storage. `auval -v
+    aufx Klor Jgck` re-run and passes, including its own "Checking
+    parameter setting"/"Checking ramped parameter scheduling" checks
+    (previously trivially passing on zero parameters, now actually
+    exercising all 493).
+- **Session state save/restore (`getStateInformation`/`setStateInformation`)
+  actually implemented** -- previously empty `TODO` stubs, meaning a host
+  reloading a saved session restored NO object/scene/grain-cloud state at
+  all. A second, closely related gap to the automation one above: even
+  with real automation parameters, a host session reload would have
+  silently reset the whole scene, inconsistent with whatever the
+  automation lanes assumed. Fixed by reusing `PresetManager`'s existing
+  JSON serialization directly (no new format): `getStateInformation()`
+  calls the same `PresetManager::sceneToVar()` "Save Preset..." already
+  uses, stringifies via `juce::JSON::toString()`, and writes the UTF-8
+  bytes; `setStateInformation()` reverses it (`juce::JSON::parse()` ->
+  `PresetManager::loadFromVar()`, which already handles schema validation/
+  migration -- a malformed/empty block just leaves the scene at its
+  current defaults rather than crashing).
+  - **Why these were left as stubs before, and how that's actually
+    addressed now** (not just overridden): `TrajectoryEngine::getObject()`
+    is documented message-thread-only (its own comment) -- the ~90Hz
+    physics tick (`TrajectoryEngine::update()`) also runs there, so a host
+    calling `getStateInformation()`/`setStateInformation()` from some OTHER
+    thread (the JUCE contract allows this; not guaranteed to be the
+    message thread, even though most real hosts' own "save/load project"
+    actions do call it there) would otherwise race with it. Rather than
+    calling `sceneToVar()`/`loadFromVar()` directly, both now go through
+    `juce::MessageManager::callSync()` -- runs the lambda inline if
+    already on the message thread (the common case, no overhead), or
+    safely posts it and blocks until the message thread has run it
+    otherwise. `setStateInformation()` additionally parses the incoming
+    JSON text OUTSIDE that call (pure text parsing, no `TrajectoryEngine`
+    touch, safe on any thread) so only the actual `loadFromVar()` apply
+    goes through the message-thread hop.
+  - **Verification**: the JSON-text (de)serialization layer itself
+    (`Tools/verify_automation_parameters.cpp`'s own round-trip check, the
+    one thing this adds beyond `PresetManager`'s own, separately-tested
+    round-trip correctness) is covered headlessly; the `callSync()`
+    message-thread dispatch is NOT independently unit-tested (host
+    cross-thread call timing isn't something a headless test can
+    exercise) -- verified by full rebuild, the complete `verify_*`/
+    `validate_presets` suite, and `auval` (which calls both from its own
+    thread context without failure).
 ### Fixed
 - **VST3/Standalone stuck at Stereo (2ch) regardless of which Output
   Format is selected, reported across multiple DAWs.** Root cause: two

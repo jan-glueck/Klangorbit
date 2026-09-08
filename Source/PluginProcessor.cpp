@@ -72,23 +72,37 @@ KlangorbitProcessor::BusesProperties KlangorbitProcessor::makeBusLayout()
 KlangorbitProcessor::KlangorbitProcessor()
     : juce::AudioProcessor (makeBusLayout())
 {
-    // AU (Logic Pro etc.): override BOTH buses away from makeBusLayout()'s
-    // now much wider construction-time defaults (fixed 8-channel discrete
-    // input, 36-channel ambisonic(5) output -- see that method's own
-    // comment) down to Stereo/Stereo, a small NAMED layout pair Logic
-    // recognizes. Not just cosmetic: auval's own "Default Layout must be
-    // published as a supported layout tag" check requires this on BOTH
-    // sides -- discreteChannels(N>1) and a 36ch ambisonic layout have no
-    // corresponding CoreAudio AudioChannelLayoutTag Logic accepts as a
-    // starting point, and AU's own isBusesLayoutSupported() branch below
-    // only ever accepts 9 specific named formats up to 12ch anyway, so the
-    // plugin's own construction-time default must be one of those or auval
-    // fails ("Default Layout is not published as a supported layout tag").
-    // isBusesLayoutSupported() below is what actually lets a user pick
-    // Mono/Quad/7.1/5.1/etc. too, by inserting Klangorbit on a matching
-    // Logic track -- this is only about what the plugin starts up as,
-    // before any host negotiation happens.
-    if (wrapperType == wrapperType_AudioUnit || wrapperType == wrapperType_AudioUnitv3)
+    // See isLogicHost's own comment (PluginProcessor.h) for why this is
+    // computed once, here, rather than calling juce::PluginHostType()
+    // (re-parses the host executable's path/name) from every
+    // isBusesLayoutSupported()/isOutputModeAvailable() call. Only
+    // meaningful for AU -- VST3/Standalone never take Logic's narrow path
+    // regardless, so it's fine to still be false for those wrapper types.
+    isLogicHost = (wrapperType == wrapperType_AudioUnit || wrapperType == wrapperType_AudioUnitv3)
+                    && juce::PluginHostType().isLogic();
+
+    // Logic Pro/MainStage specifically: override BOTH buses away from
+    // makeBusLayout()'s now much wider construction-time defaults (fixed
+    // 8-channel discrete input, 36-channel ambisonic(5) output -- see that
+    // method's own comment) down to Stereo/Stereo, a small NAMED layout
+    // pair Logic recognizes. Not just cosmetic: auval's own "Default
+    // Layout must be published as a supported layout tag" check requires
+    // this on BOTH sides -- discreteChannels(N>1) and a 36ch ambisonic
+    // layout have no corresponding CoreAudio AudioChannelLayoutTag Logic
+    // accepts as a starting point, and Logic's own isBusesLayoutSupported()
+    // branch below only ever accepts 9 specific named formats up to 12ch
+    // anyway, so the plugin's own construction-time default must be one of
+    // those or auval fails ("Default Layout is not published as a
+    // supported layout tag"). isBusesLayoutSupported() below is what
+    // actually lets a user pick Mono/Quad/7.1/5.1/etc. too, by inserting
+    // Klangorbit on a matching Logic track -- this is only about what the
+    // plugin starts up as, before any host negotiation happens. Gated on
+    // isLogicHost, NOT wrapperType alone: an AU host OTHER than Logic
+    // (confirmed via juce::PluginHostType() at runtime -- e.g. Reaper,
+    // which also loads AU components) has none of Logic's per-track
+    // channel-format filtering and gets the same flexible model VST3/
+    // Standalone use instead, below.
+    if (isLogicHost)
     {
         auto auDefaultLayout = getBusesLayout();
         if (! auDefaultLayout.inputBuses.isEmpty())
@@ -98,34 +112,38 @@ KlangorbitProcessor::KlangorbitProcessor()
         setBusesLayout (auDefaultLayout);
     }
 
-    // VST3 specifically (NOT Standalone -- see below): override just the
-    // INPUT bus down to Stereo, same move as the AU block above but for a
-    // different reason -- confirmed empirically with a purpose-built
-    // host-mimicking probe tool (Tools/vst3_bus_probe.cpp, loads the
-    // actual built .vst3 via JUCE's own VST3 HOST code and exercises the
-    // real IAudioProcessor::setBusArrangements() wire call):
-    // discreteChannels(N) for N > 1 has NO VST3 SpeakerArrangement
-    // representation at all, so a host can never construct a request that
-    // includes this plugin's original 8-channel discrete input bus, even
-    // one meaning to leave it unchanged -- and VST3 negotiates every bus
-    // in ONE call, so that alone silently vetoed ANY output negotiation
-    // too. isBusesLayoutSupported()'s VST3/Standalone input branch below
-    // still accepts any input width up to numLiveInputs, so a host that
-    // widens the track's own input channel count can still reach the full
-    // numLiveInputs -- only the plugin's own starting point changes. The
-    // OUTPUT bus is deliberately left at makeBusLayout()'s new 36-channel
-    // default here -- see isBusesLayoutSupported()'s own comment for why
-    // VST3/Standalone no longer try to shrink or renegotiate it at all.
-    // Standalone needs neither override: it never goes through VST3's
-    // SpeakerArrangement wire format, negotiating channels directly
-    // against a juce::AudioIODevice instead, so neither of makeBusLayout()'s
+    // VST3, and AU running in anything OTHER than Logic (NOT Standalone --
+    // see below): override just the INPUT bus down to Stereo. For VST3,
+    // confirmed empirically with a purpose-built host-mimicking probe tool
+    // (Tools/vst3_bus_probe.cpp, loads the actual built .vst3 via JUCE's
+    // own VST3 HOST code and exercises the real
+    // IAudioProcessor::setBusArrangements() wire call): discreteChannels(N)
+    // for N > 1 has NO VST3 SpeakerArrangement representation at all, so a
+    // host can never construct a request that includes this plugin's
+    // original 8-channel discrete input bus, even one meaning to leave it
+    // unchanged -- and VST3 negotiates every bus in ONE call, so that
+    // alone silently vetoed ANY output negotiation too. For AU-non-Logic,
+    // this is applied purely for consistency with VST3/Standalone (a
+    // small, immediately-usable input default), not because AU shares the
+    // same SpeakerArrangement limitation. isBusesLayoutSupported()'s
+    // non-Logic input branch below still accepts any input width up to
+    // numLiveInputs either way, so a host that widens its own input
+    // channel count can still reach the full numLiveInputs -- only the
+    // plugin's own starting point changes. The OUTPUT bus is deliberately
+    // left at makeBusLayout()'s new 36-channel default here -- see
+    // isBusesLayoutSupported()'s own comment for why non-Logic hosts no
+    // longer have this shrunk or renegotiated at all. Standalone needs
+    // neither override: it never goes through VST3's SpeakerArrangement
+    // wire format, negotiating channels directly against a
+    // juce::AudioIODevice instead, so neither of makeBusLayout()'s
     // defaults was ever actually affected by any of this.
-    if (wrapperType == wrapperType_VST3)
+    if (wrapperType == wrapperType_VST3
+        || ((wrapperType == wrapperType_AudioUnit || wrapperType == wrapperType_AudioUnitv3) && ! isLogicHost))
     {
-        auto vst3DefaultLayout = getBusesLayout();
-        if (! vst3DefaultLayout.inputBuses.isEmpty())
-            vst3DefaultLayout.inputBuses.getReference (0) = juce::AudioChannelSet::stereo();
-        setBusesLayout (vst3DefaultLayout);
+        auto nonLogicDefaultLayout = getBusesLayout();
+        if (! nonLogicDefaultLayout.inputBuses.isEmpty())
+            nonLogicDefaultLayout.inputBuses.getReference (0) = juce::AudioChannelSet::stereo();
+        setBusesLayout (nonLogicDefaultLayout);
     }
 
     // Stereo -- audible immediately on a fresh instance regardless of the
@@ -346,15 +364,17 @@ bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
 {
     const auto inSet = layouts.getMainInputChannelSet();
 
-    // AU (Logic Pro etc.) only, detected at RUNTIME via the inherited
-    // wrapperType member -- NOT #if JucePlugin_Build_AU, which would be
-    // wrong here: this file is compiled exactly once into
-    // libKlangorbit_SharedCode.a and that single compiled object is
-    // linked into all three format targets (confirmed via `find build
-    // -iname PluginProcessor.cpp.o`, only one exists), so a compile-time
-    // macro would silently apply to VST3/Standalone too.
+    // Logic Pro/MainStage specifically, detected at RUNTIME via
+    // isLogicHost (wrapperType alone can't distinguish Logic from any
+    // other AU host -- see that member's own comment) -- NOT
+    // #if JucePlugin_Build_AU, which would be wrong here: this file is
+    // compiled exactly once into libKlangorbit_SharedCode.a and that
+    // single compiled object is linked into all three format targets
+    // (confirmed via `find build -iname PluginProcessor.cpp.o`, only one
+    // exists), so a compile-time macro would silently apply to VST3/
+    // Standalone (and every non-Logic AU host) too.
     //
-    // AU specifically: the fixed 8-channel discrete "Live Inputs" bus
+    // Logic specifically: the fixed 8-channel discrete "Live Inputs" bus
     // doesn't match ANY of Logic Pro's standard track/bus formats (Mono=1,
     // Stereo=2, Quad=4, 7.1=8-but-a-NAMED-layout-not-raw-discrete), so
     // Logic's own per-track Audio-Unit filtering excluded Klangorbit
@@ -386,7 +406,7 @@ bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
     // clamp, and every per-object read already gated by obj.inputChannel
     // < numInCh) -- so there's no "wrong config" for a host to get stuck
     // on here, regardless of which of the four it settles on.
-    if (wrapperType == wrapperType_AudioUnit || wrapperType == wrapperType_AudioUnitv3)
+    if (isLogicHost)
     {
         // discreteChannels(numLiveInputs) is included here TOO (not
         // replaced) -- makeBusLayout()'s own construction-time default
@@ -410,9 +430,10 @@ bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
     }
     else
     {
-        // VST3/Standalone: accept ANY input channel count up to
-        // numLiveInputs, not just discreteChannels(numLiveInputs) exactly
-        // -- this REPLACES an exact-match-only requirement that,
+        // VST3/Standalone, and AU running in anything OTHER than Logic:
+        // accept ANY input channel count up to numLiveInputs, not just
+        // discreteChannels(numLiveInputs) exactly -- this REPLACES an
+        // exact-match-only requirement that, for VST3 specifically,
         // confirmed by reading JUCE's own VST3<->SpeakerArrangement
         // conversion (juce_VST3Common.h's getVst3SpeakerArrangement()/
         // getChannelType()), could never actually be satisfied by a real
@@ -450,36 +471,38 @@ bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
 
     const auto outSet = layouts.getMainOutputChannelSet();
 
-    // AU: accept any of the 9 AmbisonicsDecoder::Mode formats that are
-    // actually usable in Logic Pro -- a NAMED JUCE layout (so Logic's own
-    // layout-tag matching recognizes it -- discreteChannels(N) never gets
-    // a publishable tag, confirmed empirically) AND <= 12 channels
-    // (Logic's own ceiling, 7.1.4 -- confirmed by the user). Raw
-    // Ambisonics Order 1/2/3 (unnamed; Order 3 alone already exceeds
-    // 12ch), Octophonic, and CircularArray (both unnamed) are excluded
-    // here unconditionally -- OutputPanel greys them out of its own
-    // dropdown too when running as AU (see isOutputModeAvailable()), so
-    // they're never actually reachable, but this function stays correct
-    // on its own terms regardless.
+    // Logic specifically (isLogicHost -- see its own comment for why this
+    // is NOT just wrapperType == AU): accept any of the 9
+    // AmbisonicsDecoder::Mode formats that are actually usable in Logic
+    // Pro -- a NAMED JUCE layout (so Logic's own layout-tag matching
+    // recognizes it -- discreteChannels(N) never gets a publishable tag,
+    // confirmed empirically) AND <= 12 channels (Logic's own ceiling,
+    // 7.1.4 -- confirmed by the user). Raw Ambisonics Order 1-5 (unnamed
+    // except via a dedicated per-order VST3 constant that has no CoreAudio
+    // equivalent Logic recognizes; Order 3 alone already exceeds 12ch),
+    // Octophonic, and CircularArray (both unnamed) are excluded here
+    // unconditionally -- OutputPanel greys them out of its own dropdown
+    // too when isLogicHost (see isOutputModeAvailable()), so they're never
+    // actually reachable in Logic specifically, but this function stays
+    // correct on its own terms regardless.
     //
     // Deliberately NOT scoped to "only the current mode" the way the
-    // VST3/Standalone branch below is: this accepts several layouts at
-    // once so JUCE's AU wrapper can discover all of them (see
+    // non-Logic branch below is: this accepts several layouts at once so
+    // JUCE's AU wrapper can discover all of them (see
     // AudioUnitHelpers::getAUChannelInfo() probing this function across a
     // matrix of candidates, JUCE/modules/juce_audio_processors_headless/
     // format_types/juce_AU_Shared.h), letting Logic offer Klangorbit on
-    // Stereo/5.1/7.1/Atmos-bed tracks alike. This does NOT reintroduce
-    // the Reaper regression the VST3/Standalone restriction below exists
-    // to prevent: this plugin never asks an AU host to change the output
-    // channel COUNT after the initial negotiation (see
-    // setDecoderMode()'s own AU-specific early return, below) -- Logic
-    // fixes that count once, at insertion, and switching between modes
-    // that fit within it (via isOutputModeAvailable()) works internally,
-    // using fewer channels than what's available rather than requesting
-    // a different bus (see AmbisonicsDecoder::decode()'s own channel-
-    // clearing fix for the unused remainder). There is no live
-    // renegotiation attempt here for a host to get stuck on.
-    if (wrapperType == wrapperType_AudioUnit || wrapperType == wrapperType_AudioUnitv3)
+    // Stereo/5.1/7.1/Atmos-bed tracks alike. This does NOT reintroduce the
+    // regression the non-Logic branch below exists to prevent: this
+    // plugin never asks Logic to change the output channel COUNT after
+    // the initial negotiation -- Logic fixes that count once, at
+    // insertion, and switching between modes that fit within it (via
+    // isOutputModeAvailable()) works internally, using fewer channels than
+    // what's available rather than requesting a different bus (see
+    // AmbisonicsDecoder::decode()'s own channel-clearing fix for the
+    // unused remainder). There is no live renegotiation attempt here for
+    // Logic to get stuck on.
+    if (isLogicHost)
     {
         return outSet == juce::AudioChannelSet::stereo()          // Stereo, Binaural
             || outSet == juce::AudioChannelSet::quadraphonic()    // Quad
@@ -491,13 +514,23 @@ bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
             || outSet == juce::AudioChannelSet::create7point1point4();
     }
 
-    // VST3/Standalone: exactly ONE fixed output layout, matching
+    // VST3/Standalone, and AU running in anything OTHER than Logic
+    // (isLogicHost is false): exactly ONE fixed output layout, matching
     // makeBusLayout()'s own construction-time default and never touched
     // live afterward (see setDecoderMode()'s own comment) -- the same
     // "declare one generous fixed bus, never renegotiate" model real
     // multichannel Ambisonics VST3 plugins already use (e.g. IEM Suite,
     // which always reports a fixed-width bus in a host's plugin browser
-    // regardless of the host's own track/bus size).
+    // regardless of the host's own track/bus size). Applying this to
+    // AU-non-Logic too (e.g. Reaper hosting Klangorbit as an AU component,
+    // not VST3) is safe on the CoreAudio side: unlike VST3's
+    // SpeakerArrangement, CoreAudio has a genuine generic fallback tag
+    // (kAudioChannelLayoutTag_DiscreteInOrder, see
+    // CoreAudioLayouts::toCoreAudio()) for a channel set with no more
+    // specific named layout, and this is additionally re-verified with
+    // `auval` itself (which, as a plugin-validation tool rather than
+    // Logic/MainStage, IS a non-Logic AU host by this same detection, so
+    // it directly exercises this exact code path).
     //
     // This REPLACES an earlier approach (see CHANGELOG for the full
     // history) that tried to offer many different candidate layouts (13
@@ -535,7 +568,7 @@ bool KlangorbitProcessor::isOutputModeAvailable (AmbisonicsDecoder::Mode mode) c
 {
     using Mode = AmbisonicsDecoder::Mode;
 
-    if (wrapperType == wrapperType_AudioUnit || wrapperType == wrapperType_AudioUnitv3)
+    if (isLogicHost)
     {
         const bool namedAndInRange = mode == Mode::Stereo || mode == Mode::Binaural
             || mode == Mode::Quad || mode == Mode::Surround5_1 || mode == Mode::Surround7_1
@@ -547,12 +580,13 @@ bool KlangorbitProcessor::isOutputModeAvailable (AmbisonicsDecoder::Mode mode) c
         return AmbisonicsDecoder::numOutputChannels (mode) <= getTotalNumOutputChannels();
     }
 
-    // VST3/Standalone: every mode is always available. isBusesLayoutSupported()'s
-    // VST3/Standalone branch declares one fixed 36-channel bus (this
-    // project's actual maximum channel need) and never renegotiates it --
-    // see that function's own comment -- so getTotalNumOutputChannels()
-    // is always 36 here, which every mode's own channel need (CircularArray's
-    // own max of maxCircularSpeakers included) always fits within.
+    // VST3/Standalone, and AU running in anything OTHER than Logic: every
+    // mode is always available. isBusesLayoutSupported()'s non-Logic
+    // branch declares one fixed 36-channel bus (this project's actual
+    // maximum channel need) and never renegotiates it -- see that
+    // function's own comment -- so getTotalNumOutputChannels() is always
+    // 36 here, which every mode's own channel need (CircularArray's own
+    // max of maxCircularSpeakers included) always fits within.
     return true;
 }
 

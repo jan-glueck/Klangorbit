@@ -343,6 +343,31 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     precise tool for this) and Reaper before being considered fully
     confirmed.
 ### Added
+- **AU is no longer capped at Logic's own 12-channel ceiling when hosted
+  by anything OTHER than Logic (e.g. Reaper, which also loads AU
+  components, not just VST3).** Reported: AU limited to 12ch in Reaper,
+  same as in Logic -- asked whether that's inherent to AU or specific to
+  Logic's own track-format filtering. It was the latter: `wrapperType`
+  alone can't distinguish "AU running in Logic" from "AU running in
+  anything else" (both report `wrapperType_AudioUnit`/`v3` identically),
+  so every AU host was getting Logic's own narrow, 9-named-format/12ch
+  model regardless. Fix: `KlangorbitProcessor::isLogicHost` (computed once
+  in the constructor via `juce::PluginHostType().isLogic()`, real host-
+  process detection, not just format detection) now gates every place that
+  used to check `wrapperType == wrapperType_AudioUnit` for this narrow
+  model. Logic/MainStage keep the exact existing behavior, unaffected. Any
+  other AU host now gets the same fixed 36-channel output bus VST3/
+  Standalone already use (see the entry above) -- input starts at Stereo,
+  widenable up to `numLiveInputs` by the host's own routing, same as VST3.
+  Safe on the CoreAudio side even though this is a generic/unnamed-style
+  wide layout: unlike VST3's `SpeakerArrangement`, CoreAudio has a genuine
+  fallback tag (`kAudioChannelLayoutTag_DiscreteInOrder`, see
+  `CoreAudioLayouts::toCoreAudio()`) for a channel set with no more
+  specific named layout. Verified directly with `auval` -- which is
+  itself a non-Logic AU host by this same detection, so it exercises this
+  exact code path -- confirming a 36-channel default output format and a
+  full validation pass (unlike VST3, no custom probe tool was needed here:
+  `auval` already IS the real, authoritative, locally-runnable AU host).
 - **Third bundled Binaural HRTF dataset: "KU100 -- 2deg Grid (TH Koeln /
   Bernschuetz)".** `HRIR_FULL2DEG.sofa` from Benjamin Bernschütz's
   "Spherical Far Field HRIR Compilation of the Neumann KU 100" (Zenodo,

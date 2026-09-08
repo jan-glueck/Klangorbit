@@ -383,6 +383,25 @@ private:
     // function.
     static BusesProperties makeBusLayout();
 
+    // True only for an AU instance actually running inside Logic Pro/
+    // MainStage (juce::PluginHostType(), Apple-process-name detection),
+    // computed ONCE in the constructor and cached here -- PluginHostType()
+    // reparses the host executable's path/name on every construction, not
+    // free enough to call from isBusesLayoutSupported()/
+    // isOutputModeAvailable(), which a host can call many times during its
+    // own bus-negotiation probing. Every wrapperType == wrapperType_AudioUnit
+    // check in this file that specifically means "Logic's own narrow,
+    // per-track-negotiated 9-format/12ch model" now reads this instead --
+    // see isBusesLayoutSupported()'s own comment for why: Logic itself
+    // genuinely needs that narrow model (it filters plugin availability by
+    // channel format, confirmed by the user), but an AU host OTHER than
+    // Logic (e.g. Reaper, which also loads AU components, not just VST3)
+    // has no such constraint and gets the same flexible, fixed-wide-bus
+    // model VST3/Standalone already use instead. wrapperType alone can't
+    // distinguish these -- both report wrapperType_AudioUnit/v3 regardless
+    // of which application actually loaded the component.
+    bool isLogicHost = false;
+
     static constexpr int numLiveInputs = SAPOC_MAX_LIVE_INPUTS;
     // Each cloud's pool is sized to the full global cap since, in the
     // worst case, a single cloud could legitimately use all of it.

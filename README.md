@@ -180,24 +180,40 @@ from `CMakeLists.txt`.) `auval` isn't run automatically as part of the
 CMake build -- run it manually after building/reinstalling the AU, or
 whenever `Klangorbit_AU` changes.
 
-AU bus flexibility (input AND output): unlike Standalone (still a fixed
-8-channel discrete "Live Inputs" bus, matching the existing Reaper
-workflow -- Standalone negotiates channels against the audio device
-directly, not VST3's `SpeakerArrangement` wire format, so it never had a
-reason to change), the AU build's input bus accepts Mono, Stereo, Quad, or
-7.1 (1/2/4/8 channels) -- whichever matches the Logic track/bus you insert
-Klangorbit on, negotiated automatically by Logic itself, no in-plugin
-control. This exists because Logic filters which tracks a plugin can even
-be inserted on by channel format, and the plugin's original fixed
-8-discrete-channel bus matched none of Logic's standard track types -- see
-the CHANGELOG entry for the full diagnosis (via JUCE's own AU wrapper
-source). Objects beyond the currently negotiated input channel count
-simply have no live audio (same mechanism already used for any inactive
-object). VST3 starts at Stereo input too now (2ch, not the original
-8-discrete default) -- a related but separate fix, see the CHANGELOG's
-second "VST3 output stuck at Stereo" follow-up entry -- but can still be
-widened up to the full 8 channels by the host's own routing, same as
-before. One practical consequence for Logic specifically: gravity/
+AU bus flexibility depends on which AU host is actually running the
+plugin, detected at runtime via `juce::PluginHostType().isLogic()`
+(`KlangorbitProcessor::isLogicHost`, computed once in the constructor --
+`wrapperType` alone can't tell Logic apart from any other AU host, since
+both report `wrapperType_AudioUnit`/`v3` identically):
+
+- **Logic Pro/MainStage**: the narrow, per-track model. Input bus accepts
+  Mono, Stereo, Quad, or 7.1 (1/2/4/8 channels) -- whichever matches the
+  Logic track/bus you insert Klangorbit on, negotiated automatically by
+  Logic itself, no in-plugin control. Output is one of 9 named formats up
+  to 12 channels (7.1.4), same ceiling. This exists because Logic filters
+  which tracks a plugin can even be inserted on by channel format -- see
+  the CHANGELOG entry for the full diagnosis (via JUCE's own AU wrapper
+  source). Objects beyond the currently negotiated input channel count
+  simply have no live audio (same mechanism already used for any inactive
+  object).
+- **Any other AU host** (e.g. Reaper, which also loads AU components, not
+  just VST3): the same fixed, always-available 36-channel output bus
+  VST3/Standalone use (see "Output Format selection" below) -- no more
+  12-channel Logic-specific ceiling outside Logic itself. Verified with
+  `auval` directly, since `auval` is itself a non-Logic AU host by this
+  same detection and exercises this exact code path (confirmed: reports a
+  36-channel default output format and validates successfully). Input
+  starts at Stereo (2ch), widenable up to the full `numLiveInputs` (8) by
+  the host's own routing, same as VST3.
+
+Standalone is unaffected by any of this either way -- still a fixed
+8-channel discrete "Live Inputs" bus (matching the existing Reaper
+workflow), and a fixed 36-channel output bus like VST3's -- Standalone
+negotiates channels against the audio device directly, not VST3's
+`SpeakerArrangement` wire format or AU's CoreAudio layout tags, so it
+never had a reason to change.
+
+One practical consequence for Logic specifically: gravity/
 attraction between objects in DIFFERENT Klangorbit instances (e.g. one
 instance per Logic track) doesn't work -- each instance's own physics
 simulation is completely independent, with no cross-instance

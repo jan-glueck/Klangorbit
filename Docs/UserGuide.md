@@ -4,14 +4,18 @@ Klangorbit is an object-based Ambisonics spatializer built around a live
 physics engine: instead of automating position with envelopes or curves,
 you give sound objects mass, velocity, gravity, and momentum, and let
 their motion emerge from that. Its output format is selectable (Output
-category, section 12, 14 formats in dropdown order): an internally
+category, section 12, 16 formats in dropdown order): an internally
 decoded Stereo (the default -- audible immediately, no external decoder
 needed), Binaural (HRTF-based headphone output), Quad, Octophonic (a
 fixed 8-speaker circular array), Circular Array (any speaker count
 4-24), 5.1, 7.1, or one of four Dolby-Atmos-bed layouts
-(5.1.2/5.1.4/7.1.2/7.1.4) -- or raw Ambisonics B-format at one of three
-orders, FOA/SOA/TOA (ACN/SN3D, AmbiX-compatible), to feed an external
+(5.1.2/5.1.4/7.1.2/7.1.4) -- or raw Ambisonics B-format at one of five
+orders, 1st through 5th (ACN/SN3D, AmbiX-compatible), to feed an external
 decoder such as SPARTA AmbiBIN/AmbiDEC or the IEM Plugin Suite instead.
+Every format above except Stereo/Binaural now pans each object directly
+to the real speakers via VBAP rather than decoding a shared Ambisonics
+bus (see the CHANGELOG) -- sharper localization than the earlier
+approach.
 
 This guide covers how to use the plugin. For build instructions and
 internal architecture notes, see `README.md` in the project root.
@@ -392,7 +396,7 @@ Chooses what the plugin's output bus actually carries -- a plugin-wide
 setting, not tied to the scene or any object, so it lives in its own
 window (toolbar -> **Output...**) rather than the parameter panel:
 
-- **Output Format** -- one of 14 mutually exclusive formats, in dropdown
+- **Output Format** -- one of 16 mutually exclusive formats, in dropdown
   order. Full speaker angles/channel order verified directly against
   `Source/SpeakerLayouts.h` (the source of truth, including its own
   citations):
@@ -405,8 +409,10 @@ window (toolbar -> **Output...**) rather than the parameter panel:
   - **Binaural (HRTF)** -- HRTF-based headphone output, decoded
     internally (no external AmbiBIN/BinauralDecoder needed for this
     path); not a fixed loudspeaker layout. Technique: the Ambisonics bus
-    is decoded to a dense 50-point virtual speaker array (same point
-    distribution AllRAD uses below), then each virtual speaker's signal
+    is decoded to a dense 50-point virtual speaker array (its own
+    dedicated technique, unaffected by the direct-VBAP-pan change to the
+    real-speaker formats below -- Binaural never went through that decode
+    path to begin with), then each virtual speaker's signal
     is convolved through that direction's own measured left/right
     head-related impulse response and summed to the output -- see
     `BinauralDecoder.h` for the full breakdown. Selecting this format
@@ -464,22 +470,25 @@ window (toolbar -> **Output...**) rather than the parameter panel:
     top-rear L/R (12ch -- the largest non-Ambisonics format, and Logic
     Pro's own channel ceiling, see the AU sections above).
   - **FOA (1st Order Ambisonics, 4ch) / SOA (2nd Order, 9ch) / TOA (3rd
-    Order, 16ch)** -- the original raw B-format output (ACN channel
-    ordering, SN3D normalization, AmbiX-compatible), no decoding at all;
-    route to an external decoder (SPARTA AmbiBIN/AmbiDEC, IEM
-    BinauralDecoder) as before.
+    Order, 16ch) / 4th Order (25ch) / 5th Order (36ch)** -- raw B-format
+    output (ACN channel ordering, SN3D normalization, AmbiX-compatible),
+    no decoding at all; route to an external decoder (SPARTA AmbiBIN/
+    AmbiDEC, IEM BinauralDecoder) as before. 4th/5th order exist purely
+    for higher precision when decoding externally -- nothing in this
+    plugin's own decode paths uses them.
 
   Octophonic and Circular Array are horizontal-only: a flat ring of
   speakers cannot reproduce elevation/height at all, regardless of
   decoder quality -- this is a property of the array itself, not a bug.
-  Circular Array also loses some spatial precision (more blur, not
-  wrong direction) below 7 speakers -- see the CHANGELOG for why.
 
-  Every non-Ambisonics format is decoded internally (AllRAD for the
-  irregular 5.1/7.1/Atmos layouts, a simpler direct decode for
-  Stereo/Quad/Octophonic/Circular Array -- see the CHANGELOG for the
-  method and why it differs); there is no need to route to an external
-  decoder plugin for any of these. Output Format selection is bounded by
+  Every non-Ambisonics format except Stereo now pans each object DIRECTLY
+  to the real speakers via VBAP (Quad/Octophonic/Circular Array/5.1/7.1/
+  every Atmos-bed layout) -- replaced an earlier shared-Ambisonics-bus
+  decode (AllRAD for the irregular layouts, a simpler direct decode for
+  the regular ones) that measured too diffuse; see the CHANGELOG for the
+  full story and why. Stereo keeps its own simple 2-point Ambisonics
+  decode. Either way, there is no need to route to an external decoder
+  plugin for any of these. Output Format selection is bounded by
   the host/track's own channel count, set via the host's own native
   routing UI, NOT switchable purely by picking something in this
   dropdown alone -- the plugin advertises every format up front so the

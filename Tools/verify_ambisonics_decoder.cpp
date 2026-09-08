@@ -22,7 +22,9 @@ namespace
     // ambisonics buffer. Runs encodeBlock() twice into the same
     // previousChannelGains state so the second pass is ramp-free (start
     // gain == end gain, see AmbisonicsEncoder::encodeBlock()) -- the first
-    // pass's ramped output is discarded.
+    // pass's ramped output is discarded. Still used by the modes that keep
+    // going through a decodeMatrix (Stereo) and the raw-passthrough no-op
+    // check below.
     juce::AudioBuffer<float> encodeTestSource (int ambiOrder, float azimuthRad, float elevationRad)
     {
         AmbisonicsEncoder encoder;
@@ -47,6 +49,11 @@ namespace
     {
         return buffer.getRMSLevel (channel, 0, buffer.getNumSamples());
     }
+
+    Vec3 directionFrom (float azimuthRad, float elevationRad)
+    {
+        return SpeakerLayouts::directionFromAngles (azimuthRad, elevationRad);
+    }
 }
 
 int main()
@@ -56,20 +63,23 @@ int main()
     // --- Metadata: every mode's helper functions agree with each other and
     //     with the SpeakerLayouts tables they're built from. ---
     {
-        struct Expected { Mode mode; int channels; int order; bool raw; int lfeIndex; };
+        struct Expected { Mode mode; int channels; int order; bool raw; bool directPan; int lfeIndex; };
         const Expected table[] = {
-            { Mode::AmbisonicsRawOrder1, 4,  1, true,  -1 },
-            { Mode::AmbisonicsRawOrder2, 9,  2, true,  -1 },
-            { Mode::AmbisonicsRawOrder3, 16, 3, true,  -1 },
-            { Mode::Stereo,              2,  3, false, -1 },
-            { Mode::Quad,                4,  3, false, -1 },
-            { Mode::Surround5_1,         6,  3, false, 3 },
-            { Mode::Surround7_1,         8,  3, false, 3 },
-            { Mode::Atmos5_1_2,          8,  3, false, 3 },
-            { Mode::Atmos5_1_4,          10, 3, false, 3 },
-            { Mode::Atmos7_1_2,          10, 3, false, 3 },
-            { Mode::Atmos7_1_4,          12, 3, false, 3 },
-            { Mode::Octophonic,          8,  3, false, -1 },
+            { Mode::AmbisonicsRawOrder1, 4,  1, true,  false, -1 },
+            { Mode::AmbisonicsRawOrder2, 9,  2, true,  false, -1 },
+            { Mode::AmbisonicsRawOrder3, 16, 3, true,  false, -1 },
+            { Mode::AmbisonicsRawOrder4, 25, 4, true,  false, -1 },
+            { Mode::AmbisonicsRawOrder5, 36, 5, true,  false, -1 },
+            { Mode::Stereo,              2,  3, false, false, -1 },
+            { Mode::Binaural,            2,  3, false, false, -1 },
+            { Mode::Quad,                4,  3, false, true,  -1 },
+            { Mode::Octophonic,          8,  3, false, true,  -1 },
+            { Mode::Surround5_1,         6,  3, false, true,  3 },
+            { Mode::Surround7_1,         8,  3, false, true,  3 },
+            { Mode::Atmos5_1_2,          8,  3, false, true,  3 },
+            { Mode::Atmos5_1_4,          10, 3, false, true,  3 },
+            { Mode::Atmos7_1_2,          10, 3, false, true,  3 },
+            { Mode::Atmos7_1_4,          12, 3, false, true,  3 },
         };
 
         for (auto& e : table)
@@ -77,6 +87,7 @@ int main()
             check (AmbisonicsDecoder::numOutputChannels (e.mode) == e.channels, "numOutputChannels matches expected channel count");
             check (AmbisonicsDecoder::ambisonicsOrderFor (e.mode) == e.order, "ambisonicsOrderFor matches expected order");
             check (AmbisonicsDecoder::isRawPassthrough (e.mode) == e.raw, "isRawPassthrough matches expected");
+            check (AmbisonicsDecoder::usesDirectPan (e.mode) == e.directPan, "usesDirectPan matches expected");
             check (AmbisonicsDecoder::lfeChannelIndexFor (e.mode) == e.lfeIndex, "lfeChannelIndexFor matches expected");
             check (AmbisonicsDecoder::outputChannelSetFor (e.mode).size() == e.channels, "outputChannelSetFor's channel count matches numOutputChannels");
         }
@@ -91,6 +102,7 @@ int main()
         check (AmbisonicsDecoder::numOutputChannels (Mode::CircularArray, 99) == AmbisonicsDecoder::maxCircularSpeakers, "CircularArray: numOutputChannels clamps above maxCircularSpeakers");
         check (AmbisonicsDecoder::ambisonicsOrderFor (Mode::CircularArray) == 3, "CircularArray: ambisonicsOrderFor is the fixed internal maximum");
         check (! AmbisonicsDecoder::isRawPassthrough (Mode::CircularArray), "CircularArray: not raw passthrough");
+        check (AmbisonicsDecoder::usesDirectPan (Mode::CircularArray), "CircularArray: uses direct pan");
         check (AmbisonicsDecoder::lfeChannelIndexFor (Mode::CircularArray) == -1, "CircularArray: no LFE channel (horizontal ring, no LFE by design)");
     }
 
@@ -109,7 +121,10 @@ int main()
 
     // --- Stereo decode: a source at the L speaker's own direction (+30deg,
     //     matches SpeakerLayouts::stereoPair()) comes out mostly on
-    //     output channel 0 (L). ---
+    //     output channel 0 (L). The only mode still going through
+    //     decode()/decodeMatrix -- see AmbisonicsDecoder's own class
+    //     comment for why every other real-speaker format below now uses
+    //     computeDirectPanGains() instead. ---
     {
         AmbisonicsDecoder decoder;
         decoder.prepare (48000.0);
@@ -125,175 +140,119 @@ int main()
         check (l > r * 2.0f, "Stereo: a source at the L speaker's own direction comes out mostly on the L channel");
     }
 
-    // --- Quad (AllRAD, horizontal-only): a source at the L speaker's own
-    //     direction (+45deg) comes out mostly on output channel 0 (L). ---
+    // --- Direct-pan sharpness: this is the actual regression check the
+    //     reported diffuseness (opposite speaker only ~18dB down for a
+    //     source panned exactly onto one speaker, measured by the
+    //     reporting user in Quad and 7.1) motivates. For every direct-pan
+    //     mode, panning exactly onto one real speaker's own direction must
+    //     put (almost) ALL the gain on that one speaker and (near) zero
+    //     everywhere else -- a real, numeric sharpness assertion, not just
+    //     "loudest on the right channel" (which the old AllRAD-based tests
+    //     already confirmed, and which alone would NOT have caught this
+    //     bug: AllRAD was always directionally correct, just too diffuse). ---
+    {
+        struct Case { const char* name; Mode mode; int speakerIndex; float azimuthRad; float elevationRad; int expectedChannels; };
+        const Case cases[] = {
+            { "Quad (L, +45deg)",              Mode::Quad,         0, SpeakerLayouts::deg (45.0f),  0.0f,                 4 },
+            { "Octophonic (FL, +22.5deg)",      Mode::Octophonic,   0, SpeakerLayouts::deg (22.5f),  0.0f,                 8 },
+            { "Surround5_1 (C, 0deg)",          Mode::Surround5_1,  2, 0.0f,                          0.0f,                 6 },
+            { "Surround7_1 (Lss, +90deg)",      Mode::Surround7_1,  4, SpeakerLayouts::deg (90.0f),   0.0f,                 8 },
+            { "Atmos5_1_4 (topFrontL, +45/+45)", Mode::Atmos5_1_4,  6, SpeakerLayouts::deg (45.0f),   SpeakerLayouts::deg (45.0f), 10 },
+        };
+
+        for (auto& c : cases)
+        {
+            AmbisonicsDecoder decoder;
+            decoder.prepare (48000.0);
+            decoder.setMode (c.mode);
+
+            const auto gains = decoder.computeDirectPanGains (directionFrom (c.azimuthRad, c.elevationRad));
+            check ((int) gains.size() == c.expectedChannels, "direct-pan sharpness: computeDirectPanGains() returns a full-width, correctly-sized vector");
+
+            float targetGain = 0.0f, worstOtherGain = 0.0f;
+            for (int ch = 0; ch < (int) gains.size(); ++ch)
+            {
+                if (ch == c.speakerIndex) targetGain = gains[(size_t) ch];
+                else worstOtherGain = juce::jmax (worstOtherGain, std::abs (gains[(size_t) ch]));
+            }
+            std::printf ("       %s: target speaker gain=%.4f, worst other speaker gain=%.4f\n", c.name, targetGain, worstOtherGain);
+            check (targetGain > 0.9f, "direct-pan sharpness: panning exactly onto a speaker gives that speaker ~full gain");
+            check (worstOtherGain < 0.05f, "direct-pan sharpness: panning exactly onto a speaker leaves every OTHER speaker's gain near-zero (the actual reported-diffuseness regression check)");
+        }
+    }
+
+    // --- LFE never gets directional gain from computeDirectPanGains() -----
     {
         AmbisonicsDecoder decoder;
         decoder.prepare (48000.0);
-        decoder.setMode (Mode::Quad);
+        decoder.setMode (Mode::Surround5_1);
 
-        const auto ambi = encodeTestSource (3, SpeakerLayouts::deg (45.0f), 0.0f);
-        juce::AudioBuffer<float> out (4, blockSize);
-        decoder.decode (ambi, out, blockSize);
+        const int lfeIdx = AmbisonicsDecoder::lfeChannelIndexFor (Mode::Surround5_1);
+        check (lfeIdx == 3, "5.1: LFE channel index is 3 (matches SpeakerLayouts::surround5point1() ordering)");
 
-        const float rmsAt[4] = { rms (out, 0), rms (out, 1), rms (out, 2), rms (out, 3) };
-        std::printf ("       Quad RMS at +45deg (L R Ls Rs): %.4f %.4f %.4f %.4f\n", rmsAt[0], rmsAt[1], rmsAt[2], rmsAt[3]);
-        check (rmsAt[0] > rmsAt[1] && rmsAt[0] > rmsAt[2] && rmsAt[0] > rmsAt[3],
-               "Quad: a source at the L speaker's own direction comes out strongest on the L channel");
+        // Sweep several directions, including straight at the LFE's own
+        // (nonexistent) direction -- it must never receive gain regardless.
+        bool lfeAlwaysZero = true;
+        for (float az : { 0.0f, SpeakerLayouts::deg (30.0f), SpeakerLayouts::deg (110.0f), SpeakerLayouts::deg (180.0f) })
+        {
+            const auto gains = decoder.computeDirectPanGains (directionFrom (az, 0.0f));
+            if (lfeIdx >= 0 && lfeIdx < (int) gains.size() && gains[(size_t) lfeIdx] != 0.0f)
+                lfeAlwaysZero = false;
+        }
+        check (lfeAlwaysZero, "5.1: computeDirectPanGains() never assigns gain to the LFE channel (LFE has no direction)");
     }
 
-    // --- Octophonic (mode-matching, regular 8-speaker ring): a source at
-    //     the front-left speaker's own direction (+22.5deg) comes out
-    //     strongest on output channel 0. ---
+    // --- applyLfeFilterDirect(): silent when bass management is off, picks
+    //     up a filtered signal once enabled -- the direct-pan modes' own
+    //     equivalent of decode()'s W-channel-derived LFE handling. ---
     {
         AmbisonicsDecoder decoder;
         decoder.prepare (48000.0);
-        decoder.setMode (Mode::Octophonic);
+        decoder.setMode (Mode::Surround5_1);
 
-        const auto ambi = encodeTestSource (3, SpeakerLayouts::deg (22.5f), 0.0f);
-        juce::AudioBuffer<float> out (8, blockSize);
-        decoder.decode (ambi, out, blockSize);
+        std::vector<float> drySum ((size_t) blockSize);
+        for (int i = 0; i < blockSize; ++i)
+            drySum[(size_t) i] = std::sin (2.0f * juce::MathConstants<float>::pi * 100.0f * (float) i / 48000.0f);
 
-        float rmsAt[8];
-        for (int ch = 0; ch < 8; ++ch) rmsAt[ch] = rms (out, ch);
-        std::printf ("       Octophonic RMS at +22.5deg (FL FR sL sR rL rR RL RR): %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
-                     rmsAt[0], rmsAt[1], rmsAt[2], rmsAt[3], rmsAt[4], rmsAt[5], rmsAt[6], rmsAt[7]);
-        bool frontLeftIsLoudest = true;
-        for (int ch = 1; ch < 8; ++ch)
-            if (rmsAt[ch] >= rmsAt[0]) frontLeftIsLoudest = false;
-        check (frontLeftIsLoudest, "Octophonic: a source at the front-left speaker's own direction comes out strongest on that single channel");
+        std::vector<float> lfeOff ((size_t) blockSize, 1.0f); // pre-filled with garbage to confirm it actually gets overwritten with silence
+        decoder.applyLfeFilterDirect (drySum.data(), lfeOff.data(), blockSize);
+        bool allZeroOff = true;
+        for (float v : lfeOff) if (v != 0.0f) { allZeroOff = false; break; }
+        check (allZeroOff, "applyLfeFilterDirect: silent when bass management is disabled (default)");
+
+        decoder.setBassManagementEnabled (true);
+        std::vector<float> lfeOn ((size_t) blockSize, 0.0f);
+        decoder.applyLfeFilterDirect (drySum.data(), lfeOn.data(), blockSize);
+        double energy = 0.0;
+        for (float v : lfeOn) energy += (double) v * (double) v;
+        std::printf ("       applyLfeFilterDirect: RMS with bass management on: %.4f\n", (float) std::sqrt (energy / blockSize));
+        check (energy > 0.0, "applyLfeFilterDirect: picks up a filtered signal once bass management is enabled");
     }
 
-    // --- Circular Array (mode-matching, generic N): with numSpeakers=6, a
-    //     source straight ahead (channel 0's own direction, 0deg start)
-    //     comes out strongest on output channel 0; sweeping numSpeakers
-    //     across its full range doesn't crash or misbehave. ---
+    // --- CircularArray: direct-pan setup responds to setCircularArraySpeakerCount() ---
     {
         AmbisonicsDecoder decoder;
         decoder.prepare (48000.0);
         decoder.setCircularArraySpeakerCount (6);
         decoder.setMode (Mode::CircularArray);
 
-        const auto ambi = encodeTestSource (3, 0.0f, 0.0f);
-        juce::AudioBuffer<float> out (6, blockSize);
-        decoder.decode (ambi, out, blockSize);
-
-        float rmsAt[6];
-        for (int ch = 0; ch < 6; ++ch) rmsAt[ch] = rms (out, ch);
-        std::printf ("       CircularArray(6) RMS at 0deg: %.4f %.4f %.4f %.4f %.4f %.4f\n",
-                     rmsAt[0], rmsAt[1], rmsAt[2], rmsAt[3], rmsAt[4], rmsAt[5]);
-        bool channel0IsLoudest = true;
-        for (int ch = 1; ch < 6; ++ch)
-            if (rmsAt[ch] >= rmsAt[0]) channel0IsLoudest = false;
-        check (channel0IsLoudest, "CircularArray(6): a source straight ahead comes out strongest on channel 0 (0deg start)");
+        auto gains6 = decoder.computeDirectPanGains (directionFrom (0.0f, 0.0f));
+        check ((int) gains6.size() == 6, "CircularArray(6): computeDirectPanGains() returns a 6-wide vector");
+        check (gains6[0] > 0.9f, "CircularArray(6): a source straight ahead (0deg start) pans almost entirely onto channel 0");
 
         // Sweep every supported speaker count -- setCircularArraySpeakerCount()
-        // rebuilds live since CircularArray is already the active mode; each
-        // rebuild must still produce a sane (non-empty, correctly sized,
-        // reasonably calibrated) decode.
+        // rebuilds the direct-pan setup live since CircularArray is already
+        // the active mode; each rebuild must still produce a sane
+        // (correctly-sized, non-degenerate) result.
         bool allSweepsReasonable = true;
         for (int n = AmbisonicsDecoder::minCircularSpeakers; n <= AmbisonicsDecoder::maxCircularSpeakers; ++n)
         {
             decoder.setCircularArraySpeakerCount (n);
-            juce::AudioBuffer<float> sweepOut (n, blockSize);
-            decoder.decode (ambi, sweepOut, blockSize);
-
-            float totalEnergy = 0.0f;
-            for (int ch = 0; ch < n; ++ch) { const float r = rms (sweepOut, ch); totalEnergy += r * r; }
-            const float totalRms = std::sqrt (totalEnergy);
-            if (totalRms < 0.05f || totalRms > 3.0f)
+            const auto gains = decoder.computeDirectPanGains (directionFrom (0.0f, 0.0f));
+            if ((int) gains.size() != n || gains[0] < 0.9f)
                 allSweepsReasonable = false;
         }
-        check (allSweepsReasonable, "CircularArray: every supported speaker count (4..24) decodes to a reasonable overall output level");
-    }
-
-    // --- 5.1 (AllRAD, including a narrowly-flanked speaker): LFE channel
-    //     stays silent by default and picks up a filtered signal once bass
-    //     management is enabled; a source straight ahead comes out
-    //     strongest on C, even though C's own VBAP catchment area is
-    //     narrower than L/R's (see buildAllRadMatrix()'s per-speaker
-    //     density-compensation comment -- this is the case that regressed
-    //     without it). ---
-    {
-        AmbisonicsDecoder decoder;
-        decoder.prepare (48000.0);
-        decoder.setMode (Mode::Surround5_1);
-
-        const auto ambi = encodeTestSource (3, 0.0f, 0.0f); // straight ahead, at the C speaker
-        const int lfeIdx = AmbisonicsDecoder::lfeChannelIndexFor (Mode::Surround5_1);
-        check (lfeIdx == 3, "5.1: LFE channel index is 3 (matches SpeakerLayouts::surround5point1() ordering)");
-
-        juce::AudioBuffer<float> outOff (6, blockSize);
-        decoder.decode (ambi, outOff, blockSize);
-        check (rms (outOff, lfeIdx) == 0.0f, "5.1: LFE channel is silent by default (bass management off)");
-
-        decoder.setBassManagementEnabled (true);
-        juce::AudioBuffer<float> outOn (6, blockSize);
-        decoder.decode (ambi, outOn, blockSize);
-        std::printf ("       5.1 LFE RMS with bass management on: %.4f\n", rms (outOn, lfeIdx));
-        check (rms (outOn, lfeIdx) > 0.01f, "5.1: LFE channel picks up a filtered signal once bass management is enabled");
-
-        std::printf ("       5.1 RMS straight ahead (L R C LFE Ls Rs): %.4f %.4f %.4f %.4f %.4f %.4f\n",
-                     rms (outOn, 0), rms (outOn, 1), rms (outOn, 2), rms (outOn, 3), rms (outOn, 4), rms (outOn, 5));
-        check (rms (outOn, 2) > rms (outOn, 0) && rms (outOn, 2) > rms (outOn, 1),
-               "5.1: a source straight ahead comes out strongest on the C channel");
-    }
-
-    // --- 5.1.4 (AllRAD with height speakers): a source at the top-front-left
-    //     speaker's own direction comes out strongest on that single
-    //     channel, ahead of every other individual channel (some spread
-    //     onto neighboring channels is expected/normal for a two-stage
-    //     AllRAD decode, so this checks "clearly the loudest channel", not
-    //     "louder than everything else combined"). ---
-    {
-        AmbisonicsDecoder decoder;
-        decoder.prepare (48000.0);
-        decoder.setMode (Mode::Atmos5_1_4);
-
-        // SpeakerLayouts::atmos5point1point4() order: L R C LFE Ls Rs
-        // topFrontL(6) topFrontR(7) topRearL(8) topRearR(9).
-        const auto ambi = encodeTestSource (3, SpeakerLayouts::deg (45.0f), SpeakerLayouts::deg (45.0f));
-        juce::AudioBuffer<float> out (10, blockSize);
-        decoder.decode (ambi, out, blockSize);
-
-        float rmsAt[10];
-        for (int ch = 0; ch < 10; ++ch) rmsAt[ch] = rms (out, ch);
-        std::printf ("       5.1.4 all 10 RMS (L R C LFE Ls Rs tFL tFR tRL tRR): %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n",
-                     rmsAt[0], rmsAt[1], rmsAt[2], rmsAt[3], rmsAt[4], rmsAt[5], rmsAt[6], rmsAt[7], rmsAt[8], rmsAt[9]);
-
-        bool topFrontLeftIsLoudest = true;
-        for (int ch = 0; ch < 10; ++ch)
-            if (ch != 6 && rmsAt[ch] >= rmsAt[6])
-                topFrontLeftIsLoudest = false;
-        check (topFrontLeftIsLoudest, "5.1.4: a source at the top-front-left speaker's own direction comes out strongest on that single channel");
-    }
-
-    // --- Calibration sanity: overall output level for a decoded mode stays
-    //     in a reasonable range relative to the (RMS ~0.707) input tone,
-    //     across several directions -- not a strict theoretical check, just
-    //     a guard against the practical calibration (see
-    //     AmbisonicsDecoder::calibrateDecodeMatrix()) going wildly wrong. ---
-    {
-        AmbisonicsDecoder decoder;
-        decoder.prepare (48000.0);
-        decoder.setMode (Mode::Atmos7_1_4);
-
-        bool allReasonable = true;
-        for (int i = 0; i < 8; ++i)
-        {
-            const float az = SpeakerLayouts::deg ((float) i * 47.0f);
-            const float el = SpeakerLayouts::deg ((float) (i % 3) * 20.0f);
-            const auto ambi = encodeTestSource (3, az, el);
-            juce::AudioBuffer<float> out (12, blockSize);
-            decoder.decode (ambi, out, blockSize);
-
-            float totalEnergy = 0.0f;
-            for (int ch = 0; ch < 12; ++ch) { const float r = rms (out, ch); totalEnergy += r * r; }
-            const float totalRms = std::sqrt (totalEnergy);
-            if (totalRms < 0.05f || totalRms > 3.0f)
-                allReasonable = false;
-        }
-        check (allReasonable, "7.1.4: calibrated overall output level stays within a reasonable range (0.05..3.0 RMS) across several source directions");
+        check (allSweepsReasonable, "CircularArray: every supported speaker count (4..24) still pans a straight-ahead source almost entirely onto channel 0");
     }
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",

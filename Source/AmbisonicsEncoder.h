@@ -60,6 +60,40 @@ public:
     // out must have room for getNumChannels() elements.
     void computeShCoefficients (float azimuthRad, float elevationRad, std::vector<float>& out) const;
 
+    /**
+        Direct-speaker-pan sibling of encodeBlock() -- identical ramped,
+        additive mix (same distance-gain/previousChannelGains-ramp
+        mechanics, reusing distanceGain() below), but the per-channel end
+        gains come from a caller-supplied `speakerGains` vector (real VBAP
+        gains, see AmbisonicsDecoder::computeDirectPanGains()) instead of
+        this class's own SH coefficients. Used by
+        AmbisonicsDecoder::Mode::usesDirectPan() formats, which bypass the
+        shared Ambisonics bus entirely for sharper localization -- see that
+        class's own comment. Deliberately lives here rather than as a new
+        standalone class, purely to reuse distanceGain()/the ramping
+        pattern without duplicating either; this class needs no knowledge
+        of AmbisonicsDecoder, Mode, or VBAP to do it.
+
+        speakerGains: one gain per real output speaker (destBuffer's own
+            channel order) -- typically AmbisonicsDecoder::
+            computeDirectPanGains()'s own result, passed straight through.
+        Other parameters: same meaning as encodeBlock()'s own (see there).
+    */
+    void panDirectBlock (const float* sourceBlock,
+                          int numSamples,
+                          const std::vector<float>& speakerGains,
+                          float distanceMeters,
+                          float gain,
+                          juce::AudioBuffer<float>& destBuffer,
+                          std::vector<float>& previousChannelGains);
+
+    // 1/r distance attenuation (see distanceGain()'s own comment below),
+    // exposed publicly so PluginProcessor's direct-pan LFE dry-sum (see
+    // AmbisonicsDecoder::applyLfeFilterDirect()) can apply the exact same
+    // per-object distance weighting encodeBlock()/panDirectBlock() already
+    // do internally, instead of the LFE sum silently ignoring distance.
+    float getDistanceGain (float distanceMeters) const { return distanceGain (distanceMeters, referenceDistance); }
+
 private:
     int order = 3;
     double sampleRate = 48000.0;

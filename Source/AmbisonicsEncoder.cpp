@@ -122,3 +122,30 @@ void AmbisonicsEncoder::encodeBlock (const float* sourceBlock,
         previousChannelGains[(size_t) ch] = endGain;
     }
 }
+
+void AmbisonicsEncoder::panDirectBlock (const float* sourceBlock,
+                                         int numSamples,
+                                         const std::vector<float>& speakerGains,
+                                         float distanceMeters,
+                                         float gain,
+                                         juce::AudioBuffer<float>& destBuffer,
+                                         std::vector<float>& previousChannelGains)
+{
+    const float distGain = distanceGain (distanceMeters, referenceDistance);
+    const float totalGain = gain * distGain;
+
+    const int numCh = juce::jmin ((int) speakerGains.size(), destBuffer.getNumChannels());
+    if ((int) previousChannelGains.size() < numCh)
+        previousChannelGains.resize ((size_t) numCh, 0.0f);
+
+    for (int ch = 0; ch < numCh; ++ch)
+    {
+        const float startGain = previousChannelGains[(size_t) ch];
+        const float endGain   = speakerGains[(size_t) ch] * totalGain;
+
+        if (std::abs (startGain) > 1.0e-8f || std::abs (endGain) > 1.0e-8f)
+            destBuffer.addFromWithRamp (ch, 0, sourceBlock, numSamples, startGain, endGain);
+
+        previousChannelGains[(size_t) ch] = endGain;
+    }
+}

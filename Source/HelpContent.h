@@ -23,8 +23,8 @@ position by hand. Output format is selectable (toolbar -> Output...,
 section 11): an internally decoded Stereo (the default), Binaural (HRTF
 headphone), Quad, Octophonic, Circular Array, 5.1, 7.1, or one of four
 Dolby-Atmos-bed layouts, no external decoder needed -- or raw Ambisonics
-B-format (FOA/SOA/TOA, ACN/SN3D, AmbiX-compatible) to feed a decoder
-such as SPARTA AmbiDEC/AmbiBIN or the IEM Plugin Suite instead.
+B-format (1st through 5th order, ACN/SN3D, AmbiX-compatible) to feed a
+decoder such as SPARTA AmbiDEC/AmbiBIN or the IEM Plugin Suite instead.
 
 A fuller version of this guide lives in Docs/UserGuide.md in the
 project folder.
@@ -309,7 +309,7 @@ that object's live input. Turn on with Enabled.
 
 Plugin-wide, not tied to the scene or any object -- has its own window:
 
-  Output Format          one of 14 mutually exclusive formats, listed in
+  Output Format          one of 16 mutually exclusive formats, listed in
                           dropdown order:
 
                            Stereo -- plain 2-speaker decode at +-30deg,
@@ -374,16 +374,24 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
                             B-format, no decoding, ACN/SN3D.
                            TOA (3rd Order Ambisonics, 16ch) -- raw
                             B-format, no decoding, ACN/SN3D.
+                           4th Order Ambisonics (25ch) -- raw B-format,
+                            no decoding, ACN/SN3D. Higher precision for
+                            external decoding only -- nothing in this
+                            plugin's own decode paths uses it.
+                           5th Order Ambisonics (36ch) -- same, 36ch.
 
                           Octophonic/Circular Array are HORIZONTAL ONLY
                           -- a flat speaker ring cannot reproduce
                           elevation, regardless of decoder quality.
-                          Every non-Ambisonics format decodes
-                          internally -- no external decoder plugin
-                          needed. Switching changes the plugin's output
-                          channel count; most hosts pick this up live,
-                          some need the plugin removed/reinserted or
-                          the project reloaded.
+                          Every non-Ambisonics format except Stereo now
+                          pans each object DIRECTLY to the real speakers
+                          (VBAP) instead of decoding a shared Ambisonics
+                          bus -- sharper localization, no external
+                          decoder plugin needed. Output Format selection
+                          is bounded by the host/track's own channel
+                          count (set via the host's own routing UI, not
+                          purely by picking something in this dropdown)
+                          -- unavailable formats grey out automatically.
   Circular Array:         4-24 -- only shown while Output Format is
    Speaker Count           "Circular Array".
   Bass Management         only shown for formats with an LFE channel

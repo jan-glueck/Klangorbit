@@ -2,6 +2,8 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <vector>
 #include "AmbisonicsEncoder.h"
+#include "Vec3.h"
+#include "VBAP.h"
 
 /**
     Decodes the summed Ambisonics B-format signal (from AmbisonicsEncoder)
@@ -9,47 +11,46 @@
     "decode to any loudspeaker array" system, only the modes listed in
     Mode below (see the project's own scoping decision on this).
 
-    Four different decoding strategies, chosen per mode:
-    - AmbisonicsRawOrder1/2/3: no decoding at all -- the caller should
+    Three different strategies, chosen per mode:
+    - AmbisonicsRawOrder1/2/3/4/5: no decoding at all -- the caller should
       check isRawPassthrough() and, if true, skip this class entirely and
       encode straight into the output buffer exactly as before this class
-      existed (zero overhead, per the original requirement).
+      existed (zero overhead, per the original requirement). Orders 4/5
+      exist purely for higher precision when decoding externally via a
+      third-party tool (IEM Plugin Suite, SPARTA) -- nothing about this
+      class's own decode paths uses them.
     - Stereo: a plain 2-point Ambisonics decode (SH sampling decoder at
       +-30 degrees) -- deliberately NOT the same code path as Binaural
       (no HRTF involved at all, see the class-level note in
       PluginProcessor about why the two are kept conceptually separate).
+      The one mode still decoded via a shared-bus decodeMatrix (see
+      decode()) -- every other real-speaker format below bypasses that
+      shared bus entirely.
+    - Every other mode (Quad/Octophonic/CircularArray/Surround5_1/
+      Surround7_1/Atmos*) -- see usesDirectPan(): a DIRECT, per-object VBAP
+      pan straight to the real speakers (Pulkki 1997, see VBAP.h),
+      computed per source direction via computeDirectPanGains(), NOT
+      decoded from a shared Ambisonics bus at all. This replaced an
+      earlier two-stage AllRAD (Zotter & Frank 2012) / plain SH-sampling
+      approach (decode a dense virtual array from the shared bus, then
+      remap that onto the real speakers) -- reported and confirmed as too
+      diffuse: even a mathematically correct decode of the shared bus's
+      fixed, low (order-3) Ambisonics order has a real, inherent beamwidth
+      (~35-40 degrees) that spreads meaningful energy across every real
+      speaker once there are only a handful of them, regardless of how
+      correct the two-stage remap itself is. Panning each object directly
+      (bypassing the shared bus, and the order-3 ceiling, entirely) gives
+      genuinely sharp, point-source-style localization instead, at the
+      cost of these formats no longer being "true" diffuse-field
+      Ambisonics decodes the way AllRAD was. PluginProcessor calls
+      computeDirectPanGains() once per object/grain per block and mixes
+      with AmbisonicsEncoder::panDirectBlock() directly into the real
+      output buffer -- see both of their own comments.
     - Binaural: this class only represents it as a selectable format
       (channel count, bus layout, ambisonics order) -- setMode() stores
       the mode and clears decodeMatrix but never calls decode() for it;
       the actual HRTF decode lives entirely in BinauralDecoder (see that
       class's own comment and the note below).
-    - Quad/Surround5_1/Surround7_1/Atmos*: AllRAD (All-Round Ambisonic
-      Decoding, Zotter & Frank 2012) -- decode to a large, densely and
-      uniformly distributed VIRTUAL loudspeaker array first (a plain SH
-      sampling decode, reusing AmbisonicsEncoder::computeShCoefficients()
-      since encode/decode coefficients are the same real SH basis), then
-      remap that virtual array onto the real (sparse, irregular) target
-      layout via VBAP (see VBAP.h). This is the standard, correct approach
-      for irregular arrays -- a direct pseudo-inverse decode straight to a
-      handful of unevenly-spaced real speakers tends to produce uneven,
-      direction-dependent coloration that AllRAD's two-stage approach
-      avoids. The combined ambisonics -> real-speakers matrix is built
-      ONCE per setMode() call (not per audio block) and calibrated so a
-      test plane wave from many directions averages to roughly unit
-      output energy (a practical calibration, not a strict SAD-theory
-      derivation -- see buildAllRadMatrix()'s own comment).
-    - Octophonic/CircularArray: a plain mode-matching decode straight to
-      the real (regular, evenly-spaced, horizontal-only) speaker ring --
-      deliberately NOT AllRAD/VBAP. AllRAD's virtual-array-plus-remap
-      exists specifically to avoid coloration on an IRREGULAR array; a
-      regular ring has no such irregularity to correct for, and a plain
-      SH-sampling decode straight to its own (already evenly-spaced) real
-      speakers is the standard, simpler, and at least as accurate choice
-      for this specific case -- see buildCircularMatrix()'s own comment,
-      including the alias-free speaker-count threshold for the fixed
-      internal order. Both are horizontal-only (0 elevation for every
-      speaker) -- a circular array cannot reproduce height/elevation at
-      all, a property of this array type, not a decoder limitation.
 
     Binaural is NOT part of this class -- it needs an HRTF dataset and
     partitioned convolution, handled by a separate module so this one
@@ -82,15 +83,17 @@ public:
         AmbisonicsRawOrder1,
         AmbisonicsRawOrder2,
         AmbisonicsRawOrder3,
+        AmbisonicsRawOrder4, // 25ch -- higher precision for external decoding (IEM/SPARTA/etc.), see the class comment
+        AmbisonicsRawOrder5, // 36ch
     };
 
-    // Total number of Mode values (14) -- single source of truth for
+    // Total number of Mode values (16) -- single source of truth for
     // anything that needs to iterate every mode by its 0-based position
     // (e.g. OutputPanel's combo item IDs, which are position+1; see
     // KlangorbitProcessor::isOutputModeAvailable()/OutputPanel's own
     // graying loop). Kept here, not re-derived, so a future added/removed
     // Mode can't silently desync from a hardcoded count elsewhere.
-    static constexpr int numModes = 14;
+    static constexpr int numModes = 16;
 
     // Bounds for CircularArray's speaker count -- below 4 isn't a
     // meaningful "array" (2-3 points aren't circular so much as
@@ -134,9 +137,18 @@ public:
     // circularSpeakerCount: see numOutputChannels()'s own comment.
     static juce::AudioChannelSet outputChannelSetFor (Mode mode, int circularSpeakerCount = 8);
 
-    // True for the three raw modes -- callers must skip this class
+    // True for the five raw modes -- callers must skip this class
     // entirely in that case (see the class comment).
     static bool isRawPassthrough (Mode mode);
+
+    // True for every mode that bypasses the shared Ambisonics bus entirely
+    // in favor of a direct, per-object VBAP pan straight to the real
+    // speakers -- Quad, Octophonic, CircularArray, Surround5_1,
+    // Surround7_1, and all four Atmos-bed modes. False for Stereo (still
+    // its own simple decodeMatrix-based decode), Binaural (HRTF, entirely
+    // separate class), and every raw passthrough mode. See the class
+    // comment for why.
+    static bool usesDirectPan (Mode mode);
 
     // Physical output channel index carrying LFE for this mode, or -1 if
     // the mode has no LFE channel (Quad, Stereo, the raw Ambisonics modes).
@@ -180,15 +192,56 @@ public:
     // instead for that mode, see the class comment).
     void decode (const juce::AudioBuffer<float>& ambiBuffer, juce::AudioBuffer<float>& destBuffer, int numSamples);
 
+    // Real per-speaker VBAP gains for a single source at `direction` (need
+    // NOT be unit-length -- normalized internally; a zero-length vector is
+    // defensively treated as straight ahead), for whichever mode is
+    // CURRENTLY active -- only meaningful while usesDirectPan(getMode())
+    // is true (returns an all-zero vector sized numOutputChannels(getMode())
+    // otherwise, i.e. it's always safe to call, just inert). The LFE
+    // channel (if any) is always exactly 0 here -- LFE has no direction,
+    // see applyLfeFilterDirect() for how it's actually populated. Callers
+    // (PluginProcessor) pass the result straight into
+    // AmbisonicsEncoder::panDirectBlock().
+    std::vector<float> computeDirectPanGains (Vec3 direction) const;
+
+    // Same one-pole ~120Hz low-pass Bass Management already applies inside
+    // decode() (see that method's own comment) -- shares this object's own
+    // lfeFilterState/isBassManagementEnabled(), so switching between a
+    // direct-pan and a decodeMatrix-based mode never resets or duplicates
+    // filter state. For usesDirectPan() modes, which have no shared
+    // Ambisonics-bus W channel to derive LFE from the way decode() does --
+    // PluginProcessor instead sums every active object/grain's own dry
+    // signal into a small mono scratch buffer and feeds it here. Writes
+    // silence (and leaves lfeFilterState untouched) if bass management is
+    // currently disabled, same as decode()'s own behavior.
+    void applyLfeFilterDirect (const float* monoInput, float* lfeOutput, int numSamples);
+
 private:
     void buildStereoMatrix();
-    void buildAllRadMatrix (Mode targetMode);
-    void buildCircularMatrix (Mode targetMode);
+
+    // (Re)builds the cached VBAP triangulation for `newMode`'s own real
+    // speaker layout (directPanRealDirs/directPanRealDirToFullIndex/
+    // directPanRegions/directPanNumFullChannels below) -- cheap, called
+    // once per setMode()/setCircularArraySpeakerCount() call (mirroring
+    // the old buildAllRadMatrix()'s own "not per audio block" cost model),
+    // never from the audio thread. Clears all four (leaving
+    // computeDirectPanGains() correctly inert) if ! usesDirectPan(newMode).
+    void setupDirectPan (Mode newMode);
+
+    // Shared one-pole ~120Hz low-pass implementation for both decode()'s
+    // own W-channel-derived LFE and applyLfeFilterDirect()'s dry-sum-
+    // derived one -- one filter, one lfeFilterState, regardless of which
+    // path is feeding it. Does NOT check isBassManagementEnabled() itself
+    // -- both call sites already gate that themselves (decode() explicitly
+    // fills silence when disabled instead of calling this at all).
+    void applyLfeLowPass (const float* monoInput, float* lfeOutput, int numSamples);
 
     // Scales decodeMatrix so a test plane wave from many directions
     // averages to roughly unit output energy -- a practical calibration,
-    // not a strict SAD-theory derivation, see buildAllRadMatrix()'s own
-    // comment. numAmbiCh must match decodeMatrix's current row width.
+    // not a strict SAD-theory derivation. numAmbiCh must match
+    // decodeMatrix's current row width. Only buildStereoMatrix() still
+    // uses this (every direct-pan mode calibrates itself differently --
+    // VBAP's own energy-normalized gains, see VBAP.h).
     void calibrateDecodeMatrix (int numAmbiCh);
 
     Mode mode = Mode::AmbisonicsRawOrder3;
@@ -196,16 +249,29 @@ private:
 
     // See setCircularArraySpeakerCount(). Default 8 so a fresh instance
     // that's switched straight to CircularArray without an explicit count
-    // first gives a sensible, alias-free (see buildCircularMatrix())
-    // starting point.
+    // first gives a sensible, alias-free starting point (see
+    // SpeakerLayouts::circularArray()'s own comment).
     int circularSpeakerCount = 8;
 
-    // [outputChannel][ambiChannel] -- empty for raw passthrough modes.
+    // [outputChannel][ambiChannel] -- empty for raw passthrough modes,
+    // Binaural, and every usesDirectPan() mode (see setMode()).
     std::vector<std::vector<float>> decodeMatrix;
+
+    // See setupDirectPan()/computeDirectPanGains() above. LFE-excluded;
+    // directPanRealDirToFullIndex[i] is directPanRealDirs[i]'s real output-
+    // channel index (mirrors the old buildAllRadMatrix()'s own
+    // realDirs/realDirToFullIndex pattern). directPanNumFullChannels is the
+    // full (LFE-inclusive) channel count computeDirectPanGains() sizes its
+    // result to.
+    std::vector<Vec3> directPanRealDirs;
+    std::vector<int> directPanRealDirToFullIndex;
+    std::vector<VBAP::Region> directPanRegions;
+    int directPanNumFullChannels = 0;
 
     bool bassManagementEnabled = false;
     // Simple one-pole low-pass state for the synthesized LFE signal (see
-    // decode()) -- persistent across blocks like PropagationProcessor's
-    // own air-absorption filter, reset in prepare()/setMode().
+    // applyLfeLowPass()) -- persistent across blocks like
+    // PropagationProcessor's own air-absorption filter, reset in
+    // prepare()/setMode().
     float lfeFilterState = 0.0f;
 };

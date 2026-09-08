@@ -10,8 +10,13 @@ namespace
     // entries are ordered to match juce::AudioChannelSet's internal
     // channel order for the corresponding named layout EXACTLY (verified
     // against JUCE/modules/juce_audio_basics/buffers/juce_AudioChannelSet.cpp),
-    // so decodeMatrix's row order can be used directly as the output
-    // buffer's channel order with no remapping step.
+    // so this order can be used directly as the output buffer's channel
+    // order with no remapping step. Used by AmbisonicsDecoder::
+    // setupDirectPan() (for the 7 modes with a real SpeakerLayouts table)
+    // and by lfeChannelIndexFor(); Octophonic/CircularArray build their own
+    // speaker list directly from SpeakerLayouts::octophonic()/
+    // circularArray() instead (not in this table, see below), and
+    // buildStereoMatrix() uses SpeakerLayouts::stereoPair() directly.
     std::vector<SpeakerLayouts::Speaker> speakersFor (AmbisonicsDecoder::Mode mode)
     {
         using Mode = AmbisonicsDecoder::Mode;
@@ -24,17 +29,11 @@ namespace
             case Mode::Atmos5_1_4:   return SpeakerLayouts::atmos5point1point4();
             case Mode::Atmos7_1_2:   return SpeakerLayouts::atmos7point1point2();
             case Mode::Atmos7_1_4:   return SpeakerLayouts::atmos7point1point4();
-            // Raw/Stereo/Binaural/circular modes have no table here -- raw
-            // isn't decoded at all; Stereo uses stereoPair() directly in
-            // buildStereoMatrix(); Binaural never calls into this class's
-            // own decode machinery at all (see the class comment);
-            // Octophonic/CircularArray use their own tables directly in
-            // buildCircularMatrix() (mode-matching, not AllRAD -- see the
-            // class comment) -- none of them go through this AllRAD-only
-            // helper.
             case Mode::AmbisonicsRawOrder1:
             case Mode::AmbisonicsRawOrder2:
             case Mode::AmbisonicsRawOrder3:
+            case Mode::AmbisonicsRawOrder4:
+            case Mode::AmbisonicsRawOrder5:
             case Mode::Stereo:
             case Mode::Binaural:
             case Mode::Octophonic:
@@ -57,6 +56,8 @@ int AmbisonicsDecoder::numOutputChannels (Mode mode, int circularSpeakerCount)
         case Mode::AmbisonicsRawOrder1: return 4;
         case Mode::AmbisonicsRawOrder2: return 9;
         case Mode::AmbisonicsRawOrder3: return 16;
+        case Mode::AmbisonicsRawOrder4: return 25;
+        case Mode::AmbisonicsRawOrder5: return 36;
         case Mode::Stereo:              return 2;
         case Mode::Binaural:            return 2;
         case Mode::Quad:                return 4;
@@ -79,7 +80,9 @@ int AmbisonicsDecoder::ambisonicsOrderFor (Mode mode)
         case Mode::AmbisonicsRawOrder1: return 1;
         case Mode::AmbisonicsRawOrder2: return 2;
         case Mode::AmbisonicsRawOrder3: return 3;
-        // Every decoded mode: always encode at the internal maximum for
+        case Mode::AmbisonicsRawOrder4: return 4;
+        case Mode::AmbisonicsRawOrder5: return 5;
+        // Every decoded/direct-pan mode: always encode at the internal maximum for
         // best decode quality, regardless of the target speaker count.
         case Mode::Stereo:
         case Mode::Binaural:
@@ -111,6 +114,8 @@ juce::AudioChannelSet AmbisonicsDecoder::outputChannelSetFor (Mode mode, int cir
         case Mode::AmbisonicsRawOrder1: return juce::AudioChannelSet::discreteChannels (4);
         case Mode::AmbisonicsRawOrder2: return juce::AudioChannelSet::discreteChannels (9);
         case Mode::AmbisonicsRawOrder3: return juce::AudioChannelSet::discreteChannels (16);
+        case Mode::AmbisonicsRawOrder4: return juce::AudioChannelSet::discreteChannels (25);
+        case Mode::AmbisonicsRawOrder5: return juce::AudioChannelSet::discreteChannels (36);
         case Mode::Stereo:              return juce::AudioChannelSet::stereo();
         // Binaural also declares a plain stereo() bus -- deliberately the
         // SAME identity as Mode::Stereo (both are, from the host's
@@ -141,7 +146,34 @@ juce::AudioChannelSet AmbisonicsDecoder::outputChannelSetFor (Mode mode, int cir
 
 bool AmbisonicsDecoder::isRawPassthrough (Mode mode)
 {
-    return mode == Mode::AmbisonicsRawOrder1 || mode == Mode::AmbisonicsRawOrder2 || mode == Mode::AmbisonicsRawOrder3;
+    return mode == Mode::AmbisonicsRawOrder1 || mode == Mode::AmbisonicsRawOrder2 || mode == Mode::AmbisonicsRawOrder3
+        || mode == Mode::AmbisonicsRawOrder4 || mode == Mode::AmbisonicsRawOrder5;
+}
+
+bool AmbisonicsDecoder::usesDirectPan (Mode mode)
+{
+    switch (mode)
+    {
+        case Mode::Quad:
+        case Mode::Octophonic:
+        case Mode::CircularArray:
+        case Mode::Surround5_1:
+        case Mode::Surround7_1:
+        case Mode::Atmos5_1_2:
+        case Mode::Atmos5_1_4:
+        case Mode::Atmos7_1_2:
+        case Mode::Atmos7_1_4:
+            return true;
+        case Mode::Stereo:
+        case Mode::Binaural:
+        case Mode::AmbisonicsRawOrder1:
+        case Mode::AmbisonicsRawOrder2:
+        case Mode::AmbisonicsRawOrder3:
+        case Mode::AmbisonicsRawOrder4:
+        case Mode::AmbisonicsRawOrder5:
+            return false;
+    }
+    return false;
 }
 
 int AmbisonicsDecoder::lfeChannelIndexFor (Mode mode)
@@ -164,28 +196,20 @@ void AmbisonicsDecoder::setMode (Mode newMode)
     mode = newMode;
     lfeFilterState = 0.0f; // don't carry a stale filter state into a differently-scaled signal
 
-    if (isRawPassthrough (mode))
-    {
-        decodeMatrix.clear(); // unused in this mode -- see the class comment
-        return;
-    }
+    decodeMatrix.clear();
+    setupDirectPan (newMode); // clears its own state (leaving computeDirectPanGains() correctly inert) unless usesDirectPan(newMode)
 
-    if (mode == Mode::Binaural)
-    {
-        // No decode matrix here -- see the class comment. The caller
-        // (KlangorbitProcessor) is responsible for calling
-        // BinauralDecoder::prepare() when Binaural becomes active
-        // (equivalent role to this method for every other decoded mode).
-        decodeMatrix.clear();
+    // Raw passthrough, Binaural, and every direct-pan mode: decodeMatrix
+    // stays empty (the caller must not call decode() for any of these --
+    // see that method's own guard and the class comment). Binaural's
+    // actual HRTF decode lives entirely in BinauralDecoder, prepared
+    // separately by the caller (KlangorbitProcessor) when this mode
+    // becomes active.
+    if (isRawPassthrough (mode) || mode == Mode::Binaural || usesDirectPan (mode))
         return;
-    }
 
     if (mode == Mode::Stereo)
         buildStereoMatrix();
-    else if (mode == Mode::Octophonic || mode == Mode::CircularArray)
-        buildCircularMatrix (mode);
-    else
-        buildAllRadMatrix (mode);
 }
 
 void AmbisonicsDecoder::setCircularArraySpeakerCount (int n)
@@ -196,7 +220,7 @@ void AmbisonicsDecoder::setCircularArraySpeakerCount (int n)
 
     circularSpeakerCount = clamped;
     if (mode == Mode::CircularArray)
-        buildCircularMatrix (mode); // take effect immediately if already active
+        setupDirectPan (mode); // take effect immediately if already active
 }
 
 void AmbisonicsDecoder::buildStereoMatrix()
@@ -227,146 +251,57 @@ void AmbisonicsDecoder::buildStereoMatrix()
     calibrateDecodeMatrix (numAmbiCh);
 }
 
-void AmbisonicsDecoder::buildCircularMatrix (Mode targetMode)
+void AmbisonicsDecoder::setupDirectPan (Mode newMode)
 {
-    // Plain mode-matching decode (a direct SH-sampling decode straight to
-    // the real speakers), deliberately NOT AllRAD/VBAP -- see the class
-    // comment for the reasoning. AllRAD's virtual-array-plus-remap step
-    // exists to avoid coloration on an IRREGULAR array; Octophonic and
-    // CircularArray are, by construction, perfectly regular (evenly
-    // spaced on a horizontal ring), so there is no irregularity for
-    // AllRAD's extra machinery to correct for, and a plain sampling
-    // decode straight to the real array is standard practice for a
-    // regular array (equivalent to how buildStereoMatrix() already
-    // handles the 2-speaker case above, generalized to N).
-    //
-    // Alias-free note: an N-speaker regular ring can exactly represent
-    // circular (horizontal) Ambisonics content up to order floor((N-1)/2)
-    // -- a standard result from circular-harmonic sampling theory, the
-    // same reasoning behind AllRAD's own virtual-array density choices.
-    // The encoder here is always fixed at order 3 for every decoded mode
-    // (see ambisonicsOrderFor()), which needs N >= 7 for a fully
-    // alias-free horizontal decode. Octophonic (8) clears that. A small
-    // CircularArray (4/5/6 speakers) will still decode correctly overall,
-    // just with a bit more spatial "blur" than a wider array would give
-    // for the same order-3 source content -- an inherent property of a
-    // small ring, not a decoder bug (documented in the UI/README).
-    AmbisonicsEncoder shHelper;
-    shHelper.setOrder (3);
-    const int numAmbiCh = shHelper.getNumChannels();
+    directPanRealDirs.clear();
+    directPanRealDirToFullIndex.clear();
+    directPanRegions.clear();
+    directPanNumFullChannels = 0;
 
-    const auto speakers = (targetMode == Mode::Octophonic)
-        ? SpeakerLayouts::octophonic()
-        : SpeakerLayouts::circularArray (circularSpeakerCount, 0.0f); // 0 deg start = front, see circularArray()'s own comment
+    if (! usesDirectPan (newMode))
+        return;
 
-    const int numCh = (int) speakers.size();
-    decodeMatrix.assign ((size_t) numCh, std::vector<float> ((size_t) numAmbiCh, 0.0f));
+    // Octophonic/CircularArray build their own speaker list directly from
+    // SpeakerLayouts (neither is in speakersFor()'s own table -- see its
+    // comment); every other direct-pan mode (Quad/Surround5_1/Surround7_1/
+    // Atmos*) already has a real SpeakerLayouts table there.
+    std::vector<SpeakerLayouts::Speaker> speakers;
+    if (newMode == Mode::Octophonic)
+        speakers = SpeakerLayouts::octophonic();
+    else if (newMode == Mode::CircularArray)
+        speakers = SpeakerLayouts::circularArray (circularSpeakerCount, 0.0f); // 0 deg start = front, see circularArray()'s own comment
+    else
+        speakers = speakersFor (newMode);
 
-    for (int spk = 0; spk < numCh; ++spk)
+    directPanNumFullChannels = (int) speakers.size();
+
+    // LFE-free direction list for the VBAP triangulation -- LFE carries no
+    // directional content (see the class comment and applyLfeFilterDirect()),
+    // so it must never participate in panning geometry. Same
+    // realDirs/realDirToFullIndex shape the old buildAllRadMatrix() used.
+    for (int i = 0; i < (int) speakers.size(); ++i)
     {
-        const auto& dir = speakers[(size_t) spk].direction;
-        const float az = std::atan2 (dir.y, dir.x); // elevation is always 0 -- horizontal-only array, see the class comment
-        std::vector<float> coeffs;
-        shHelper.computeShCoefficients (az, 0.0f, coeffs);
-        decodeMatrix[(size_t) spk] = coeffs;
+        if (speakers[(size_t) i].isLfe) continue;
+        directPanRealDirs.push_back (speakers[(size_t) i].direction);
+        directPanRealDirToFullIndex.push_back (i);
     }
 
-    calibrateDecodeMatrix (numAmbiCh);
+    directPanRegions = VBAP::triangulate (directPanRealDirs);
 }
 
-void AmbisonicsDecoder::buildAllRadMatrix (Mode targetMode)
+std::vector<float> AmbisonicsDecoder::computeDirectPanGains (Vec3 direction) const
 {
-    AmbisonicsEncoder shHelper;
-    shHelper.setOrder (3);
-    const int numAmbiCh = shHelper.getNumChannels();
+    std::vector<float> fullGains ((size_t) juce::jmax (0, directPanNumFullChannels), 0.0f);
+    if (directPanRealDirs.empty())
+        return fullGains; // ! usesDirectPan(getMode()) -- correctly inert, see this method's own header comment
 
-    const auto realSpeakers = speakersFor (targetMode);
-    const int numRealCh = (int) realSpeakers.size();
+    const float len = direction.length();
+    const Vec3 unitDir = (len > 1.0e-6f) ? (direction / len) : Vec3 { 1.0f, 0.0f, 0.0f }; // degenerate zero-length input -- pick an arbitrary but stable direction rather than dividing by ~0
 
-    // LFE-free direction list for the VBAP triangulation/remap -- LFE
-    // carries no directional content (see this class's own comment and
-    // decode()'s bass-management handling), so it must never participate
-    // in panning geometry.
-    std::vector<Vec3> realDirs;
-    std::vector<int> realDirToFullIndex; // realDirs[i] came from realSpeakers[realDirToFullIndex[i]]
-    for (int i = 0; i < numRealCh; ++i)
-    {
-        if (realSpeakers[(size_t) i].isLfe) continue;
-        realDirs.push_back (realSpeakers[(size_t) i].direction);
-        realDirToFullIndex.push_back (i);
-    }
-
-    constexpr int numVirtual = 50;
-    const auto virtualDirs = SphericalHarmonicsUtils::fibonacciSphere (numVirtual);
-
-    // Ambisonics -> virtual array: a max-rE-weighted SH sampling decode
-    // (decode coefficients == encode coefficients for a real SH basis,
-    // reusing AmbisonicsEncoder rather than re-deriving/duplicating the
-    // same associated-Legendre-polynomial math -- the max-rE taper is
-    // applied on top, see maxReWeights()'s own comment on why it's
-    // required for this two-stage decode to stay directional at all).
-    const auto reWeights = SphericalHarmonicsUtils::maxReWeights (shHelper.getOrder());
-    std::vector<std::vector<float>> dVirtual (numVirtual, std::vector<float> ((size_t) numAmbiCh, 0.0f));
-    for (int m = 0; m < numVirtual; ++m)
-    {
-        const float az = std::atan2 (virtualDirs[(size_t) m].y, virtualDirs[(size_t) m].x);
-        const float el = std::asin (juce::jlimit (-1.0f, 1.0f, virtualDirs[(size_t) m].z));
-        std::vector<float> coeffs;
-        shHelper.computeShCoefficients (az, el, coeffs);
-        SphericalHarmonicsUtils::applyMaxReWeights (coeffs, reWeights);
-        dVirtual[(size_t) m] = coeffs;
-    }
-
-    // Virtual array -> real (LFE-free) speakers, via VBAP.
-    const auto regions = VBAP::triangulate (realDirs);
-    const int numRealDirs = (int) realDirs.size();
-    std::vector<std::vector<float>> gVbap ((size_t) numRealDirs, std::vector<float> ((size_t) numVirtual, 0.0f)); // [realDirIdx][virtualIdx]
-    for (int m = 0; m < numVirtual; ++m)
-    {
-        const auto gains = VBAP::computeGains (virtualDirs[(size_t) m], realDirs, regions);
-        for (int r = 0; r < numRealDirs; ++r)
-            gVbap[(size_t) r][(size_t) m] = gains[(size_t) r];
-    }
-
-    // Combine into one ambisonics -> real-speakers matrix: D_AllRAD = G_vbap * D_virtual.
-    decodeMatrix.assign ((size_t) numRealCh, std::vector<float> ((size_t) numAmbiCh, 0.0f)); // LFE row(s), if any, stay all-zero
-    for (int r = 0; r < numRealDirs; ++r)
-    {
-        const int fullIdx = realDirToFullIndex[(size_t) r];
-        for (int c = 0; c < numAmbiCh; ++c)
-        {
-            float sum = 0.0f;
-            for (int m = 0; m < numVirtual; ++m)
-                sum += gVbap[(size_t) r][(size_t) m] * dVirtual[(size_t) m][(size_t) c];
-            decodeMatrix[(size_t) fullIdx][(size_t) c] = sum;
-        }
-    }
-
-    // Per-speaker density compensation: the ACN-0 (W/omni) coefficient is
-    // direction-independent (identically 1.0 for any source direction), so
-    // its row-0 contribution above is effectively "how much of the dense,
-    // uniform virtual array's total surface this real speaker's VBAP
-    // regions cover" -- which is uneven for an irregular layout (e.g. in
-    // 5.1, C is flanked closely by L/R on both sides, so it structurally
-    // covers a much narrower azimuth span than L or R do, even though nothing
-    // about the actual source direction favors L/R). Left uncorrected, that
-    // coverage imbalance dominates the whole decode (the constant omni term
-    // swamps the comparatively small direction-dependent terms once summed
-    // over ~50 virtual points), making the decoder barely directional at
-    // all -- confirmed empirically while building this class. Dividing each
-    // real speaker's row by its own omni response equalizes that coverage
-    // bias while preserving the row's relative directional shape, which is
-    // what actually carries the panning information.
-    for (int r = 0; r < numRealDirs; ++r)
-    {
-        const int fullIdx = realDirToFullIndex[(size_t) r];
-        const float omniResponse = decodeMatrix[(size_t) fullIdx][0];
-        if (omniResponse > 1.0e-6f)
-            for (auto& v : decodeMatrix[(size_t) fullIdx])
-                v /= omniResponse;
-    }
-
-    calibrateDecodeMatrix (numAmbiCh);
+    const auto gains = VBAP::computeGains (unitDir, directPanRealDirs, directPanRegions);
+    for (size_t i = 0; i < gains.size() && i < directPanRealDirToFullIndex.size(); ++i)
+        fullGains[(size_t) directPanRealDirToFullIndex[i]] = gains[i];
+    return fullGains;
 }
 
 void AmbisonicsDecoder::calibrateDecodeMatrix (int numAmbiCh)
@@ -478,15 +413,37 @@ void AmbisonicsDecoder::decode (const juce::AudioBuffer<float>& ambiBuffer, juce
     // Simple one-pole low-pass of the W channel (ambisonics channel 0, the
     // omnidirectional pressure component) as a practical LFE proxy --
     // Ambisonics carries no dedicated LFE signal of its own, W is the
-    // closest thing to "the overall signal level" to derive one from.
+    // closest thing to "the overall signal level" to derive one from. See
+    // applyLfeLowPass()/applyLfeFilterDirect() for the shared filter this
+    // and the direct-pan modes' own LFE both go through.
+    applyLfeLowPass (ambiBuffer.getReadPointer (0), lfeDst, numSamples);
+}
+
+void AmbisonicsDecoder::applyLfeLowPass (const float* monoInput, float* lfeOutput, int numSamples)
+{
     // Cutoff ~120Hz, a conventional subwoofer crossover point. Same
     // one-pole exp(-2*pi*fc/fs) idiom as PropagationProcessor's own
     // air-absorption filter and SoundObject::orbitRadiusNoiseSmoothing.
-    const float* w = ambiBuffer.getReadPointer (0);
     const float coeff = std::exp (-2.0f * juce::MathConstants<float>::pi * 120.0f / (float) sampleRate);
     for (int i = 0; i < numSamples; ++i)
     {
-        lfeFilterState = coeff * lfeFilterState + (1.0f - coeff) * w[i];
-        lfeDst[i] = lfeFilterState;
+        lfeFilterState = coeff * lfeFilterState + (1.0f - coeff) * monoInput[i];
+        lfeOutput[i] = lfeFilterState;
     }
+}
+
+void AmbisonicsDecoder::applyLfeFilterDirect (const float* monoInput, float* lfeOutput, int numSamples)
+{
+    // See this method's own header comment -- the usesDirectPan()-mode
+    // equivalent of decode()'s own W-channel-derived LFE handling just
+    // above, sharing the same filter/state, fed a dry per-object sum
+    // (PluginProcessor's own lfeDrySumScratch) instead of the shared
+    // Ambisonics bus's W channel (which these modes never populate).
+    if (! bassManagementEnabled)
+    {
+        std::fill (lfeOutput, lfeOutput + numSamples, 0.0f);
+        return;
+    }
+
+    applyLfeLowPass (monoInput, lfeOutput, numSamples);
 }

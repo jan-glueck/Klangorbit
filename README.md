@@ -2,26 +2,27 @@
 
 Object-based Ambisonics encoder with a trajectory/physics engine, and an
 internal decoder to a selectable output format (toolbar -> "Output..." ->
-"Output Format", 14 formats, in dropdown order): Stereo (the default --
+"Output Format", 16 formats, in dropdown order): Stereo (the default --
 audible immediately, no external decoder needed), Binaural (HRTF-based
-headphone output, with a choice of bundled KEMAR/SADIE II datasets or a
-custom SOFA file -- see "Binaural (HRTF) output" below), Quad, Octophonic
-(a fixed, named 8-speaker circular array), Circular Array (a generic
-circular array, adjustable `numSpeakers` 4-24, for array sizes that have
-no established naming convention), 5.1, 7.1, one of four Dolby-Atmos-bed
-layouts (5.1.2/5.1.4/7.1.2/7.1.4), or raw Ambisonics B-format at one of
-three orders -- FOA/SOA/TOA (1st/2nd/3rd Order Ambisonics, 4/9/16ch,
+headphone output, with a choice of bundled KEMAR/SADIE II/KU100 datasets
+or a custom SOFA file -- see "Binaural (HRTF) output" below), Quad,
+Octophonic (a fixed, named 8-speaker circular array), Circular Array (a
+generic circular array, adjustable `numSpeakers` 4-24, for array sizes
+that have no established naming convention), 5.1, 7.1, one of four
+Dolby-Atmos-bed layouts (5.1.2/5.1.4/7.1.2/7.1.4), or raw Ambisonics
+B-format at one of five orders -- 1st through 5th (4/9/16/25/36ch,
 ACN/SN3D, AmbiX-compatible), for further processing in SPARTA
 (AmbiBIN/AmbiDEC) or the IEM Plugin Suite. Not a general "decode to any
 speaker array" tool -- only these fixed target formats. See
 `AmbisonicsDecoder.h` and the CHANGELOG entry for the decode method
-(AllRAD for irregular layouts, plain mode-matching for the regular
-circular ones, HRTF convolution for Binaural), and "Output formats:
-channel layouts and standards" below for the exact speaker angles/channel
-order and which layouts follow ITU-R BS.775-4/BS.2051-2. Octophonic and
-Circular Array are horizontal-only -- a circular array of speakers cannot
-reproduce elevation/height at all, a property of the array type, not a
-decoder limitation.
+(direct per-object VBAP panning for every real-speaker format except
+Stereo, which keeps its own simple 2-point Ambisonics decode; HRTF
+convolution for Binaural; no decoding at all for the raw Ambisonics
+outputs), and "Output formats: channel layouts and standards" below for
+the exact speaker angles/channel order and which layouts follow ITU-R
+BS.775-4/BS.2051-2. Octophonic and Circular Array are horizontal-only --
+a circular array of speakers cannot reproduce elevation/height at all, a
+property of the array type, not a decoder limitation.
 
 The whole simulation -- physics, panning, grain spawning, everything at
 control rate -- runs from a timer owned by `KlangorbitProcessor` itself,
@@ -64,43 +65,52 @@ Live input (up to 8 mono channels)
         |                                                   |
         v                                                   v
         +-------------------------> [AmbisonicsEncoder] <---+
-                                       generic SH computation (Legendre
-                                       recursion). Order 1-3 when the output
-                                       format IS raw Ambisonics; fixed at
-                                       order 3 (16ch) for every OTHER format,
-                                       regardless of its own final channel
-                                       count. Each SoundObject and each
-                                       active grain is encoded as its own
-                                       mono source with its own ramped gains.
+                                       Each SoundObject and each active
+                                       grain reaches this as its own mono
+                                       source with its own ramped gains --
+                                       which of its TWO methods gets called
+                                       depends on the Output Format:
                                             |
-                                            v
-                              Ambisonics B-format (4/9/16 channels)
-                                            |
-                                            v
-                          Output Format == raw Ambisonics?
-                             |                        |
-                            yes                        no
-                             |                        v
-                             |            [AmbisonicsDecoder]
-                             |               AllRAD (virtual dense array +
-                             |               VBAP remap) for IRREGULAR
-                             |               speaker layouts (Quad/5.1/7.1/
-                             |               Atmos), plain mode-matching SH
-                             |               decode straight to the real
-                             |               speakers for Stereo AND for
-                             |               REGULAR circular arrays
-                             |               (Octophonic/Circular Array --
-                             |               no irregularity for AllRAD to
-                             |               correct for there). Built once
-                             |               per mode switch, not per block.
-                             |                        |
-                             v                        v
-                     plugin output bus, channel count/layout per the
-                     selected Output Format (see AmbisonicsDecoder::
-                     outputChannelSetFor()) -- raw Ambisonics modes bypass
-                     AmbisonicsDecoder entirely (zero added overhead)
-                                            |
-                                            v
+                        +-------------------+-------------------+
+                        v                                       v
+        Output Format == raw Ambisonics?          Output Format == Stereo
+        encodeBlock(): generic SH                 or Binaural?
+        computation (Legendre recursion),         encodeBlock(): same SH
+        order 1-5 matching the selected           computation, fixed at
+        raw order                                 order 3 (16ch)
+                        |                                       |
+                        v                                       v
+                straight into the                    Ambisonics B-format
+                output buffer                             (16 channels)
+                (zero added overhead,                          |
+                no decoder involved)                           v
+                        |                          [AmbisonicsDecoder::decode()]
+                        |                          Binaural: BinauralDecoder's
+                        |                          own HRTF convolution.
+                        |                          Stereo: its own simple
+                        |                          2-point SH decode. Built
+                        |                          once per mode switch, not
+                        |                          per block.
+                        |                                       |
+                        |                                       v
+                        |                        plugin output bus, per the
+                        |                        selected Output Format
+                        |                                       |
+                        |          +----------------------------+
+                        |          |
+                        |          |    Output Format == Quad/Octophonic/
+                        |          |    CircularArray/5.1/7.1/an Atmos-bed
+                        |          |    variant?
+                        |          v
+                        |    panDirectBlock(): NO SH computation at all --
+                        |    gains come from AmbisonicsDecoder::
+                        |    computeDirectPanGains() (direct per-object
+                        |    VBAP pan, cached per mode/circular-speaker-
+                        |    count change, see the CHANGELOG), written
+                        |    straight into the output buffer. The shared
+                        |    B-format bus above is never touched for these.
+                        |                                       |
+                        v                                       v
         DAW / Max/MSP / SPARTA / IEM Suite, or straight to speakers/headphones
 ```
 
@@ -288,6 +298,14 @@ Output Format, in dropdown order. Verified directly against
 `Source/SpeakerLayouts.h` (the source of truth for every layout below,
 including its own citations) -- not summarized from memory.
 
+**Decode method** (separate from the angles below, which are unchanged):
+Quad/Octophonic/Circular Array/5.1/7.1/all four Atmos-bed layouts pan
+each object DIRECTLY to these real speakers via VBAP -- see the
+CHANGELOG's own entry for why (replaced an earlier shared-Ambisonics-bus
+decode that measured too diffuse). Stereo still uses its own simple
+2-point Ambisonics decode; Binaural and the raw Ambisonics outputs are
+unrelated to any of this (see their own sections below).
+
 - **Stereo** -- L/R at +-30 deg. ITU-R BS.775-4 (the same standard
   defining 5.1/7.1 below).
 - **Binaural (HRTF)** -- not a fixed loudspeaker layout; see "Binaural
@@ -335,11 +353,13 @@ including its own citations) -- not summarized from memory.
   top-rear L/R (12ch, `create7point1point4()`) -- the largest
   non-Ambisonics format, at Logic Pro's own channel ceiling (see the AU
   section above).
-- **FOA / SOA / TOA** (1st/2nd/3rd Order Ambisonics, 4/9/16ch) -- raw
-  B-format, no decoding at all: ACN channel ordering, SN3D normalization
-  (AmbiX-compatible). Not a loudspeaker layout -- feed an external
-  decoder (SPARTA AmbiDEC/AmbiBIN, IEM Plugin Suite) or one of the
-  formats above instead.
+- **FOA / SOA / TOA / 4th Order / 5th Order** (1st-5th Order Ambisonics,
+  4/9/16/25/36ch) -- raw B-format, no decoding at all: ACN channel
+  ordering, SN3D normalization (AmbiX-compatible). Not a loudspeaker
+  layout -- feed an external decoder (SPARTA AmbiDEC/AmbiBIN, IEM Plugin
+  Suite) or one of the formats above instead. 4th/5th order exist purely
+  for higher precision when decoding externally -- nothing in this
+  plugin's own decode paths uses them.
 
 All named layouts above (every format except Octophonic and Circular
 Array, which are deliberately generic/unnamed `discreteChannels()` buses
@@ -356,11 +376,15 @@ convolution, not the same thing as the plain 2-speaker `Stereo` format
 (no HRTF/head-related processing at all). Technique: the summed Ambisonics
 bus is first decoded to a dense, 50-point virtual loudspeaker array (the
 same `SphericalHarmonicsUtils::fibonacciSphere` point distribution and
-max-rE-weighted decode AllRAD already uses for the real-speaker formats
-above), then each virtual speaker's signal is convolved through that
-direction's own measured left/right head-related impulse response
-(`juce::dsp::Convolution`, one L/R pair per virtual speaker) and summed to
-the output. See `BinauralDecoder.h` for the full two-stage breakdown and
+max-rE-weighted decode this project's own shared `SphericalHarmonicsUtils.h`
+machinery already provides), then each virtual speaker's signal is
+convolved through that direction's own measured left/right head-related
+impulse response (`juce::dsp::Convolution`, one L/R pair per virtual
+speaker) and summed to the output. Unaffected by the direct-VBAP-pan
+change to the real-speaker formats (see the CHANGELOG) -- Binaural never
+went through `AmbisonicsDecoder`'s own decode path to begin with, see
+`BinauralDecoder.h`'s own class comment. See `BinauralDecoder.h` for the
+full two-stage breakdown and
 its own disclosed limitations (CPU cost not measured on real hardware,
 interaural delay not applied -- see "Known limitations" below).
 
@@ -1234,18 +1258,20 @@ Docs/WORKFLOW.md.
   channel count, not just `[minCircularSpeakers, maxCircularSpeakers]`).
 - **Circular arrays (Octophonic, Circular Array) are horizontal-only.**
   Neither can reproduce elevation/height content at all -- a property of
-  a flat ring of speakers, not something a better decoder could fix.
-  Circular Array additionally loses some spatial precision (more blur,
-  not incorrect direction) below 7 speakers, since the fixed internal
-  order-3 encode needs at least 7 evenly-spaced speakers for alias-free
-  circular-harmonic reconstruction -- see the CHANGELOG entry.
+  a flat ring of speakers, not something a better decoder could fix. Both
+  now pan each object directly via VBAP (see the CHANGELOG's "Quad/
+  Octophonic/CircularArray/..." entry) rather than a fixed-order SH-
+  sampling decode, so there's no alias-free minimum speaker count to
+  worry about anymore -- `minCircularSpeakers` (4) is purely a "does this
+  even form a meaningful array" floor, not a decode-quality one.
 - **Binaural (HRTF-based) output's CPU cost is not measured on real
   hardware in this environment.** `BinauralDecoder` runs 50 (virtual
   speakers) x 2 `juce::dsp::Convolution` instances every block -- 50 was
-  chosen to match AllRAD's own already-proven virtual-array density, not
-  independently profiled. Check the toolbar's CPU meter after switching
-  to Binaural; the constant is easy to tune down in `BinauralDecoder.h`
-  if it proves too costly on real hardware.
+  chosen as a "dense enough that the virtual array's own precision isn't
+  the limiting factor" density (see `BinauralDecoder.h`'s own class
+  comment), not independently profiled. Check the toolbar's CPU meter
+  after switching to Binaural; the constant is easy to tune down in
+  `BinauralDecoder.h` if it proves too costly on real hardware.
 - **Binaural interaural delay (ITD) is not applied -- a disclosed v1
   simplification.** `HrtfDataset::getFilter()`'s own per-ear delay
   outputs are measured but currently discarded; only the amplitude/

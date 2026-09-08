@@ -6,7 +6,105 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Changed
+- **Quad/Octophonic/CircularArray/5.1/7.1/all four Atmos-bed formats now
+  pan each object DIRECTLY to the real speakers (VBAP), instead of
+  decoding a shared, fixed-order-3 Ambisonics bus.** Reported and
+  measured by the user: panning a source exactly onto one speaker still
+  left the OPPOSITE speaker only ~18dB down in Quad and 7.1 -- much less
+  suppression than a sharp pan should give. Root cause, confirmed by
+  reading the actual decode math (the max-rE weighting and the AllRAD/
+  VBAP remap stage were both individually verified correct against their
+  own cited references -- this was not a bug in either): every real-
+  speaker format worked by encoding every object into a SHARED Ambisonics
+  bus fixed at order 3 (16ch) first, then decoding that ONE summed bus to
+  the real speakers once per block (AllRAD -- Zotter & Frank 2012 -- for
+  the irregular layouts; a plain SH-sampling decode for the regular
+  rings). Order-3 Ambisonics has a real, inherent beamwidth (~35-40deg)
+  -- even a mathematically correct decode of it spreads meaningful energy
+  across every real speaker once there are only a handful of them. This
+  is the fundamental resolution ceiling of a low, FIXED Ambisonics order
+  squeezed through few loudspeakers, not something a better remap
+  algorithm can fix.
+  - **Fix**: every one of these 9 formats now panning each object/grain
+    DIRECTLY to its own real speakers via VBAP (Pulkki 1997, `Source/
+    VBAP.h`, already used -- just not this way -- for AllRAD's own
+    virtual-array remap stage before), bypassing the shared Ambisonics
+    bus entirely. New `AmbisonicsDecoder::usesDirectPan(Mode)`,
+    `computeDirectPanGains(Vec3 direction)` (caches a VBAP triangulation
+    per mode/circular-speaker-count change, mirrors the old
+    `buildAllRadMatrix()`'s own `realDirs`/`realDirToFullIndex` pattern),
+    and `applyLfeFilterDirect()` (the direct-pan equivalent of `decode()`'s
+    own W-channel-derived LFE, sharing the same one-pole ~120Hz filter/
+    state -- these modes have no shared bus W channel to derive LFE from
+    anymore, so `KlangorbitProcessor::processBlock()` now sums every
+    active object/grain's own dry signal into a small mono scratch buffer
+    instead, same gain weighting as what feeds the pan). New
+    `AmbisonicsEncoder::panDirectBlock()` (a sibling to the existing
+    `encodeBlock()`, same ramped/additive-mix mechanics and
+    `distanceGain()` reuse, just fed caller-supplied VBAP gains instead of
+    this class's own SH coefficients) -- `AmbisonicsEncoder` needs no new
+    knowledge of `AmbisonicsDecoder`/`Mode`/VBAP to do this.
+  - **Measured effect**: for every migrated format, panning exactly onto
+    one speaker's own direction now gives that speaker ~1.0 gain and
+    EVERY other speaker ~0.0 (see `Tools/verify_ambisonics_decoder.cpp`'s
+    new direct-pan sharpness section) -- vs. the reported ~18dB
+    (~0.126 linear) worst-case leakage before.
+  - **Octophonic/CircularArray migrated too**, on the reporting user's own
+    request for an assessment: their old `buildCircularMatrix()` decode
+    didn't have AllRAD's specific "irregular VBAP coverage" diffuseness
+    mechanism (a regular ring has no coverage imbalance to correct for),
+    but was still a fixed order-3 SH-sampling decode with its own inherent
+    blur (worse for a small ring) -- direct VBAP is sharper regardless of
+    whether the array is regular or irregular.
+  - **`buildAllRadMatrix()`/`buildCircularMatrix()` removed entirely**
+    (100% dead once every mode that called them migrated) -- matches this
+    project's own established discipline against leaving unreachable code
+    whose documentation would now be actively wrong (the `rawModeForOrder()`
+    precedent, earlier this file). `AmbisonicsDecoder`'s class comment
+    rewritten to describe the new three-strategy split (raw passthrough /
+    Stereo's own simple decode, unchanged / direct VBAP pan for everything
+    else). Stereo, Binaural, and the raw Ambisonics passthrough outputs
+    are completely unaffected -- unchanged behavior.
+  - **Tradeoff, disclosed, not hidden**: these 9 formats are no longer
+    "true" diffuse-field Ambisonics decodes the way AllRAD was -- they're
+    now genuinely sharp, point-source-style panning instead, which is
+    what was actually wanted here, but is a real, intentional change in
+    character, not a side effect to double-check for.
+  - **Verification**: `Tools/verify_ambisonics_decoder.cpp` substantially
+    rewritten -- the direct-pan sharpness regression check described
+    above (this is the test that would have caught the reported
+    diffuseness had it existed before), LFE always gets exactly 0
+    direction-gain from `computeDirectPanGains()`, `applyLfeFilterDirect()`
+    silent/filtered correctly, `CircularArray`'s direct-pan setup tracks
+    `setCircularArraySpeakerCount()` across its full range. Full rebuild,
+    complete `verify_*`/`validate_presets` suite green, `auval -v aufx
+    Klor Jgck` re-run (confirms the AU-side bus/channel-count behavior for
+    every migrated mode is unaffected by the internal decode-strategy
+    swap -- Logic's own bus negotiation logic doesn't know or care how the
+    decode itself is computed). This is a real, audible DSP character
+    change the user's own ears still need to confirm once built --
+    sharper localization is the direct, intended goal here, not
+    incidental.
 ### Added
+- **Two new raw Ambisonics output options: 4th order (25ch) and 5th
+  order (36ch)**, alongside the existing FOA/SOA/TOA (1st/2nd/3rd order)
+  -- for higher precision when decoding externally via a third-party tool
+  (IEM Plugin Suite, SPARTA). Purely additive and low-risk: the existing
+  raw-passthrough architecture already generalized to any order with zero
+  pipeline changes needed (`AmbisonicsEncoder::setOrder()` was already
+  order-agnostic up to 7; the per-object gain-ramp state was already
+  sized generically off `encoder.getNumChannels()`; raw passthrough
+  already bypasses the shared Ambisonics bus entirely, encoding straight
+  into the output buffer). `AmbisonicsDecoder::Mode` gained
+  `AmbisonicsRawOrder4`/`AmbisonicsRawOrder5`, appended after
+  `AmbisonicsRawOrder3` (preserves every existing mode's own ordinal
+  value); `numModes` 14 -> 16. Two new "Output Format" dropdown entries.
+  Excluded from AU automatically (same as orders 1-3 -- `discreteChannels(N)`
+  has no Logic-recognizable layout tag, and 25/36ch is far beyond Logic's
+  12ch ceiling regardless); available for VST3/Standalone automatically
+  (the existing generic bus-negotiation loop needed no changes, just the
+  `numModes` bump).
 - **Real DAW-automatable parameters (AU/VST3/Standalone alike) -- 493 of
   them.** Reported: "no parameter automation can be written" in Logic
   (AU). Root cause: not a bug, a genuine, disclosed architectural gap --

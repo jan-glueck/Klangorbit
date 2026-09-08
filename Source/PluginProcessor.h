@@ -462,8 +462,19 @@ private:
     juce::AudioBuffer<float> ambiScratch;
     static constexpr int ambiScratchChannels = 16;
 
-    // Per-object persistent gain state for zipper-free ramping
+    // Per-object persistent gain state for zipper-free ramping (SH-space --
+    // only meaningful while the active mode is NOT
+    // AmbisonicsDecoder::usesDirectPan(), see previousSpeakerGainsPerObject
+    // below for that case instead).
     std::vector<std::vector<float>> previousGainsPerObject;
+
+    // Direct-pan sibling of previousGainsPerObject above -- real-speaker-
+    // space (sized to AmbisonicsDecoder::numOutputChannels(mode), not
+    // encoder.getNumChannels()), used by AmbisonicsEncoder::panDirectBlock()
+    // for AmbisonicsDecoder::usesDirectPan() modes instead of
+    // encoder.encodeBlock()/previousGainsPerObject. Reset alongside
+    // previousGainsPerObject in setDecoderMode() whenever the mode changes.
+    std::vector<std::vector<float>> previousSpeakerGainsPerObject;
 
     // Per-object smoothed solo/mute multiplier (0..1), ramped a fixed
     // amount per block toward 1 (audible) or 0 (silent) rather than
@@ -522,13 +533,26 @@ private:
         // playbackRate block-to-block). Reset to bufferReadStartSample when
         // lastSeenGeneration changes (a new grain spawned into this slot).
         double readPosition = 0.0;
-        std::vector<float> previousChannelGains;
+        std::vector<float> previousChannelGains; // SH-space, see PluginProcessor::previousGainsPerObject's own comment
+        std::vector<float> previousSpeakerGains; // real-speaker-space, see PluginProcessor::previousSpeakerGainsPerObject's own comment
     };
     std::vector<std::vector<GrainAudioState>> grainAudioState; // [objectIndex][grainPoolSlot]
     // Scratch for rendering one grain's windowed, pitch-shifted mono
     // signal at a time before encoding -- reused serially within a block,
     // sized once in prepareToPlay.
     juce::AudioBuffer<float> grainScratch;
+
+    // Mono scratch, accumulated into (ONLY while the active mode is
+    // AmbisonicsDecoder::usesDirectPan() AND has an LFE channel) from both
+    // the main object loop and the grain loop -- every active object/
+    // grain's own dry signal, same gain weighting as what feeds its pan,
+    // summed into one channel instead of panned. Fed to
+    // AmbisonicsDecoder::applyLfeFilterDirect() once per block, replacing
+    // the W-channel-derived LFE decode()'s own decodeMatrix path uses (see
+    // both of their own comments) -- direct-pan modes never populate a
+    // shared Ambisonics bus to derive that from. Sized once in
+    // prepareToPlay, like grainScratch/propagationScratch above.
+    juce::AudioBuffer<float> lfeDrySumScratch;
 
     double currentSampleRate = 48000.0;
 

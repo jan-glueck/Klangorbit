@@ -117,6 +117,9 @@ KlangorbitProcessor::KlangorbitProcessor()
     previousGainsPerObject.resize ((size_t) numLiveInputs);
     for (auto& g : previousGainsPerObject)
         g.assign ((size_t) encoder.getNumChannels(), 0.0f);
+    previousSpeakerGainsPerObject.resize ((size_t) numLiveInputs);
+    for (auto& g : previousSpeakerGainsPerObject)
+        g.assign ((size_t) AmbisonicsDecoder::numOutputChannels (decoder.getMode(), decoder.getCircularArraySpeakerCount()), 0.0f);
 
     muteRampGain.assign ((size_t) numLiveInputs, 1.0f); // start unmuted/audible
     sourceMuteRampGain.assign ((size_t) numLiveInputs, 1.0f);
@@ -255,8 +258,11 @@ void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     ambiScratch.setSize (ambiScratchChannels, samplesPerBlock);
 
+    const int numRealSpeakerCh = AmbisonicsDecoder::numOutputChannels (decoder.getMode(), decoder.getCircularArraySpeakerCount());
     for (auto& g : previousGainsPerObject)
         g.assign ((size_t) encoder.getNumChannels(), 0.0f);
+    for (auto& g : previousSpeakerGainsPerObject)
+        g.assign ((size_t) numRealSpeakerCh, 0.0f);
 
     for (auto& p : propagationPerObject)
         p.prepare (sampleRate, samplesPerBlock);
@@ -284,10 +290,12 @@ void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
             state.lastSeenGeneration = -1;
             state.samplesPlayed = 0;
             state.previousChannelGains.assign ((size_t) encoder.getNumChannels(), 0.0f);
+            state.previousSpeakerGains.assign ((size_t) numRealSpeakerCh, 0.0f);
         }
     }
 
     grainScratch.setSize (1, samplesPerBlock);
+    lfeDrySumScratch.setSize (1, samplesPerBlock);
 }
 
 void KlangorbitProcessor::releaseResources() {}
@@ -527,12 +535,20 @@ void KlangorbitProcessor::setDecoderMode (AmbisonicsDecoder::Mode newMode)
         prepareBinauralDecoder();
 
     // A changed Ambisonics order invalidates any in-flight gain ramp
-    // target -- reset rather than resize-and-keep.
+    // target -- reset rather than resize-and-keep. Same for the
+    // direct-pan (real-speaker-space) ramp state below, whenever the new
+    // mode's own real speaker count differs from the old one's.
+    const int numRealSpeakerCh = AmbisonicsDecoder::numOutputChannels (newMode, decoder.getCircularArraySpeakerCount());
     for (auto& g : previousGainsPerObject)
         g.assign ((size_t) encoder.getNumChannels(), 0.0f);
+    for (auto& g : previousSpeakerGainsPerObject)
+        g.assign ((size_t) numRealSpeakerCh, 0.0f);
     for (auto& perObject : grainAudioState)
         for (auto& state : perObject)
+        {
             state.previousChannelGains.assign ((size_t) encoder.getNumChannels(), 0.0f);
+            state.previousSpeakerGains.assign ((size_t) numRealSpeakerCh, 0.0f);
+        }
 
     // AU: never request a new output channel COUNT after the initial
     // negotiation -- Logic fixes that once, at insertion (see
@@ -584,14 +600,24 @@ void KlangorbitProcessor::setCircularArraySpeakerCount (int n)
     if (clamped == decoder.getCircularArraySpeakerCount())
         return;
 
-    decoder.setCircularArraySpeakerCount (clamped); // rebuilds the decode matrix live if CircularArray is already active
+    decoder.setCircularArraySpeakerCount (clamped); // rebuilds the direct-pan setup live if CircularArray is already active
 
-    // Only CircularArray's own output channel count depends on this --
-    // the encoder side (ambiScratch, gain-ramp state) stays fixed at
-    // order 3 regardless, so unlike setDecoderMode() above there is no
-    // ramp state to reset here.
+    // Only CircularArray's own output channel count depends on this -- the
+    // SH-space encoder side (ambiScratch, previousGainsPerObject) stays
+    // fixed at order 3 regardless, so unlike setDecoderMode() above there
+    // is no SH-space ramp state to reset here. The real-speaker-space
+    // direct-pan ramp state DOES depend on it though (CircularArray always
+    // uses direct pan, see AmbisonicsDecoder::usesDirectPan()) -- reset
+    // that the same way setDecoderMode() does, same "changed channel count
+    // invalidates an in-flight ramp target" reasoning.
     if (decoder.getMode() != AmbisonicsDecoder::Mode::CircularArray)
         return;
+
+    for (auto& g : previousSpeakerGainsPerObject)
+        g.assign ((size_t) clamped, 0.0f);
+    for (auto& perObject : grainAudioState)
+        for (auto& state : perObject)
+            state.previousSpeakerGains.assign ((size_t) clamped, 0.0f);
 
     // Same best-effort bus renegotiation as setDecoderMode() -- see its comment.
     auto layouts = getBusesLayout();
@@ -693,13 +719,37 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     // Raw passthrough modes encode straight into the output buffer, exactly
     // as before this decoder feature existed (zero added overhead, see
-    // AmbisonicsDecoder's class comment). Every other mode encodes into
-    // ambiScratch instead, decoded down to the real output once both
-    // rendering passes below are done.
+    // AmbisonicsDecoder's class comment). usesDirectPan() modes ALSO encode
+    // straight into the output buffer -- each object/grain is panned
+    // directly to the real speakers via AmbisonicsEncoder::panDirectBlock(),
+    // bypassing the shared Ambisonics bus entirely (see AmbisonicsDecoder's
+    // own class comment for why: sharper localization than decoding a
+    // fixed, low Ambisonics order down to a handful of real speakers can
+    // give). Every other mode (Stereo, Binaural) still encodes into
+    // ambiScratch, decoded down to the real output once both rendering
+    // passes below are done. buffer.clear() above already covers the
+    // direct-pan case too -- no extra silence-fill needed the way
+    // AmbisonicsDecoder::decode() needs its own (that one OVERWRITES
+    // without assuming a prior clear; this path is purely additive from an
+    // already-cleared buffer).
     const bool rawPassthrough = AmbisonicsDecoder::isRawPassthrough (decoder.getMode());
-    juce::AudioBuffer<float>& encodeTarget = rawPassthrough ? buffer : ambiScratch;
-    if (! rawPassthrough)
+    const bool directPan = AmbisonicsDecoder::usesDirectPan (decoder.getMode());
+    juce::AudioBuffer<float>& encodeTarget = (rawPassthrough || directPan) ? buffer : ambiScratch;
+    if (! rawPassthrough && ! directPan)
         ambiScratch.clear();
+
+    // Only accumulate the direct-pan LFE dry-sum when it'll actually be
+    // used (directPan mode AND that mode has an LFE channel) -- skip the
+    // extra per-sample add entirely otherwise, same "don't pay for what
+    // isn't active" reasoning as the rest of this function.
+    const int directPanLfeIdx = directPan ? AmbisonicsDecoder::lfeChannelIndexFor (decoder.getMode()) : -1;
+    const bool needsDirectLfe = directPanLfeIdx >= 0;
+    float* lfeDrySum = nullptr;
+    if (needsDirectLfe)
+    {
+        lfeDrySum = lfeDrySumScratch.getWritePointer (0);
+        std::fill (lfeDrySum, lfeDrySum + numSamples, 0.0f);
+    }
 
     std::vector<TrajectoryEngine::Snapshot> snapshot;
     trajectoryEngine.getSnapshot (snapshot);
@@ -814,12 +864,29 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         float azimuth, elevation, distance;
         cartesianToSpherical (snapshot[(size_t) objIdx].position, azimuth, elevation, distance);
 
-        encoder.encodeBlock (propagated,
-                              numSamples,
-                              azimuth, elevation, distance,
-                              obj.gain * directivityGain * ramp * sourceRamp,
-                              encodeTarget,
-                              previousGainsPerObject[(size_t) objIdx]);
+        const float totalObjectGain = obj.gain * directivityGain * ramp * sourceRamp;
+
+        if (directPan)
+        {
+            const auto speakerGains = decoder.computeDirectPanGains (snapshot[(size_t) objIdx].position);
+            encoder.panDirectBlock (propagated, numSamples, speakerGains, distance, totalObjectGain,
+                                     encodeTarget, previousSpeakerGainsPerObject[(size_t) objIdx]);
+            if (needsDirectLfe)
+            {
+                // Same distance weighting the pan itself gets (see
+                // AmbisonicsEncoder::getDistanceGain()'s own comment) --
+                // LFE has no direction, but should still fade with distance
+                // like everything else.
+                const float lfeGain = totalObjectGain * encoder.getDistanceGain (distance);
+                for (int i = 0; i < numSamples; ++i)
+                    lfeDrySum[i] += propagated[i] * lfeGain;
+            }
+        }
+        else
+        {
+            encoder.encodeBlock (propagated, numSamples, azimuth, elevation, distance, totalObjectGain,
+                                  encodeTarget, previousGainsPerObject[(size_t) objIdx]);
+        }
     }
 
     // --- GrainCloud rendering ------------------------------------------
@@ -885,6 +952,7 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                 state.samplesPlayed = 0;
                 state.readPosition = (double) snap.bufferReadStartSample;
                 std::fill (state.previousChannelGains.begin(), state.previousChannelGains.end(), 0.0f);
+                std::fill (state.previousSpeakerGains.begin(), state.previousSpeakerGains.end(), 0.0f);
             }
 
             if (state.samplesPlayed >= snap.grainLengthSamples)
@@ -905,17 +973,43 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             float azimuth, elevation, distance;
             cartesianToSpherical (snap.position, azimuth, elevation, distance);
 
-            encoder.encodeBlock (grainOut, numSamples, azimuth, elevation, distance,
-                                  obj.gain * muteRamp, encodeTarget, state.previousChannelGains);
+            const float totalGrainGain = obj.gain * muteRamp;
+
+            if (directPan)
+            {
+                const auto speakerGains = decoder.computeDirectPanGains (snap.position);
+                encoder.panDirectBlock (grainOut, numSamples, speakerGains, distance, totalGrainGain,
+                                         encodeTarget, state.previousSpeakerGains);
+                if (needsDirectLfe)
+                {
+                    const float lfeGain = totalGrainGain * encoder.getDistanceGain (distance);
+                    for (int i = 0; i < numSamples; ++i)
+                        lfeDrySum[i] += grainOut[i] * lfeGain;
+                }
+            }
+            else
+            {
+                encoder.encodeBlock (grainOut, numSamples, azimuth, elevation, distance,
+                                      totalGrainGain, encodeTarget, state.previousChannelGains);
+            }
         }
     }
 
     // Decode ambiScratch down to the real output bus -- skipped entirely
-    // for raw passthrough modes, which already wrote straight into buffer
-    // above. Binaural is decoded via the separate binauralDecoder (HRTF
-    // convolution, not part of AmbisonicsDecoder -- see both classes' own
-    // comments), every other decoded mode via decoder.decode() as before.
-    if (! rawPassthrough)
+    // for raw passthrough modes and usesDirectPan() modes, both of which
+    // already wrote straight into buffer above (the latter still needs its
+    // LFE channel populated here, from the dry sum accumulated during both
+    // rendering passes above, since it has no shared Ambisonics bus to
+    // derive one from the way decode() does). Binaural is decoded via the
+    // separate binauralDecoder (HRTF convolution, not part of
+    // AmbisonicsDecoder -- see both classes' own comments); Stereo is the
+    // only mode left going through decoder.decode() now.
+    if (directPan)
+    {
+        if (needsDirectLfe && directPanLfeIdx < buffer.getNumChannels()) // defensive -- see decode()'s own identical reasoning for AU's wider-than-mode bus case
+            decoder.applyLfeFilterDirect (lfeDrySum, buffer.getWritePointer (directPanLfeIdx), numSamples);
+    }
+    else if (! rawPassthrough)
     {
         if (decoder.getMode() == AmbisonicsDecoder::Mode::Binaural)
             binauralDecoder.decode (ambiScratch, buffer, numSamples);

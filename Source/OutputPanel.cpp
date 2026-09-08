@@ -42,6 +42,8 @@ OutputPanel::OutputPanel()
     decoderModeRow->combo.addItem ("FOA (1st Order Ambisonics, 4ch)", 12);
     decoderModeRow->combo.addItem ("SOA (2nd Order Ambisonics, 9ch)", 13);
     decoderModeRow->combo.addItem ("TOA (3rd Order Ambisonics, 16ch)", 14);
+    decoderModeRow->combo.addItem ("4th Order Ambisonics (25ch)", 15);
+    decoderModeRow->combo.addItem ("5th Order Ambisonics (36ch)", 16);
     decoderModeRow->onSelected = [this] (int index)
     {
         if (decoderProcessor != nullptr)

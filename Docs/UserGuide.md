@@ -630,3 +630,33 @@ trigger/button message (no arguments) binds as a button.
 
 There's no on-screen indicator yet for MIDI/OSC connection status, and
 no UI yet to change the OSC port from its default.
+
+## 19. DAW automation
+
+Separate from -- and complementary to -- the gamepad/MIDI/OSC Learn-mode
+mapping in sections 16-18: every field exposed there is ALSO a real,
+host-automatable parameter, in AU, VST3, and Standalone alike. Draw or
+record automation for any object's Mass, Gain, Attraction, Orbit,
+Doppler, or Grain Cloud parameters, or any scene-wide parameter, directly
+in the host's own automation lanes -- 493 parameters total, grouped in
+the host's parameter picker as "Object 1".."Object 8" (each subgrouped by
+category: Object Physics/Attraction/Orbit/Doppler/Grain Cloud) plus one
+"Global" group.
+
+- Automatable: exactly the fields the Mappings window's Learn mode
+  already exposes for a SPECIFIC object slot or globally. NOT
+  automatable: "whichever object is currently selected" style bindings
+  (a host automation lane needs a fixed target, not one that changes
+  depending on the current selection), enum-valued settings (Movement
+  Mode, Output Format, etc.), and pure runtime physics state (position,
+  velocity).
+- Writing automation into these parameters genuinely changes the sound --
+  they read/write the exact same fields the parameter panel, gamepad,
+  and MIDI/OSC mapping already do.
+- Manual tweaks in Klangorbit's own GUI/gamepad/MIDI/OSC controls do NOT
+  themselves get recorded as host automation -- only automation the host
+  itself plays back or writes shows up. Recording a manual mouse drag as
+  automation isn't supported yet.
+- Session save/reload in the host now actually preserves the whole scene
+  (previously it did not) -- see the CHANGELOG for the "DAW automation"
+  entry and its own reasoning.

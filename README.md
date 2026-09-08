@@ -180,10 +180,12 @@ from `CMakeLists.txt`.) `auval` isn't run automatically as part of the
 CMake build -- run it manually after building/reinstalling the AU, or
 whenever `Klangorbit_AU` changes.
 
-AU bus flexibility (input AND output): unlike VST3/Standalone (still a
-fixed 8-channel discrete "Live Inputs" bus, matching the existing Reaper
-workflow), the AU build's input bus accepts Mono, Stereo, Quad, or 7.1
-(1/2/4/8 channels) -- whichever matches the Logic track/bus you insert
+AU bus flexibility (input AND output): unlike Standalone (still a fixed
+8-channel discrete "Live Inputs" bus, matching the existing Reaper
+workflow -- Standalone negotiates channels against the audio device
+directly, not VST3's `SpeakerArrangement` wire format, so it never had a
+reason to change), the AU build's input bus accepts Mono, Stereo, Quad, or
+7.1 (1/2/4/8 channels) -- whichever matches the Logic track/bus you insert
 Klangorbit on, negotiated automatically by Logic itself, no in-plugin
 control. This exists because Logic filters which tracks a plugin can even
 be inserted on by channel format, and the plugin's original fixed
@@ -191,7 +193,11 @@ be inserted on by channel format, and the plugin's original fixed
 the CHANGELOG entry for the full diagnosis (via JUCE's own AU wrapper
 source). Objects beyond the currently negotiated input channel count
 simply have no live audio (same mechanism already used for any inactive
-object). One practical consequence for Logic specifically: gravity/
+object). VST3 starts at Stereo input too now (2ch, not the original
+8-discrete default) -- a related but separate fix, see the CHANGELOG's
+second "VST3 output stuck at Stereo" follow-up entry -- but can still be
+widened up to the full 8 channels by the host's own routing, same as
+before. One practical consequence for Logic specifically: gravity/
 attraction between objects in DIFFERENT Klangorbit instances (e.g. one
 instance per Logic track) doesn't work -- each instance's own physics
 simulation is completely independent, with no cross-instance
@@ -1280,13 +1286,34 @@ Docs/WORKFLOW.md.
   channel count, not just `[minCircularSpeakers, maxCircularSpeakers]`).
   Each mode's layout is matched two ways in `isBusesLayoutSupported()`:
   its own NAMED `AudioChannelSet` (e.g. `create7point1()`) OR a plain
-  `discreteChannels()` of the same count -- Reaper's own multichannel
-  track routing is channel-count based, not "assign a named surround
-  format", so it offers the latter, which a named-only match used to
-  reject outright (reported: widening the track's channel count still
-  left the plugin stuck at Stereo). See the CHANGELOG's follow-up entry.
-  Not independently confirmed against a live VST3 host in this
-  environment -- needs the reporting user's own re-test.
+  `discreteChannels()` of the same count.
+
+  A deeper root cause behind the same "stuck at Stereo" symptom, found
+  with a purpose-built VST3-host-in-the-loop diagnostic
+  (`Tools/vst3_bus_probe.cpp`, loads the actual built `.vst3` via JUCE's
+  own hosting code and drives the real VST3 ABI) rather than source
+  reading alone: `AudioChannelSet::discreteChannels(N)` for `N > 1` has NO
+  valid VST3 `SpeakerArrangement` representation at all. VST3 negotiates
+  input AND output buses together in one call, and this plugin's INPUT
+  bus (`makeBusLayout()`'s 8-channel "Live Inputs") used exactly that
+  unrepresentable identity -- so ANY renegotiation that resent the current
+  input arrangement alongside a wider OUTPUT request (the standard way a
+  host preserves a bus it isn't touching) failed at the input side before
+  the output request was ever considered, independent of Output Format or
+  DAW. The constructor now also switches VST3 instances (not Standalone,
+  which never goes through this wire format) to a `stereo()` input bus at
+  startup, the same move already made for AU; raw Ambisonics Order 1-5
+  switched from `discreteChannels(N)` to `AudioChannelSet::ambisonic(order)`
+  for the same reason. Verified via `vst3_bus_probe` actually negotiating
+  Quad/5.1/7.1/Atmos/every raw-Ambisonics order successfully against the
+  real compiled plugin binary (not just in-process). Octophonic/Circular
+  Array remain unfixable this way -- no VST3-representable named
+  equivalent exists for either -- confirmed still failing via the same
+  tool; a real, disclosed limitation. See the CHANGELOG's second follow-up
+  entry for the full trace. This is meaningfully stronger evidence than
+  the two earlier, source-reading-only attempts, but still not a live
+  Reaper session (unavailable in this environment) -- needs the reporting
+  user's own re-test.
 - **Circular arrays (Octophonic, Circular Array) are horizontal-only.**
   Neither can reproduce elevation/height content at all -- a property of
   a flat ring of speakers, not something a better decoder could fix. Both

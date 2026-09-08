@@ -233,6 +233,46 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
     exercise) -- verified by full rebuild, the complete `verify_*`/
     `validate_presets` suite, and `auval` (which calls both from its own
     thread context without failure).
+- **Object Position (X/Y/Z) is now a real parameter: shown/settable in
+  the parameter panel's Object category and, unlike every other runtime
+  physics field, host-automatable.** Requested alongside the mouse
+  height-drag below, since Position is what that new drag axis (and
+  automation) both need to actually control. `registerObjectPositionParam()`
+  (`Source/PluginProcessor.cpp`) registers it through the same
+  `ParameterRegistry` path as every other automatable field, but with a
+  write side effect the generic `registerObjectVec3Param()` can't
+  express: writing any axis also forces the object into `Mode::Manual`
+  (and clears `manualVelocityActive`), exactly what
+  `TrajectoryEngine::beginDrag()`/`dragTo()` already do for a mouse drag
+  -- otherwise the very next physics tick would silently overwrite the
+  automated value if the object was in Orbit/Impulse/Attracted at the
+  time. Adds 24 new automation parameters (3 axes x 8 object slots),
+  bringing the DAW automation total from 493 to **517** (`auval`'s own
+  "# Global Scope Parameters" count, re-verified). `ParameterPanel`'s new
+  `positionRow` (top of the Object category, above Mass) is likewise a
+  custom-setter `Vec3RowComponent`, not the generic `addObjectVec3Row()`
+  helper, for the same reason -- and like every other row in that panel,
+  it is only refreshed on selection change/preset load (not on a timer,
+  by the panel's own long-standing design -- see its class comment), so
+  it goes visibly stale while the object moves under Orbit/Impulse/
+  Attracted; a disclosed limitation, not a bug.
+- **Mouse object-drag can now move height (Z), not just the ground plane
+  (X/Y).** Reported: dragging with the mouse was 2D-only ("Panning mit
+  Maus ist nur in einer 2D Ebene"), height only ever changed through
+  physics (orbit planes, global field, n-body forces). Root cause:
+  `PluginEditor::screenToGroundWorld()` always raycasts onto the world's
+  z=0 plane by construction -- there was no path to any other z at all.
+  **Fix**: holding **Alt** while dragging an object now switches
+  `mouseDrag()` to a height-only mode instead of the ground-plane
+  raycast: X/Y stay exactly where they are, and vertical mouse movement
+  alone moves Z, scaled to world meters via the object's own on-screen
+  size at its current camera depth (`Camera3D::worldSizeToScreenSize()`)
+  so it feels proportional at any zoom level, same as the existing
+  ground-plane drag already does. Ctrl/Alt/Shift/Tab were confirmed free
+  during a plain (non-sling) drag before picking Alt -- all four are
+  otherwise scoped exclusively to the Shift-triggered sling gesture
+  (`updateSlingModifiers()`, gated by `slingActive`), so this has zero
+  interaction with that gesture.
 ### Fixed
 - **VST3/Standalone stuck at Stereo (2ch) regardless of which Output
   Format is selected, reported across multiple DAWs.** Root cause: two

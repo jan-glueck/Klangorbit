@@ -20,7 +20,10 @@
     rendering path, not a separate 2D/3D mode.
 
     - Left-click on an object: select it (parameters appear in the panel on the right)
-    - Left-click+drag on an object: manual movement (Mode::Manual), on the world's ground plane (z=0)
+    - Left-click+drag on an object: manual movement (Mode::Manual), on the
+      world's ground plane (z=0). Hold Alt while dragging to move along the
+      height (Z) axis instead -- X/Y stay fixed, only vertical mouse
+      movement counts. See mouseDrag()/screenToGroundWorld().
     - Release with momentum: impulse (Mode::Impulse) -- simple throw gesture
     - Double-click on an object: start/stop an orbit around the origin (demo)
     - Shift+left-click+drag on an object: "sling" launch gesture -- pull the

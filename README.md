@@ -479,7 +479,14 @@ not saved in a preset, see "Presets" and the Known Limitations note on
   parameters of the object selected in the scene view, as well as the
   scene parameters. Writes directly to the engine, no preset file needed
   to try things out. Full field reference including defaults in
-  `Presets/schema/README.md`.
+  `Presets/schema/README.md`. **Position** (top of the Object category) is
+  a real, host-automatable X/Y/Z parameter (see "DAW automation" below),
+  not just a display -- setting it switches the object into Manual mode
+  the same way a mouse drag does, so nothing else (orbit, physics, an
+  active preset) fights the write on the next tick. Like every other row
+  here it's only refreshed on selection change/preset load, not live, so
+  it goes stale while the object moves on its own and doesn't track
+  Orbit/Impulse/Attracted motion in real time.
 - **Object list** (left side of the editor window, `Source/ObjectListPanel.h/.cpp`):
   lists every currently active object by id, click a row to select it --
   an alternative to clicking the object directly in the scene view, for
@@ -532,6 +539,15 @@ away from it is purely additive.
   instead of the old fixed screen<->world formula -- works the same as
   before at the default top-down framing, and correctly follows the
   cursor at any camera angle/zoom.
+- **Alt+drag moves height (Z) instead.** Holding Alt while dragging an
+  object switches from the ground-plane raycast above to a height-only
+  drag: X/Y stay exactly where they are, and vertical mouse movement
+  raises/lowers the object, scaled to world meters via the object's own
+  on-screen size at its current camera depth
+  (`Camera3D::worldSizeToScreenSize()`) so it feels proportional at any
+  zoom level, same as the ground-plane drag. The only way to reach the
+  3rd axis with the mouse, since a plain drag's ground-plane raycast can
+  never leave z=0.
 - **Depth sorting.** Objects and grains are projected, sorted back-to-front
   by camera-space depth, and drawn in that order each frame
   (`PluginEditor::paint()`) so nearer things correctly draw over farther
@@ -850,7 +866,7 @@ mapping system above: every registered `ParameterRegistry` field (see
 `Source/AutomationParameterBridge.h/.cpp`). Draw/write automation for any
 object's Mass, Gain, Attraction, Orbit, Doppler, or Grain Cloud parameters,
 or any scene-wide (Global) parameter, in the host's own automation lanes --
-493 parameters in total, grouped in the host's parameter picker as
+517 parameters in total, grouped in the host's parameter picker as
 `"Object 1".."Object 8"` (each subgrouped by category: Object Physics/
 Attraction/Orbit/Doppler/Grain Cloud) plus one `"Global"` group.
 
@@ -863,9 +879,16 @@ Attraction/Orbit/Doppler/Grain Cloud) plus one `"Global"` group.
   retargets which object it resolves to).
 - **What's not (yet) automatable**: enum-valued fields (`SoundObject::mode`,
   `GrainCloudSettings::movementMode`, etc. -- a single float range doesn't
-  naturally fit a fixed choice of N options) and pure runtime physics state
-  (position, velocity, etc.) -- same exclusions `ParameterRegistry` itself
-  already makes, for the same reasons.
+  naturally fit a fixed choice of N options) and most runtime physics state
+  (velocity, orbit phase, etc.) -- same exclusions `ParameterRegistry`
+  itself already makes, for the same reasons. **Position (X/Y/Z) is the
+  one exception**: it's registered via `registerObjectPositionParam()`
+  (`Source/PluginProcessor.cpp`), which -- unlike a plain field write --
+  also forces the object into `Mode::Manual` (clearing
+  `manualVelocityActive`) on every write, exactly what a mouse drag
+  already does, so automation actually controls the object instead of
+  being overwritten by whatever mode it was in on the very next physics
+  tick.
 - **Writing automation into these parameters DOES change the actual sound**
   -- they delegate straight through to the same fields the parameter panel/
   gamepad/MIDI/OSC already read and write, no separate storage.
@@ -1205,11 +1228,10 @@ Docs/WORKFLOW.md.
   The zoom distance bounds (1..150m) and the sling movement preview added
   alongside it are likewise verified mathematically/by build+run stability
   only, not by eye.
-- **Object dragging is still constrained to the ground plane (z=0)**,
-  now via a camera ray cast onto that plane rather than a fixed formula
-  (see "3D camera view" above) -- there's no way to drag an object's
-  height directly with the mouse yet (it still only changes through
-  physics: orbit planes, global field, n-body forces, etc.).
+- **Plain object dragging happens on the ground plane (z=0)**, via a
+  camera ray cast onto that plane (see "3D camera view" above). Holding
+  Alt while dragging switches to height-only movement instead (X/Y fixed,
+  vertical mouse motion moves Z) -- see "Mouse & Camera" below.
 - **Mapping-panel "profile status" doesn't reflect the profile loaded
   automatically at startup.** `KlangorbitProcessor`'s constructor loads
   `MappingProfiles/factory/default.json` directly into `MappingEngine`

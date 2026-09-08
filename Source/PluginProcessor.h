@@ -333,6 +333,19 @@ private:
                                    Vec3 SoundObject::* member, float minValue, float maxValue,
                                    ParameterRegistry::Polarity polarity = ParameterRegistry::Polarity::Bipolar);
 
+    // Like registerObjectVec3Param(), but specifically for SoundObject::
+    // position: unlike every other Vec3 field, writing position must also
+    // force the object into Mode::Manual (and clear manualVelocityActive)
+    // so TrajectoryEngine::update()'s per-mode integrator doesn't overwrite
+    // the just-written value on the very next physics tick -- exactly what
+    // TrajectoryEngine::beginDrag()/dragTo() already do for a mouse drag
+    // (see TrajectoryEngine.cpp). registerObjectVec3Param()'s plain
+    // member-pointer read/write can't express that side effect, hence this
+    // separate, position-only helper rather than a flag on the generic one.
+    void registerObjectPositionParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                       float minValue, float maxValue,
+                                       ParameterRegistry::Polarity polarity = ParameterRegistry::Polarity::Bipolar);
+
     void registerGrainFloatParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
                                    float GrainCloudSettings::* member, float minValue, float maxValue,
                                    ParameterRegistry::Polarity polarity = ParameterRegistry::Polarity::Unipolar);

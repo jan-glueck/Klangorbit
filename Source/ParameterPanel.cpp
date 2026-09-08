@@ -278,6 +278,30 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*modeRow);
     addToLayout (*modeRow, ComboRowComponent::preferredHeight, Category::Object);
 
+    // Not built via addObjectVec3Row() (which does a plain member-pointer
+    // write) -- writing position must also force Mode::Manual and clear
+    // manualVelocityActive, exactly what TrajectoryEngine::beginDrag()/
+    // dragTo() already do for a mouse drag, so the physics integrator
+    // doesn't fight this write on the very next tick (see
+    // TrajectoryEngine::update()'s Manual-mode case). Same reasoning as
+    // registerObjectPositionParam() in PluginProcessor.cpp, which this
+    // mirrors for the GUI side. Like every other row here, this is NOT
+    // refreshed on a timer (see class comment), so its shown value goes
+    // stale while the object moves on its own (Orbit/Impulse/Attracted) --
+    // it reflects the position as of the last selection/preset-load, and
+    // setting it always switches the object into Manual first.
+    positionRow = std::make_unique<Vec3RowComponent> ("Position", -20.0, 20.0, 0.01);
+    positionRow->onValueChanged = [this] (Vec3 v)
+    {
+        if (editedObject == nullptr) return;
+        editedObject->mode = SoundObject::Mode::Manual;
+        editedObject->manualVelocityActive = false;
+        editedObject->position = v;
+    };
+    positionRow->setDefaultValue (SoundObject{}.position);
+    content.addAndMakeVisible (*positionRow);
+    addToLayout (*positionRow, Vec3RowComponent::preferredHeight, Category::Object);
+
     addObjectFloatRow ("Mass", &SoundObject::mass, 0.01, 20.0, 0.01, Category::Object);
     addObjectFloatRow ("Gain", &SoundObject::gain, 0.0, 2.0, 0.01, Category::Object);
     addObjectFloatRow ("Damping (simple decay)", &SoundObject::damping, 0.0, 1.0, 0.001, Category::Object);
@@ -748,6 +772,7 @@ void ParameterPanel::refreshFromModel()
     for (auto& b : objectVec3Rows)
         b.row->setValueQuiet (editedObject->*b.member);
 
+    positionRow->setValueQuiet (editedObject->position);
     modeRow->combo.setSelectedItemIndex ((int) editedObject->mode, juce::dontSendNotification);
     orbitRefRow->combo.setSelectedItemIndex (editedObject->orbitReferenceObjectId + 1, juce::dontSendNotification);
     dopplerEnabledRow->setValueQuiet (editedObject->dopplerEnabled);

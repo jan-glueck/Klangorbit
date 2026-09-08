@@ -39,7 +39,8 @@ actual spatial audio.
   Drag empty space           orbit the camera
   Scroll wheel                zoom the camera
   Click an object              select it (parameters -> right panel)
-  Click + drag an object       move it live by hand
+  Click + drag an object       move it live by hand (ground plane, X/Y)
+  Alt + drag an object         move it in height (Z) instead of X/Y
   Release while dragging       keeps the implied velocity, throws it
   Double-click an object       quick demo: start/stop a circular orbit
   Click empty space (no drag)  clear selection
@@ -536,7 +537,7 @@ yet to change the OSC port from its default.
 Separate from -- and alongside -- the gamepad/MIDI/OSC Learn-mode
 mapping above: every field exposed there is ALSO a real, host-
 automatable parameter, in AU, VST3, and Standalone alike. Draw/record
-automation for it directly in the host's own automation lanes -- 493
+automation for it directly in the host's own automation lanes -- 517
 parameters total, grouped per object ("Object 1".."Object 8", each
 subgrouped by category: Object Physics/Attraction/Orbit/Doppler/Grain
 Cloud) plus one "Global" group for scene-wide parameters.
@@ -545,8 +546,11 @@ Cloud) plus one "Global" group for scene-wide parameters.
                            for a SPECIFIC object slot or globally
   What's NOT automatable  "whichever object is selected" bindings (no
                            fixed target for a host lane), enum settings
-                           (Movement Mode, Output Format, etc.), pure
-                           runtime physics state (position, velocity)
+                           (Movement Mode, Output Format, etc.), most
+                           runtime physics state (velocity, orbit phase).
+                           Position (X/Y/Z) IS automatable -- writing it
+                           switches the object into Manual mode, same as
+                           a mouse drag
   Manual tweaks            mouse/gamepad/MIDI/OSC changes are NOT
                            themselves recorded as host automation --
                            only automation the host plays back or

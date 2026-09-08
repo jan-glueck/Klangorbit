@@ -464,6 +464,32 @@ bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
     // format. The tradeoff, same as AU's: Output Format selection is
     // bounded by the host/track's own channel count, not freely switchable
     // by a plugin-side click alone without reconfiguring that first.
+    //
+    // Each mode is matched TWO ways, not one: its own named/typed
+    // AudioChannelSet (outputChannelSetFor(), e.g. create7point1() for
+    // Surround7_1) AND a plain, unlabeled discreteChannels() of the same
+    // count. Reported: widening a Reaper track's own channel count (the
+    // documented "Testing with Reaper" workflow above) still left the
+    // plugin stuck at Stereo. Root cause: Reaper's own multichannel
+    // routing is channel-COUNT based, not "assign a named surround
+    // format" -- confirmed by this file's own raw-Ambisonics comment
+    // (outputChannelSetFor()'s case for the raw Order 1-5 modes already
+    // notes "real user setups (Reaper routing...) are already built
+    // around" discreteChannels(), for exactly this reason). So a Reaper
+    // track widened to, say, 8 channels asks this plugin for a plain
+    // discreteChannels(8) bus, which never equals the NAMED
+    // create7point1()/Octophonic-style set an AudioChannelSet identity
+    // comparison (==) requires -- isBusesLayoutSupported() rejected the
+    // one layout the host actually offered, so Reaper had nothing to
+    // settle on but the plugin's own Stereo default. Accepting the
+    // discreteChannels() alternative here is safe: it only widens what
+    // COUNT of channels a host may hand this bus, and every downstream
+    // consumer (isOutputModeAvailable(), setDecoderMode(), decode()
+    // itself) already gates purely on getTotalNumOutputChannels()/count,
+    // never on the negotiated AudioChannelSet's own identity -- the two
+    // Octophonic/CircularArray modes already relied on exactly that
+    // (see outputChannelSetFor()'s own comment on their discreteChannels-
+    // only identity), this just extends the same reasoning to every mode.
     for (int i = 0; i < AmbisonicsDecoder::numModes; ++i)
     {
         const auto mode = (AmbisonicsDecoder::Mode) i;
@@ -474,7 +500,8 @@ bool KlangorbitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
                     return true;
             continue;
         }
-        if (outSet == AmbisonicsDecoder::outputChannelSetFor (mode))
+        if (outSet == AmbisonicsDecoder::outputChannelSetFor (mode)
+            || outSet == juce::AudioChannelSet::discreteChannels (AmbisonicsDecoder::numOutputChannels (mode)))
             return true;
     }
     return false;

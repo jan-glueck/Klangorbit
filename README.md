@@ -1278,6 +1278,15 @@ Docs/WORKFLOW.md.
   Array's Speaker Count slider (`KlangorbitProcessor::
   setCircularArraySpeakerCount()`, now also clamped to the host's own
   channel count, not just `[minCircularSpeakers, maxCircularSpeakers]`).
+  Each mode's layout is matched two ways in `isBusesLayoutSupported()`:
+  its own NAMED `AudioChannelSet` (e.g. `create7point1()`) OR a plain
+  `discreteChannels()` of the same count -- Reaper's own multichannel
+  track routing is channel-count based, not "assign a named surround
+  format", so it offers the latter, which a named-only match used to
+  reject outright (reported: widening the track's channel count still
+  left the plugin stuck at Stereo). See the CHANGELOG's follow-up entry.
+  Not independently confirmed against a live VST3 host in this
+  environment -- needs the reporting user's own re-test.
 - **Circular arrays (Octophonic, Circular Array) are horizontal-only.**
   Neither can reproduce elevation/height content at all -- a property of
   a flat ring of speakers, not something a better decoder could fix. Both

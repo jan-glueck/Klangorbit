@@ -57,7 +57,11 @@ your viewpoint, not the listener's.
 - **Left-click an object** -- select it. Its parameters appear in the
   panel on the right.
 - **Left-click + drag an object** -- move it live by hand (its motion
-  mode becomes *Manual* while you hold the mouse).
+  mode becomes *Manual* while you hold the mouse), on the ground plane
+  (X/Y).
+- **Alt + left-click + drag an object** -- move it in height (Z) instead:
+  X/Y stay fixed, only vertical mouse movement counts. The only way to
+  reach the 3rd axis with the mouse.
 - **Release while dragging** -- the object keeps whatever velocity your
   drag implied and continues moving under physics (*Impulse* mode) --
   a simple throw.
@@ -647,7 +651,7 @@ mapping in sections 16-18: every field exposed there is ALSO a real,
 host-automatable parameter, in AU, VST3, and Standalone alike. Draw or
 record automation for any object's Mass, Gain, Attraction, Orbit,
 Doppler, or Grain Cloud parameters, or any scene-wide parameter, directly
-in the host's own automation lanes -- 493 parameters total, grouped in
+in the host's own automation lanes -- 517 parameters total, grouped in
 the host's parameter picker as "Object 1".."Object 8" (each subgrouped by
 category: Object Physics/Attraction/Orbit/Doppler/Grain Cloud) plus one
 "Global" group.
@@ -657,8 +661,11 @@ category: Object Physics/Attraction/Orbit/Doppler/Grain Cloud) plus one
   automatable: "whichever object is currently selected" style bindings
   (a host automation lane needs a fixed target, not one that changes
   depending on the current selection), enum-valued settings (Movement
-  Mode, Output Format, etc.), and pure runtime physics state (position,
-  velocity).
+  Mode, Output Format, etc.), and most runtime physics state (velocity,
+  orbit phase, etc.). Position (X/Y/Z) IS automatable -- writing it also
+  switches the object into Manual mode, same as dragging it with the
+  mouse, so the automation actually drives the object instead of being
+  overwritten by whatever mode it was already in.
 - Writing automation into these parameters genuinely changes the sound --
   they read/write the exact same fields the parameter panel, gamepad,
   and MIDI/OSC mapping already do.

@@ -276,6 +276,7 @@ private:
     juce::Label objectGroupLabel;
     juce::Label orbitModeHintLabel; // see updateOrbitModeHintVisibility()
     std::unique_ptr<ComboRowComponent> modeRow;
+    std::unique_ptr<Vec3RowComponent> positionRow; // SoundObject::position -- custom setter, see constructor for why
     std::unique_ptr<ComboRowComponent> boundaryRow;
     std::unique_ptr<ToggleRowComponent> showRoomBoundaryRow;
     std::unique_ptr<Vec3RowComponent> globalFieldRow; // SceneSettings::globalField, not a SoundObject field -> its own binding

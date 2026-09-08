@@ -1302,7 +1302,29 @@ void KlangorbitEditor::mouseDrag (const juce::MouseEvent& e)
     const double dt = juce::jmax (0.001, (double) (now - lastDragTimeMs) / 1000.0);
 
     Vec3 newPos;
-    if (screenToGroundWorld (e.position, newPos))
+    if (e.mods.isAltDown())
+    {
+        // Height-drag: hold Alt while dragging an object to move it along
+        // Z (height) instead of the ground plane -- screenToGroundWorld()
+        // always resolves to z=0, so there is otherwise no way to reach
+        // the 3rd axis with the mouse (see class comment). X/Y stay
+        // exactly where they are; only vertical mouse movement counts,
+        // scaled to world meters via the object's own on-screen size at
+        // its current depth (Camera3D::worldSizeToScreenSize()) so this
+        // feels like the same proportional "near = less movement, far =
+        // more" the ground-plane drag already has. Dragging the mouse up
+        // raises the object (+Z).
+        auto& engine = audioProcessor.getTrajectoryEngine();
+        auto oldPos = engine.getObject (draggedObjectIndex).position;
+        const auto proj = camera.project (oldPos, (float) viewArea.getHeight());
+        const float pixelsPerMeter = camera.worldSizeToScreenSize (1.0f, proj.cameraSpaceDepth, (float) viewArea.getHeight());
+        const float deltaZ = (pixelsPerMeter > 1.0e-4f) ? -(e.position.y - lastDragScreenPos.y) / pixelsPerMeter : 0.0f;
+        newPos = oldPos + Vec3 { 0.0f, 0.0f, deltaZ };
+
+        estimatedDragVelocity = (newPos - oldPos) / (float) dt;
+        engine.dragTo (draggedObjectIndex, newPos);
+    }
+    else if (screenToGroundWorld (e.position, newPos))
     {
         auto& engine = audioProcessor.getTrajectoryEngine();
         auto oldPos = engine.getObject (draggedObjectIndex).position;

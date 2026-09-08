@@ -1154,6 +1154,51 @@ void KlangorbitProcessor::registerObjectVec3Param (const juce::String& key, cons
     }
 }
 
+void KlangorbitProcessor::registerObjectPositionParam (const juce::String& key, const juce::String& displayName,
+                                                          const juce::String& category, float minValue, float maxValue,
+                                                          ParameterRegistry::Polarity polarity)
+{
+    for (auto& axis : vec3Axes)
+    {
+        for (int i = 0; i < trajectoryEngine.getNumObjects(); ++i)
+        {
+            parameterRegistry.registerParameter ({
+                "object." + juce::String (i) + "." + key + "." + axis.idSuffix, displayName + axis.labelSuffix, category,
+                minValue, maxValue, polarity, ParameterRegistry::Scope::SpecificObject, i,
+                [this, field = axis.field, i] { return trajectoryEngine.getObject (i).position.*field; },
+                [this, field = axis.field, i] (float v)
+                {
+                    auto& obj = trajectoryEngine.getObject (i);
+                    obj.mode = SoundObject::Mode::Manual;
+                    obj.manualVelocityActive = false;
+                    obj.position.*field = v;
+                }
+            });
+        }
+
+        parameterRegistry.registerParameter ({
+            "selectedObject." + key + "." + axis.idSuffix, displayName + axis.labelSuffix, category,
+            minValue, maxValue, polarity, ParameterRegistry::Scope::SelectedObject, -1,
+            [this, field = axis.field]
+            {
+                const int idx = selectedObjectIndex;
+                return (idx >= 0 && idx < trajectoryEngine.getNumObjects()) ? trajectoryEngine.getObject (idx).position.*field : 0.0f;
+            },
+            [this, field = axis.field] (float v)
+            {
+                const int idx = selectedObjectIndex;
+                if (idx >= 0 && idx < trajectoryEngine.getNumObjects())
+                {
+                    auto& obj = trajectoryEngine.getObject (idx);
+                    obj.mode = SoundObject::Mode::Manual;
+                    obj.manualVelocityActive = false;
+                    obj.position.*field = v;
+                }
+            }
+        });
+    }
+}
+
 void KlangorbitProcessor::registerGrainFloatParam (const juce::String& key, const juce::String& displayName,
                                                      const juce::String& category, float GrainCloudSettings::* member,
                                                      float minValue, float maxValue, ParameterRegistry::Polarity polarity)
@@ -1320,6 +1365,7 @@ void KlangorbitProcessor::buildParameterRegistry()
     registerSceneVec3Param ("windVector", "Propagation Wind", "Global", &SceneSettings::windVector, -50.0f, 50.0f);
 
     // --- Object physics ---------------------------------------------------
+    registerObjectPositionParam ("position", "Position", "Object Physics", -20.0f, 20.0f);
     registerObjectFloatParam ("mass", "Mass", "Object Physics", &SoundObject::mass, 0.01f, 20.0f);
     registerObjectFloatParam ("gain", "Gain", "Object Physics", &SoundObject::gain, 0.0f, 2.0f);
     registerObjectFloatParam ("damping", "Damping", "Object Physics", &SoundObject::damping, 0.0f, 1.0f);

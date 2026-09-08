@@ -388,11 +388,12 @@ Plugin-wide, not tied to the scene or any object -- has its own window:
                           pans each object DIRECTLY to the real speakers
                           (VBAP) instead of decoding a shared Ambisonics
                           bus -- sharper localization, no external
-                          decoder plugin needed. Output Format selection
-                          is bounded by the host/track's own channel
-                          count (set via the host's own routing UI, not
-                          purely by picking something in this dropdown)
-                          -- unavailable formats grey out automatically.
+                          decoder plugin needed. In VST3/Standalone every
+                          Output Format is always available (fixed
+                          36-channel output bus); routing those channels
+                          somewhere audible is the host's own job. In AU
+                          (Logic), availability is still bounded by which
+                          track type Klangorbit was inserted on.
   Circular Array:         4-24 -- only shown while Output Format is
    Speaker Count           "Circular Array".
   Bass Management         only shown for formats with an LFE channel

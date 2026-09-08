@@ -492,15 +492,16 @@ window (toolbar -> **Output...**) rather than the parameter panel:
   the regular ones) that measured too diffuse; see the CHANGELOG for the
   full story and why. Stereo keeps its own simple 2-point Ambisonics
   decode. Either way, there is no need to route to an external decoder
-  plugin for any of these. Output Format selection is bounded by
-  the host/track's own channel count, set via the host's own native
-  routing UI, NOT switchable purely by picking something in this
-  dropdown alone -- the plugin advertises every format up front so the
-  host/track can be configured for whichever one you want (standard
-  practice for multichannel Ambisonics/spatial-audio plugins), and this
-  dropdown then greys out anything that doesn't fit within what's
-  actually available. See the CHANGELOG for why (a real JUCE/VST3
-  limitation, not a design choice).
+  plugin for any of these. In VST3/Standalone, Output Format selection is
+  always available (the plugin exposes a fixed 36-channel output bus
+  regardless of which format is picked) -- switching formats never needs
+  the host/track reconfigured first anymore. Getting a wider format's
+  channels actually routed somewhere audible (real speakers, or an
+  external decoder plugin) is still the host's own native routing job,
+  same as for any wide-bus plugin. In AU (Logic), Output Format
+  availability IS still bounded by which track type you inserted
+  Klangorbit on (Logic negotiates a small, named bus once per track). See
+  the CHANGELOG for the full history.
 - **Bass Management (LFE from W)** -- **only shown for formats with an
   LFE channel** (5.1/7.1/5.1.2/5.1.4/7.1.2/7.1.4). Off by default --
   Ambisonics has no dedicated LFE signal, so this is a real, audible

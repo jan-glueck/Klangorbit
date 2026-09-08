@@ -22,15 +22,23 @@
     Input:  N mono channels (N = SAPOC_MAX_LIVE_INPUTS, configurable), each
             assigned to one SoundObject.
     Output: one of AmbisonicsDecoder::Mode's fixed target formats -- raw
-            Ambisonics B-format (order 1/2/3, for further processing in a
-            DAW/with external tools like SPARTA/IEM Suite), Stereo, or one
-            of the AllRAD-decoded speaker layouts (Quad/5.1/7.1/Atmos-bed
-            variants), selected via setDecoderMode(). Each mode declares
-            its own output bus layout (see AmbisonicsDecoder::
-            outputChannelSetFor()) rather than one fixed wide bus -- an
-            exact channel count per mode, at the cost of mode switches
-            being host-dependent to take effect live (see
-            setDecoderMode()'s own comment).
+            Ambisonics B-format (order 1-5, for further processing in a
+            DAW/with external tools like SPARTA/IEM Suite), Stereo/Binaural,
+            or a direct-VBAP-panned real-speaker layout (Quad/5.1/7.1/
+            Atmos-bed variants/Octophonic/Circular Array), selected via
+            setDecoderMode(). Output Format selection is a purely internal
+            decode-routing choice for VST3/Standalone -- the output BUS
+            itself is one fixed, maximally-wide layout (36 channels,
+            AmbisonicsDecoder::outputChannelSetFor (Mode::AmbisonicsRawOrder5)),
+            declared once at construction and never renegotiated live
+            afterward (see isBusesLayoutSupported()'s own comment for why:
+            an earlier per-mode live-renegotiation design caused real,
+            reported regressions -- shrinking availability every time a
+            smaller format was picked, never growing back). AU is
+            different and unaffected: Logic negotiates a small, NAMED bus
+            once per track at insertion (see that function's own AU
+            branch), and mode switches there use fewer of those channels
+            rather than requesting a different bus, same as always.
 
     Raw Ambisonics modes bypass AmbisonicsDecoder entirely and encode
     straight into the output buffer, exactly as before this class existed

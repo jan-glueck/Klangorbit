@@ -1124,9 +1124,9 @@ purely random.
   rate, no delay line and no per-sample cost. Uses the parent object's own
   `dopplerFactor` (Doppler parameter category) to scale strength, so it's
   one familiar knob, not a second one. Off by default because it's a real
-  (if small) added cost per grain per block, and at up to 256 concurrent
-  grains that adds up -- opt-in rather than silently changing existing
-  grain-cloud sound.
+  (if small) added cost per grain per block, and at a high concurrent
+  grain count that adds up -- opt-in rather than silently changing
+  existing grain-cloud sound.
   - **Read-position continuity fix.** Reported bug: enabling Doppler
     produced audible clicks. Root cause: `GrainRenderer.h`'s
     `renderGrainBlock()` used to compute each sample's ring-buffer read
@@ -1144,25 +1144,48 @@ purely random.
     changes at a block boundary now, not the position itself. See the
     mid-grain-rate-change regression check added to
     `Tools/verify_grain_cloud.cpp`'s `testRenderGrainBlock()`.
-- **Global spawn budget.** `maxConcurrentGrains` caps each cloud
-  individually (up to 256, default raised 8 -> 32 -> 256 over time --
-  comfortably covers common `grainRate * grainDuration` combinations
-  without needing voice stealing at all); a further system-wide cap
-  (`KlangorbitProcessor::maxConcurrentGrainsGlobal`, currently 256,
-  raised from an initial 32) is shared across all clouds each control-rate
-  tick, since every active grain costs a full Ambisonics encoding pass
+- **Global spawn budget, fairly shared.** `maxConcurrentGrains` caps each
+  cloud individually (default 256, up to `GrainLimits::
+  maxConcurrentGrainsGlobal`, currently 2000); a further system-wide cap
+  (`KlangorbitProcessor::maxConcurrentGrainsGlobal`, the same constant --
+  single source of truth in `Source/Grain.h`'s `GrainLimits`, raised from
+  an original 256) is shared across all clouds each control-rate tick,
+  since every active grain costs a full Ambisonics encoding pass
   regardless of cloud. `grainDuration` (up to 5s) and `grainRate` (up to
-  500/sec) were extended alongside it. 256 is a rough operation-count
-  estimate for real-time safety, not a number profiled on real hardware in
-  this environment -- the toolbar's **CPU meter** (top-right, next
-  to Mappings...) shows the actual measured fraction of each audio
-  block's time budget being used, turning amber/red if it gets close to or
-  exceeds 100%, so you can judge for yourself on your own machine rather
-  than trusting the estimate. The per-object grain ring buffer was resized
-  to match the new duration/rate/jitter ranges (see `Source/Grain.h`'s
-  `GrainLimits` -- the single source of truth both the UI and the buffer
-  allocation read from, specifically so they can't silently drift out of
-  sync with each other again).
+  500/sec) were extended alongside it.
+  - **Fair-share allocation, not first-come-first-served.** Reported bug:
+    an early object's cloud (in object-index order) could permanently
+    consume the *entire* global budget once it reached its own
+    `maxConcurrentGrains` setting, leaving zero spawn headroom for every
+    later object's cloud regardless of that cloud's own (possibly much
+    smaller) setting. `KlangorbitProcessor::timerCallback()` now instead
+    splits the remaining global headroom proportionally to what each
+    active, enabled cloud's own setting actually asks for each tick: when
+    every enabled cloud's settings collectively still fit inside the
+    global budget, nothing is scaled down; only once they'd collectively
+    exceed it does each cloud's share shrink in proportion to its own
+    setting. `ParameterPanel`'s Grain Cloud category shows a hint
+    (`grainBudgetHintLabel`) whenever more than one enabled cloud is
+    currently sharing the budget this way, so a lower-than-configured
+    grain count reads as expected, shared-budget behavior rather than a
+    bug.
+  - **Why the ceiling was raised so far past what's CPU-safe everywhere.**
+    `AmbisonicsDecoder::ambisonicsOrderFor()` fixes every grain's encode
+    order at 3 (16 channels) for *every* output format except the four raw
+    Ambisonics passthrough modes -- only 5th Order Ambisonics (36
+    channels/grain) approaches the actual per-grain CPU cost the original,
+    much lower ceiling was sized around. 2000 deliberately allows
+    configurations that CAN overload a slower CPU at 5th Order Ambisonics;
+    the toolbar's **CPU meter** (top-right, next to Mappings...) is the
+    real, measured safety net -- it shows the actual fraction of each
+    audio block's time budget being used, turning amber/red as it
+    approaches or exceeds 100%, so the user tunes against their own
+    machine and output format rather than trusting a single fixed
+    ceiling sized for the worst case. The per-object grain ring buffer was
+    resized to match the extended duration/rate/jitter ranges (see
+    `Source/Grain.h`'s `GrainLimits` -- the single source of truth both
+    the UI and the buffer allocation read from, specifically so they can't
+    silently drift out of sync with each other again).
 - **GUI:** active grains render as small dots around their parent object in
   the scene view, in a paler variant of the parent's color, fading out
   with age (and now also with camera distance -- see "3D camera view"

@@ -366,11 +366,18 @@ trajectory. Turn it on with **Enabled**.
   control how far back into the object's recent audio each grain reads
   from, and whether that's evenly spread, biased shallow (recent), or
   biased deep (older).
-- **Max Concurrent Grains** -- a hard cap on how many of this object's
-  grains may be alive simultaneously (there's also a global cap shared
-  by all objects' clouds, so total CPU cost stays bounded either way;
-  default 256, comfortably covering common Rate/Duration combinations).
-  If `Grain Rate x Grain Duration` exceeds this cap,
+- **Max Concurrent Grains** -- a cap on how many of this object's grains
+  may be alive simultaneously (default 256, comfortably covering common
+  Rate/Duration combinations). There's also a scene-wide budget shared by
+  all objects' clouds, so total CPU cost stays bounded no matter how many
+  objects are granulating at once -- it's split fairly between whichever
+  objects are actively using it, not given out on a first-come basis, so
+  one object can no longer starve another's grains entirely. When more
+  than one object is sharing the budget, this panel shows a hint that
+  this object's own setting above may not be fully honored while that's
+  the case; watch the toolbar's CPU meter if you raise these settings
+  significantly, especially at higher-order Ambisonics output. If
+  `Grain Rate x Grain Duration` exceeds this cap,
   Klangorbit doesn't stall new spawns waiting for room -- it fades out
   the OLDEST currently-playing grain a little early (a quick, click-free
   10ms fade) and reuses its slot immediately, so new grains keep

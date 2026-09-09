@@ -278,14 +278,35 @@ void KlangorbitProcessor::timerCallback()
     trajectoryEngine.update (dt);
 
     // GrainCloud: control-rate update, same loop/rate as TrajectoryEngine
-    // above. A single global spawn budget is shared across all clouds so
-    // the total number of simultaneously active grains never exceeds
-    // maxConcurrentGrainsGlobal, no matter how many objects are
-    // granulating at once -- each active grain costs a full Ambisonics
-    // encode pass in processBlock() below.
-    int globalGrainBudget = maxConcurrentGrainsGlobal;
+    // above. maxConcurrentGrainsGlobal is the hard, scene-wide CPU safety
+    // ceiling shared across every object's cloud combined (each active
+    // grain costs a full Ambisonics encode pass in processBlock() below).
+    // Each cloud's OWN GrainCloudSettings::maxConcurrentGrains should
+    // still be honored as far as possible rather than handed out
+    // first-come-first-served in object-index order -- the latter let one
+    // early, greedy object's cloud (once it reached ITS OWN setting)
+    // permanently consume the entire remaining global headroom every
+    // tick, leaving zero spawn budget for every later object's cloud no
+    // matter how small its own setting was (reported by the user). So the
+    // remaining global headroom is instead split PROPORTIONALLY to what
+    // each active, enabled cloud's own setting actually asks for: when
+    // everyone's settings collectively still fit inside the global
+    // budget, nothing is scaled down at all; only once they'd collectively
+    // exceed it does each cloud's share shrink, in proportion to its own
+    // setting rather than its position in this loop.
+    int remainingGlobalHeadroom = maxConcurrentGrainsGlobal;
     for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
-        globalGrainBudget -= trajectoryEngine.getGrainCloud (i).getNumActiveGrains();
+        remainingGlobalHeadroom -= trajectoryEngine.getGrainCloud (i).getNumActiveGrains();
+    remainingGlobalHeadroom = juce::jmax (0, remainingGlobalHeadroom);
+
+    int sumOfEnabledSettings = 0;
+    for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
+    {
+        auto& obj = trajectoryEngine.getObject (i);
+        auto& settings = trajectoryEngine.getGrainCloud (i).getSettings();
+        if (obj.inputChannel >= 0 && settings.enabled)
+            sumOfEnabledSettings += settings.maxConcurrentGrains;
+    }
 
     for (int i = 0; i < trajectoryEngine.getNumGrainClouds(); ++i)
     {
@@ -294,8 +315,22 @@ void KlangorbitProcessor::timerCallback()
             continue; // no active parent -- freeze this cloud instead of updating it with a meaningless position
 
         auto& cloud = trajectoryEngine.getGrainCloud (i);
+        const int ownSetting = cloud.getSettings().maxConcurrentGrains;
+
+        // This cloud's fair share of this tick's remaining spawn headroom:
+        // its own setting when everyone collectively fits inside the
+        // global budget, otherwise scaled down proportionally to what it
+        // actually asked for (never to less than that, and recomputed
+        // fresh every tick, so a cloud's steady-state active-grain count
+        // naturally settles at its fair share rather than at whatever the
+        // loop order handed it first).
+        int cloudBudget = sumOfEnabledSettings <= remainingGlobalHeadroom
+                              ? ownSetting
+                              : (int) ((juce::int64) remainingGlobalHeadroom * ownSetting
+                                        / juce::jmax (1, sumOfEnabledSettings));
+
         cloud.setRingBufferContext (getGrainRingBufferWriteHead (i), getSampleRate());
-        cloud.update (dt, obj.position, obj.velocity, globalGrainBudget, grainRandom);
+        cloud.update (dt, obj.position, obj.velocity, cloudBudget, grainRandom);
     }
 }
 
@@ -1466,7 +1501,7 @@ void KlangorbitProcessor::buildParameterRegistry()
     registerGrainFloatParam ("positionJitterInBuffer", "Position Jitter In Buffer", "Grain Cloud", &GrainCloudSettings::positionJitterInBuffer, 0.0f, GrainLimits::maxPositionJitterInBuffer);
     registerGrainFloatParam ("grainReadDepthRangeMin", "Read Depth Min", "Grain Cloud", &GrainCloudSettings::grainReadDepthRangeMin, 0.0f, GrainLimits::maxGrainReadDepthRange);
     registerGrainFloatParam ("grainReadDepthRangeMax", "Read Depth Max", "Grain Cloud", &GrainCloudSettings::grainReadDepthRangeMax, 0.0f, GrainLimits::maxGrainReadDepthRange);
-    registerGrainIntParam ("maxConcurrentGrains", "Max Concurrent Grains", "Grain Cloud", &GrainCloudSettings::maxConcurrentGrains, 1.0f, 256.0f);
+    registerGrainIntParam ("maxConcurrentGrains", "Max Concurrent Grains", "Grain Cloud", &GrainCloudSettings::maxConcurrentGrains, 1.0f, (float) maxConcurrentGrainsGlobal);
     registerGrainFloatParam ("randomWalkSpeed", "Random Walk Speed", "Grain Cloud", &GrainCloudSettings::randomWalkSpeed, 0.0f, 10.0f);
     registerGrainFloatParam ("boundaryRadius", "Boundary Radius", "Grain Cloud", &GrainCloudSettings::boundaryRadius, 0.05f, 5.0f);
     registerGrainFloatParam ("boundaryRadiusJitter", "Boundary Radius Jitter", "Grain Cloud", &GrainCloudSettings::boundaryRadiusJitter, 0.0f, 1.0f);

@@ -38,11 +38,15 @@ public:
 
     // parentPosition/parentVelocity: current state of the owning SoundObject,
     // as resolved by the caller (from TrajectoryEngine).
-    // globalGrainBudget: remaining number of grains allowed to spawn this
-    // tick across ALL clouds combined; decremented as this cloud spawns
-    // (see PluginProcessor, enforces the global maxConcurrentGrains cap).
+    // spawnBudget: number of NEW grains this cloud may spawn this tick --
+    // THIS cloud's own fair share of the scene-wide maxConcurrentGrains
+    // budget for this tick, already computed by the caller (see
+    // PluginProcessor::timerCallback()'s per-cloud proportional split, not
+    // a value shared/decremented across other clouds' update() calls the
+    // way it once was). Decremented as this cloud spawns, so the caller
+    // can see how much of its own allotment actually got used.
     void update (double dtSeconds, Vec3 parentPosition, Vec3 parentVelocity,
-                 int& globalGrainBudget, juce::Random& rng);
+                 int& spawnBudget, juce::Random& rng);
 
     int getPoolSize() const { return (int) grains.size(); }
     int getNumActiveGrains() const;
@@ -89,7 +93,7 @@ public:
     // as a separate entry point rather than a constructor/settings field
     // since both change every call (write head advances every audio
     // block, sample rate only at prepare()), unlike parentPosition/
-    // globalGrainBudget which update() already takes directly.
+    // spawnBudget which update() already takes directly.
     void setRingBufferContext (int writeHeadSample, double sampleRate);
 
 private:

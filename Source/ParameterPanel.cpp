@@ -489,7 +489,22 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*grainReadDepthDistributionRow);
     addToLayout (*grainReadDepthDistributionRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
 
-    addGrainIntRow ("Max Concurrent Grains (this cloud)", &GrainCloudSettings::maxConcurrentGrains, 1.0, 256.0, Category::GrainCloud);
+    addGrainIntRow ("Max Concurrent Grains (this cloud)", &GrainCloudSettings::maxConcurrentGrains,
+                     1.0, (double) GrainLimits::maxConcurrentGrainsGlobal, Category::GrainCloud);
+
+    // See updateGrainBudgetHintVisibility(): warns that the scene-wide
+    // budget above is currently being split between more than one
+    // object's cloud, so this cloud's own setting may not be fully
+    // honored every tick (see PluginProcessor::timerCallback()'s
+    // fair-share split) -- without this, a lower-than-configured grain
+    // count could look like a bug rather than expected, shared-budget
+    // behavior.
+    styleRowLabel (grainBudgetHintLabel, "This scene's shared grain budget is currently split between "
+                                          "more than one object -- this cloud may use fewer than its own "
+                                          "Max Concurrent Grains setting while that's the case.", 12.5f, UiColours::solo());
+    grainBudgetHintLabel.setJustificationType (juce::Justification::topLeft);
+    content.addAndMakeVisible (grainBudgetHintLabel);
+    addToLayout (grainBudgetHintLabel, 48, Category::GrainCloud);
 
     grainWindowShapeRow = std::make_unique<ComboRowComponent> ("Window Shape");
     grainWindowShapeRow->combo.addItem ("Hann", 1);
@@ -697,6 +712,7 @@ void ParameterPanel::selectCategory (Category category)
     // the generic pass above just made visible.
     updateGrainMovementModeVisibility();
     updatePitchJitterModeVisibility();
+    updateGrainBudgetHintVisibility();
 
     viewport.setViewPosition (0, 0);
     layoutContent();
@@ -725,6 +741,20 @@ void ParameterPanel::updatePitchJitterModeVisibility()
         return;
 
     pitchQuantizeScaleRow->setVisible (editedGrainCloud->pitchJitterMode == PitchJitterMode::Scale);
+}
+
+void ParameterPanel::setGrainBudgetOversubscribed (bool oversubscribed)
+{
+    if (grainBudgetOversubscribed == oversubscribed)
+        return;
+
+    grainBudgetOversubscribed = oversubscribed;
+    updateGrainBudgetHintVisibility();
+}
+
+void ParameterPanel::updateGrainBudgetHintVisibility()
+{
+    grainBudgetHintLabel.setVisible (currentCategory == Category::GrainCloud && grainBudgetOversubscribed);
 }
 
 void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects)

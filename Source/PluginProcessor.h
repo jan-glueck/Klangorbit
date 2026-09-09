@@ -110,19 +110,19 @@ public:
     // Global cap on simultaneously active grains, summed across ALL
     // clouds -- each active grain costs a full Ambisonics encode pass, so
     // this bounds worst-case CPU independent of how many clouds/objects
-    // are granulating. Enforced by the editor's timer via
-    // GrainCloud::update()'s globalGrainBudget parameter.
+    // are granulating. Enforced by timerCallback(), which also splits this
+    // budget FAIRLY across clouds each tick (proportional to each cloud's
+    // own GrainCloudSettings::maxConcurrentGrains) rather than handing it
+    // out first-come-first-served in object-index order -- see its own
+    // comment for why that distinction matters.
     //
-    // Raised 32 -> 128 -> 256 over time: a rough operation-count estimate
-    // (order-3 Ambisonics encode = 16 channels, block-rate
-    // spherical-harmonic coefficients + a cheap per-sample ramp, no
-    // per-sample trig) suggests even 256 concurrent grains stays
-    // real-time-safe on any reasonably modern CPU -- but that is still a
-    // back-of-envelope estimate, not a measurement on real hardware (not
-    // available in this environment). getEstimatedCpuLoad() below exists
-    // specifically so the user can verify this on their own machine
-    // instead of trusting the estimate blindly.
-    static constexpr int maxConcurrentGrainsGlobal = 256;
+    // See GrainLimits::maxConcurrentGrainsGlobal (Grain.h) for the actual
+    // value and the reasoning behind it -- kept as a single source of
+    // truth there since GrainCloudSettings's own per-cloud slider bound
+    // must always match this global one exactly. getEstimatedCpuLoad()
+    // below is the real, measured safety net the user is expected to
+    // watch, not this constant.
+    static constexpr int maxConcurrentGrainsGlobal = GrainLimits::maxConcurrentGrainsGlobal;
 
     // Smoothed fraction of each block's available real-time budget
     // actually spent inside processBlock() (measured wall-clock time /

@@ -165,6 +165,14 @@ public:
     // SoundObject field.
     void setEditedGrainCloud (GrainCloudSettings* settings);
 
+    // Called every tick from the editor's timer (same cadence as its CPU
+    // load display), which is the only place that can see EVERY object's
+    // GrainCloudSettings at once to know whether the scene-wide grain
+    // budget (PluginProcessor::maxConcurrentGrainsGlobal) is currently
+    // being shared between more than one enabled cloud -- see
+    // updateGrainBudgetHintVisibility().
+    void setGrainBudgetOversubscribed (bool oversubscribed);
+
     // Synchronize all controls with the current model state.
     void refreshFromModel();
 
@@ -234,6 +242,12 @@ private:
     // refreshFromModel(), and pitchJitterModeRow's own onSelected.
     void updatePitchJitterModeVisibility();
 
+    // Shows/hides grainBudgetHintLabel: visible only while the GrainCloud
+    // category is showing AND grainBudgetOversubscribed (see
+    // setGrainBudgetOversubscribed()) is currently true. Same trigger
+    // points as the other per-category hint labels above.
+    void updateGrainBudgetHintVisibility();
+
     juce::Viewport viewport;
     juce::Component content;
 
@@ -242,6 +256,8 @@ private:
     GrainCloudSettings* editedGrainCloud = nullptr;
 
     Category currentCategory = Category::Scene;
+    // See setGrainBudgetOversubscribed()/updateGrainBudgetHintVisibility().
+    bool grainBudgetOversubscribed = false;
     struct CategoryButton { std::unique_ptr<juce::TextButton> button; Category category; };
     std::vector<CategoryButton> categoryButtons;
 
@@ -275,6 +291,7 @@ private:
     juce::Label sceneGroupLabel;
     juce::Label objectGroupLabel;
     juce::Label orbitModeHintLabel; // see updateOrbitModeHintVisibility()
+    juce::Label grainBudgetHintLabel; // see updateGrainBudgetHintVisibility()
     std::unique_ptr<ComboRowComponent> modeRow;
     std::unique_ptr<Vec3RowComponent> positionRow; // SoundObject::position -- custom setter, see constructor for why
     std::unique_ptr<ToggleRowComponent> momentumEnabledRow; // SoundObject::momentumEnabled

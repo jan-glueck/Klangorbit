@@ -17,7 +17,8 @@ SPARTA oder IEM Plugin Suite.
 ## Technischer Rahmen
 
 - JUCE (C++), Ziel: VST3-Plugin + Standalone-App aus derselben Codebasis
-- macOS
+- macOS (zusaetzlich AU) und Windows (VST3 + Standalone; AU ist Apple-
+  exklusiv, siehe README.md "Windows build")
 - Live-Audio-Input: mehrere Mono-Kanaele (aktuell 8, konfigurierbar),
   je einem Objekt zugeordnet
 - Ambisonics-Encoding: generisch ueber assoziierte Legendre-Polynome

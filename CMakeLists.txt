@@ -3,7 +3,9 @@ project(Klangorbit VERSION 0.1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "macOS deployment target")
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "macOS deployment target")
+endif()
 
 # --- Getting JUCE -------------------------------------------------------
 # Option A (recommended): check in JUCE as a submodule in ./JUCE:
@@ -83,6 +85,63 @@ juce_add_binary_data(HrtfData
 
 set(SAPOC_MAX_LIVE_INPUTS 8 CACHE STRING "Max. number of simultaneous mono live inputs / SoundObjects")
 
+# --- Per-platform plugin formats/install dirs ---------------------------
+# AU (Audio Unit) is an Apple-only plugin format/API -- there is no
+# equivalent on Windows, so it's simply absent from FORMATS there (see
+# KLANGORBIT_FORMATS below). VST3_COPY_DIR mirrors the same "system-wide,
+# not JUCE's per-user default" choice on both platforms, but the
+# underlying folder's permissions differ: the macOS folder was made
+# world-writable once by hand (see AU_COPY_DIR's own comment below for
+# the exact command), so a normal build just works; Windows' equivalent
+# system folder (Program Files/Common Files) is protected by UAC, so
+# COPY_PLUGIN_AFTER_BUILD's copy step there needs an elevated (Run as
+# Administrator) build -- a deliberate choice (matching where every DAW
+# on Windows already expects to find a system-wide VST3) over defaulting
+# to a permission-free but non-standard per-user location.
+if(APPLE)
+    set(KLANGORBIT_FORMATS VST3 Standalone AU)
+    set(KLANGORBIT_VST3_COPY_DIR "/Library/Audio/Plug-Ins/VST3")
+    set(KLANGORBIT_AU_ARGS
+        # Classic AU (Component Manager, .component bundle) for Logic Pro/
+        # GarageBand/other AU hosts, alongside the existing VST3/Standalone
+        # -- NOT AUv3 (a completely different app-extension packaging
+        # model, unneeded here). Plain "Effect" (aufx), NOT "Music Effect"
+        # (aumf): NEEDS_MIDI_INPUT TRUE + IS_SYNTH FALSE above would make
+        # JUCE infer aumf by default (see JUCEUtils.cmake's own
+        # AU_MAIN_TYPE inference) -- deliberately overridden here after
+        # empirically confirming, with a throwaway diagnostic build, that
+        # Logic Pro's Plugin Manager listed this AU as installed/
+        # compatible while aumf, but never actually offered it as
+        # insertable on ANY track/bus type -- switching to aufx (same
+        # manufacturer/plugin code, otherwise identical) was the one
+        # change that made it appear, confirmed directly by the user.
+        # Real tradeoff, not free: auval flags "AU implements
+        # MusicDeviceMIDIEvent but is of type 'aufx' (it should be
+        # 'aumf')" -- our MIDI-handling code is still built in (from
+        # NEEDS_MIDI_INPUT), but declaring aufx tells a host this isn't a
+        # MIDI-interested unit, so Logic likely won't route MIDI
+        # (Mappings/Learn's CC input) to it via AU -- not yet confirmed
+        # either way by an actual in-Logic MIDI test. Gamepad/OSC control
+        # are unaffected either way (no dependency on this type).
+        AU_MAIN_TYPE "kAudioUnitType_Effect"
+        # Same system-wide-folder choice as VST3_COPY_DIR above, for
+        # consistency -- requires /Library/Audio/Plug-Ins/Components
+        # itself to be made world-writable first (it isn't by default,
+        # unlike the VST3 folder on this Mac):
+        # `sudo chmod 777 "/Library/Audio/Plug-Ins/Components"`, a
+        # one-time manual step (not something this build/CMake does on
+        # its own -- see the README's own Build section).
+        AU_COPY_DIR "/Library/Audio/Plug-Ins/Components"
+    )
+elseif(WIN32)
+    set(KLANGORBIT_FORMATS VST3 Standalone)
+    # Standard system-wide VST3 folder every Windows DAW already scans --
+    # see this block's own comment above on why COPY_PLUGIN_AFTER_BUILD
+    # needs an elevated build here, unlike on macOS.
+    set(KLANGORBIT_VST3_COPY_DIR "$ENV{ProgramFiles}/Common Files/VST3")
+    set(KLANGORBIT_AU_ARGS)
+endif()
+
 juce_add_plugin(Klangorbit
     COMPANY_NAME "Jan Glueck"
     # Explicit, DNS-safe bundle identifier -- JUCE's own default derives
@@ -95,47 +154,19 @@ juce_add_plugin(Klangorbit
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD TRUE
-    # System-wide plugin folder (all users, root of the boot volume) instead
-    # of JUCE's per-user default (~/Library/Audio/Plug-Ins/VST3) -- world-
-    # writable on this Mac, no sudo needed for the build.
-    VST3_COPY_DIR "/Library/Audio/Plug-Ins/VST3"
+    VST3_COPY_DIR "${KLANGORBIT_VST3_COPY_DIR}"
     PLUGIN_MANUFACTURER_CODE Jgck
     PLUGIN_CODE Klor
     # App/plugin icon (Standalone .app + VST3 bundle), one 1024x1024 PNG
     # for both slots -- juceaide rescales it as needed per icon size, same
     # pattern JUCE's own examples use for a single square source image.
     # Source/vector original kept alongside it (Assets/AppIcon.svg) for
-    # future edits; the .icns itself is baked at build time, not checked in.
+    # future edits; the platform-specific icon (.icns on macOS, .ico on
+    # Windows) itself is baked at build time, not checked in.
     ICON_BIG "${CMAKE_SOURCE_DIR}/Assets/AppIcon.png"
     ICON_SMALL "${CMAKE_SOURCE_DIR}/Assets/AppIcon.png"
-    # Classic AU (Component Manager, .component bundle) for Logic Pro/
-    # GarageBand/other AU hosts, alongside the existing VST3/Standalone --
-    # NOT AUv3 (a completely different app-extension packaging model,
-    # unneeded here). Plain "Effect" (aufx), NOT "Music Effect" (aumf):
-    # NEEDS_MIDI_INPUT TRUE + IS_SYNTH FALSE above would make JUCE infer
-    # aumf by default (see JUCEUtils.cmake's own AU_MAIN_TYPE inference) --
-    # deliberately overridden here after empirically confirming, with a
-    # throwaway diagnostic build, that Logic Pro's Plugin Manager listed
-    # this AU as installed/compatible while aumf, but never actually
-    # offered it as insertable on ANY track/bus type -- switching to aufx
-    # (same manufacturer/plugin code, otherwise identical) was the one
-    # change that made it appear, confirmed directly by the user. Real
-    # tradeoff, not free: auval flags "AU implements MusicDeviceMIDIEvent
-    # but is of type 'aufx' (it should be 'aumf')" -- our MIDI-handling
-    # code is still built in (from NEEDS_MIDI_INPUT), but declaring aufx
-    # tells a host this isn't a MIDI-interested unit, so Logic likely
-    # won't route MIDI (Mappings/Learn's CC input) to it via AU -- not yet
-    # confirmed either way by an actual in-Logic MIDI test. Gamepad/OSC
-    # control are unaffected either way (no dependency on this type).
-    AU_MAIN_TYPE "kAudioUnitType_Effect"
-    # Same system-wide-folder choice as VST3_COPY_DIR above, for
-    # consistency -- requires /Library/Audio/Plug-Ins/Components itself to
-    # be made world-writable first (it isn't by default, unlike the VST3
-    # folder on this Mac): `sudo chmod 777 "/Library/Audio/Plug-Ins/Components"`,
-    # a one-time manual step (not something this build/CMake does on its
-    # own -- see the README's own Build section).
-    AU_COPY_DIR "/Library/Audio/Plug-Ins/Components"
-    FORMATS VST3 Standalone AU
+    ${KLANGORBIT_AU_ARGS}
+    FORMATS ${KLANGORBIT_FORMATS}
     PRODUCT_NAME "Klangorbit"
 )
 
@@ -170,7 +201,6 @@ target_sources(Klangorbit
         Source/ParameterRegistry.cpp
         Source/AutomationParameterBridge.cpp
         Source/CanonicalInput.cpp
-        Source/GamepadBridge.mm
         Source/GamepadDriver.cpp
         Source/MidiDriver.cpp
         Source/OscDriver.cpp
@@ -191,6 +221,15 @@ target_sources(Klangorbit
         Source/OutputWindow.cpp
 )
 
+# Platform-specific half of GamepadBridge (see its own class comment) --
+# exactly one of these two compiles, matching the macOS-only "-framework
+# GameController"/Windows-only Xinput9_1_0 link below.
+if(APPLE)
+    target_sources(Klangorbit PRIVATE Source/GamepadBridge.mm)
+elseif(WIN32)
+    target_sources(Klangorbit PRIVATE Source/GamepadBridge_Windows.cpp)
+endif()
+
 target_link_libraries(Klangorbit
     PRIVATE
         juce::juce_audio_utils
@@ -200,10 +239,6 @@ target_link_libraries(Klangorbit
         juce::juce_dsp
         # Source/OscDriver.h/.cpp -- juce::OSCReceiver/OSCMessage.
         juce::juce_osc
-        # GameController framework -- Source/GamepadBridge.mm's bridge to
-        # Apple's GCController/GCExtendedGamepad API. macOS-only, matching
-        # this project's own scope (see PROJECT_BRIEF.md).
-        "-framework GameController"
         # Source/HrtfDataset.h/.cpp -- reads the bundled/imported SOFA
         # files, see the FetchContent_Declare(mysofa ...) block above.
         mysofa-static
@@ -213,6 +248,18 @@ target_link_libraries(Klangorbit
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+if(APPLE)
+    # GameController framework -- Source/GamepadBridge.mm's bridge to
+    # Apple's GCController/GCExtendedGamepad API.
+    target_link_libraries(Klangorbit PRIVATE "-framework GameController")
+elseif(WIN32)
+    # Xinput9_1_0 (not the older Xinput1_3/1_4) -- Source/
+    # GamepadBridge_Windows.cpp's bridge to XInput. Ships with the
+    # Windows SDK/OS itself (Vista+), unlike Xinput1_3 which needs the
+    # legacy DirectX SDK.
+    target_link_libraries(Klangorbit PRIVATE Xinput9_1_0)
+endif()
 
 # --- Preset validation ---------------------------------------------------
 # Loads all Presets/factory/*.json via the same PresetManager code path as
@@ -645,24 +692,33 @@ target_sources(verify_gamepad_driver
     PRIVATE
         Tools/verify_gamepad_driver.cpp
         Source/GamepadDriver.cpp
-        Source/GamepadBridge.mm
         Source/TrajectoryEngine.cpp
         Source/GrainCloud.cpp
         Source/CanonicalInput.cpp
         Source/ParameterRegistry.cpp
 )
 
+# Platform-specific half of GamepadBridge -- same per-platform source/link
+# split as the main Klangorbit target above, see its own comment.
+if(APPLE)
+    target_sources(verify_gamepad_driver PRIVATE Source/GamepadBridge.mm)
+elseif(WIN32)
+    target_sources(verify_gamepad_driver PRIVATE Source/GamepadBridge_Windows.cpp)
+endif()
+
 target_link_libraries(verify_gamepad_driver
     PRIVATE
         juce::juce_core
-        # GamepadBridge.mm's bridge to Apple's GCController/GCExtendedGamepad
-        # API -- same dependency the Klangorbit target itself links, see its
-        # own comment.
-        "-framework GameController"
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
 )
+
+if(APPLE)
+    target_link_libraries(verify_gamepad_driver PRIVATE "-framework GameController")
+elseif(WIN32)
+    target_link_libraries(verify_gamepad_driver PRIVATE Xinput9_1_0)
+endif()
 
 # --- Binaural (HRTF) decoder verification ---------------------------------
 # Runs HrtfDataset (the libmysofa wrapper, Source/HrtfDataset.h/.cpp)

@@ -6,6 +6,35 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Added
+- **Windows build support (VST3 + Standalone).** Previously macOS-only
+  (`PROJECT_BRIEF.md`) -- the one genuine platform-specific dependency was
+  `Source/GamepadBridge.mm`'s bridge to Apple's GameController framework,
+  compiled unconditionally with no platform guard anywhere in
+  `CMakeLists.txt`. Added `Source/GamepadBridge_Windows.cpp`, a second
+  backend behind the exact same `GamepadBridge` interface (see its class
+  comment), using XInput -- covers Xbox-compatible controllers (the large
+  majority sold today) but not a generic/DirectInput-only controller with
+  no XInput driver, the same "one modern controller profile, not
+  exhaustive HID support" scope macOS's GCExtendedGamepad already had.
+  `CMakeLists.txt` now selects the right backend/link library per
+  platform (`if(APPLE)`/`elseif(WIN32)`, both for the main `Klangorbit`
+  target and `verify_gamepad_driver`), omits AU from `FORMATS` on Windows
+  (an Apple-only format/API with no equivalent there), and sets
+  `VST3_COPY_DIR` to Windows' standard system-wide `Program Files\Common
+  Files\VST3` folder (matching the same system-wide choice already made
+  for macOS's `/Library/Audio/Plug-Ins/VST3` -- unlike that folder, this
+  one is UAC-protected, so `COPY_PLUGIN_AFTER_BUILD`'s copy step needs an
+  elevated Windows build; see the README's new "Windows build" section).
+  Rest of the codebase (DSP, presets, MIDI, OSC, parameter/automation
+  system, GUI) was already plain, portable JUCE C++ with no other
+  platform-specific code found on review. Verified: full macOS rebuild
+  (VST3/AU/Standalone) + `auval` + the automated `verify_*` suite all
+  still pass after the restructuring, confirming no macOS regression --
+  the actual Windows build itself is NOT yet compiled/tested on a real
+  Windows machine (none available in this environment), so it should be
+  treated as implemented-and-reviewed, not field-verified, until someone
+  tries it there.
 ### Changed
 - **Output Format naming unified across the dropdown and all docs.**
   Reported as inconsistent: some entries showed a channel count, some

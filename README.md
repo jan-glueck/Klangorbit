@@ -120,6 +120,10 @@ absorption/directivity) -- only `SoundObject`s go through it. See
 
 ## Build
 
+This section covers macOS. See "Windows build" below for the Windows-specific
+requirements/steps and the platform differences (no AU, XInput instead of
+GameController for gamepad support, a different VST3 install path).
+
 Requirements: CMake >= 3.22, Xcode Command Line Tools (macOS).
 
 ```bash
@@ -248,13 +252,59 @@ back to an Ambisonics order manually if that's what you need; it's still
 fully supported, just no longer the default.
 
 App/plugin icon and vendor name: `Assets/AppIcon.png` (1024x1024, source
-vector at `Assets/AppIcon.svg`) is baked into a proper `.icns` for the
-Standalone `.app`, VST3, and AU bundles at build time by JUCE's own icon
-tooling (`ICON_BIG`/`ICON_SMALL` in `CMakeLists.txt`) -- the `.icns` itself
-isn't checked in, it's regenerated every build. `COMPANY_NAME "Jan Glueck"`
-in the same `juce_add_plugin()` call is what a host like Reaper/Logic shows
-as the plugin's vendor/manufacturer (in the VST3's `moduleinfo.json`/the
-AU's "Manufacturer String").
+vector at `Assets/AppIcon.svg`) is baked into a proper `.icns` (macOS) or
+`.ico` (Windows) for the Standalone app/VST3/AU bundles at build time by
+JUCE's own icon tooling (`ICON_BIG`/`ICON_SMALL` in `CMakeLists.txt`) --
+neither is checked in, both are regenerated every build. `COMPANY_NAME
+"Jan Glueck"` in the same `juce_add_plugin()` call is what a host like
+Reaper/Logic shows as the plugin's vendor/manufacturer (in the VST3's
+`moduleinfo.json`/the AU's "Manufacturer String").
+
+## Windows build
+
+Requirements: CMake >= 3.22, Visual Studio 2022 (Desktop development with
+C++ workload) or another MSVC-compatible generator, Windows 10 SDK
+(provides `xinput.h`/`Xinput9_1_0.lib` -- see "Gamepad support" below).
+
+```bash
+git submodule add https://github.com/juce-framework/JUCE.git JUCE
+
+mkdir build && cd build
+cmake ..
+cmake --build . --config Release
+```
+
+Result: `Klangorbit.vst3` and the standalone app's `.exe` in the build
+directory (`Klangorbit_artefacts/`) -- no AU (`.component`), an Apple-only
+plugin format/API with no Windows equivalent; `CMakeLists.txt` simply
+omits it from `FORMATS` on this platform (`KLANGORBIT_FORMATS`).
+
+- **VST3 install path.** `COPY_PLUGIN_AFTER_BUILD TRUE` copies the built
+  VST3 to `%ProgramFiles%\Common Files\VST3` -- the standard system-wide
+  folder every Windows DAW already scans, same choice as macOS's
+  `/Library/Audio/Plug-Ins/VST3`. Unlike the Mac folder (made
+  world-writable once by hand, see the macOS Build section above),
+  Windows' `Program Files` is UAC-protected, so this copy step needs an
+  elevated build (run the `cmake --build` step from an Administrator
+  shell/IDE instance) -- otherwise the plugin still builds, just isn't
+  copied anywhere automatically; copy `Klangorbit.vst3` from
+  `Klangorbit_artefacts/Release/VST3/` to that folder by hand instead.
+- **Gamepad support** (SlingGesture/GamepadDriver's Free Throw/Orbit
+  Shot/Slingshot) uses XInput on Windows instead of macOS's
+  GameController framework (`Source/GamepadBridge_Windows.cpp` vs.
+  `Source/GamepadBridge.mm`, selected in `CMakeLists.txt` by platform --
+  see `GamepadBridge.h`'s class comment). This covers Xbox-compatible
+  controllers (the large majority of controllers sold today, including
+  most third-party and PlayStation controllers via their own XInput
+  compatibility mode/driver) but NOT a generic/DirectInput-only
+  controller with no XInput driver support -- the same "one modern
+  controller profile, not exhaustive HID support" scope already chosen
+  for macOS's GCExtendedGamepad, not a new limitation specific to
+  Windows.
+- **Everything else** (Ambisonics/VBAP/binaural DSP, presets, MIDI, OSC,
+  the parameter/automation system, the editor GUI) is plain, portable
+  JUCE C++ with no platform-specific code, and needs no Windows-specific
+  build step beyond the ones above.
 
 ## Testing with Reaper + SPARTA/IEM
 
@@ -766,12 +816,13 @@ fast the mouse happened to move.
 
 ## Gamepad control
 
-Connect a controller (macOS's GameController framework -- this covers
-most modern game controllers, e.g. Xbox/PlayStation controllers paired
-over Bluetooth or USB). Every control has a sensible fixed default
-binding out of the box, no setup required -- all still individually
-overridable via Learn mode (see "Controller mapping" below) exactly like
-any other bindable control:
+Connect a controller (macOS's GameController framework, or Windows'
+XInput -- see `GamepadBridge.h`'s class comment and "Windows build"
+above for the platform split; both cover most modern game controllers,
+e.g. Xbox/PlayStation controllers paired over Bluetooth or USB). Every
+control has a sensible fixed default binding out of the box, no setup
+required -- all still individually overridable via Learn mode (see
+"Controller mapping" below) exactly like any other bindable control:
 
 | Control | Default behavior |
 |---|---|
@@ -1249,6 +1300,18 @@ Docs/WORKFLOW.md.
 
 ## Known limitations / next steps
 
+- **Windows build is unverified on an actual Windows machine.** The port
+  (`Source/GamepadBridge_Windows.cpp`'s XInput backend,
+  `CMakeLists.txt`'s per-platform `FORMATS`/install-dir/gamepad-link
+  guards -- see "Windows build" above) was written and reviewed for MSVC/
+  Windows-API correctness, and confirmed not to have broken the existing
+  macOS build (full rebuild + `auval` + the automated `verify_*` suite all
+  still pass), but no Windows machine/toolchain was available in this
+  environment to actually compile or run it there. Residual risk is
+  concentrated in things static review can't fully rule out: MSVC-
+  specific compile errors in code only ever built with Clang/AppleClang
+  before, and libmysofa (a third-party dependency, not this project's own
+  code) building cleanly under MSVC.
 - **3D camera view interaction is unverified by hand.** `Camera3D`'s
   projection/rotation/zoom math is covered by `Tools/verify_camera`
   (22+ passing checks, including that the default framing exactly matches

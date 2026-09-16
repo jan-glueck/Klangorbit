@@ -22,28 +22,37 @@ struct GamepadState
 };
 
 /**
-    Thin bridge to Apple's GameController framework (macOS-only; this
-    project targets macOS exclusively, see PROJECT_BRIEF.md). PIMPL'd
-    (see Impl, defined only in GamepadBridge.mm) specifically so this
-    header stays plain C++ -- no Objective-C types leak out, so any file
-    can #include this without itself needing to be compiled as
-    Objective-C++, and without pulling in <GameController/GameController.h>.
+    Thin bridge to the OS's own modern-gamepad API -- one of two platform
+    backends behind this exact same interface: GamepadBridge.mm (macOS,
+    Apple's GameController framework) or GamepadBridge_Windows.cpp
+    (Windows, XInput); CMakeLists.txt selects exactly one of the two per
+    platform. Both are PIMPL'd (see Impl, defined only in the platform
+    .cpp/.mm file actually compiled) specifically so this header stays
+    plain C++ -- no Objective-C/Windows types leak out, so any file can
+    #include this without itself needing platform-specific compilation or
+    headers.
 
     Exactly one gamepad at a time: poll() always reports whichever
-    controller is first in GCController.controllers that exposes an
-    extendedGamepad profile (Apple's modern, full-featured profile: dual
-    sticks, 4 face buttons, 2 shoulder buttons, 2 analog triggers, D-pad).
-    Deliberately not architected around a hard single-controller
-    assumption though -- a later multi-controller extension would mean
-    widening this bridge's own interface (e.g. poll(int controllerIndex))
-    and GamepadDriver's sourceId scheme (already "Gamepad0.*", ready for
-    "Gamepad1.*" etc.), not restructuring either from scratch. Multi-
-    controller support itself is explicitly NOT part of this class.
+    controller is first-found that exposes a modern, full-featured
+    profile -- Apple's "extendedGamepad" on macOS, any XInput-compatible
+    controller on Windows (dual sticks, 4 face buttons, 2 shoulder
+    buttons, 2 analog triggers, D-pad on both). A generic/DirectInput-only
+    controller with no XInput driver support is not covered on Windows,
+    matching the same "one modern profile, not exhaustive HID support"
+    scope already chosen for macOS. Deliberately not architected around a
+    hard single-controller assumption though -- a later multi-controller
+    extension would mean widening this bridge's own interface (e.g.
+    poll(int controllerIndex)) and GamepadDriver's sourceId scheme
+    (already "Gamepad0.*", ready for "Gamepad1.*" etc.), not restructuring
+    either from scratch. Multi-controller support itself is explicitly
+    NOT part of this class.
 
-    No connect/disconnect notification plumbing -- poll() just re-checks
-    GCController.controllers itself on every call, which is simple, avoids
-    any Objective-C observer lifetime management, and is cheap enough at
-    control rate (~90Hz, see GamepadDriver/KlangorbitProcessor's timer).
+    No connect/disconnect notification plumbing on either backend --
+    poll() just re-checks for a connected controller itself on every call
+    (GCController.controllers on macOS, XInputGetState() across the small
+    fixed slot range on Windows), which is simple, avoids any
+    observer/callback lifetime management, and is cheap enough at control
+    rate (~90Hz, see GamepadDriver/KlangorbitProcessor's timer).
 */
 class GamepadBridge
 {

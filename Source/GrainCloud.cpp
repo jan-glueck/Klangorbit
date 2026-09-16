@@ -429,7 +429,7 @@ void GrainCloud::updateGrain (Grain& g, float fdt, Vec3 parentPosition, Vec3 /*p
 }
 
 void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVelocity,
-                          int& globalGrainBudget, juce::Random& rng)
+                          int& spawnBudget, juce::Random& rng)
 {
     const float fdt = (float) dtSeconds;
 
@@ -470,12 +470,14 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
 
         while (timeSinceLastSpawn >= spawnInterval)
         {
-            if (globalGrainBudget <= 0)
+            if (spawnBudget <= 0)
             {
-                // The shared, scene-wide CPU ceiling (see PluginProcessor)
-                // -- unlike maxConcurrentGrains below, this can't be
-                // worked around by stealing from this cloud's OWN grains,
-                // since it's a limit across every object's cloud combined.
+                // This cloud's own fair share of the scene-wide CPU
+                // ceiling for this tick (see PluginProcessor::
+                // timerCallback()) -- unlike maxConcurrentGrains below,
+                // this can't be worked around by stealing from this
+                // cloud's OWN grains, since it's derived from a limit
+                // across every object's cloud combined.
                 timeSinceLastSpawn = spawnInterval; // cap backlog, avoid a burst once capacity frees up
                 break;
             }
@@ -513,7 +515,7 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
             }
 
             spawnGrain (slot, parentPosition, ringBufferWriteHeadSample, ringBufferSampleRate, rng);
-            --globalGrainBudget;
+            --spawnBudget;
             timeSinceLastSpawn -= spawnInterval;
             spawnInterval = nextSpawnInterval();
         }

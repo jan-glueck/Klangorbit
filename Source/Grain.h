@@ -123,6 +123,25 @@ namespace GrainLimits
     constexpr float maxGrainRate = 500.0f;                // grains/sec, ParameterPanel's upper slider bound
     constexpr float maxPositionJitterInBuffer = 1.5f;    // seconds, ParameterPanel's upper slider bound
 
+    // Scene-wide hard ceiling on simultaneously active grains across EVERY
+    // object's cloud combined (see PluginProcessor::maxConcurrentGrainsGlobal,
+    // an alias of this constant, and its timerCallback()'s fair-share split
+    // of this budget across clouds). Also GrainCloudSettings::
+    // maxConcurrentGrains's own upper slider bound -- a single object alone
+    // may use the whole budget if nothing else is competing for it.
+    //
+    // Raised from an original 256 to 2000: the real, measured cost (see
+    // KlangorbitProcessor::getEstimatedCpuLoad()) is far from uniform across
+    // output formats -- AmbisonicsDecoder::ambisonicsOrderFor() fixes every
+    // grain's encode order at 3 (16ch) for all formats except the four raw
+    // Ambisonics passthrough modes, so only 5th Order Ambisonics (36ch/grain,
+    // the most expensive case) is anywhere near this ceiling's actual CPU
+    // cost. 2000 deliberately allows configurations that CAN overload a
+    // slower CPU at 5th Order Ambisonics -- getEstimatedCpuLoad()'s live
+    // meter, not this constant, is the real-time safety net the user is
+    // expected to watch and tune against on their own machine.
+    constexpr int maxConcurrentGrainsGlobal = 2000;
+
     // See GrainCloud::spawnGrain(): playbackRate = 1 + pitchJitter*(-1..1),
     // clamped to a minimum of 0.1; pitchJitter's own max is 1.0, so the
     // resulting rate range is [0.1, 2.0]. 2.0 is the relevant bound here
@@ -215,12 +234,14 @@ struct GrainCloudSettings
     PitchQuantizeScale pitchQuantizeScale = PitchQuantizeScale::MajorScale; // only used while pitchJitterMode == Scale
     float positionJitterInBuffer = 0.05f;     // seconds, random look-back offset into the ring buffer per grain
     // Per-cloud local cap (on top of the global cap, see PluginProcessor).
-    // Raised over time from an initial default of 8 -- comfortably covers
-    // common grainRate*grainDuration combinations without needing voice
-    // stealing (see this struct's own comment) at all; matches the global
-    // cap (256, PluginProcessor::maxConcurrentGrainsGlobal) shared across
-    // every object's cloud, so a single object granulating alone can use
-    // the whole budget if nothing else is competing for it.
+    // Its default (256) is kept well below its own slider bound
+    // (GrainLimits::maxConcurrentGrainsGlobal, shared with
+    // PluginProcessor::maxConcurrentGrainsGlobal) deliberately -- a newly
+    // added object shouldn't silently start eating into other objects'
+    // share of the scene-wide budget (see PluginProcessor::
+    // timerCallback()'s fair-share split) until the user explicitly raises
+    // it. A single object granulating alone can still use the whole
+    // budget if nothing else is competing for it, by raising this value.
     int maxConcurrentGrains = 256;
     GrainWindowShape windowShape = GrainWindowShape::Hann;
     // Per-grain Doppler pitch shift, based on each grain's own velocity

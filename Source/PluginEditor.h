@@ -310,7 +310,7 @@ private:
 
     // Read from KlangorbitProcessor::getEstimatedCpuLoad() each timer
     // tick -- see its comment for why this exists (maxConcurrentGrainsGlobal
-    // was raised to 128 on a rough estimate, not a hardware profile; this
+    // is a deliberately generous ceiling, not a hardware profile; this
     // lets the user check the actual measured load for themselves).
     juce::Label cpuLoadLabel;
 

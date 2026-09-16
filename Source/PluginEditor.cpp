@@ -331,18 +331,36 @@ void KlangorbitEditor::timerCallback()
 
     updateTrails();
 
-    // See KlangorbitProcessor::getEstimatedCpuLoad()'s comment for
-    // why this exists: maxConcurrentGrainsGlobal (128) is a rough
-    // estimate, not a hardware-profiled number, so this surfaces the
-    // actual measured load instead of asking the user to trust the
-    // estimate. Color-coded as a simple, cheap warning rather than a
-    // precise meter -- green/grey under normal load, amber approaching
-    // the block deadline, red at or past it (audible dropouts likely).
+    // See KlangorbitProcessor::getEstimatedCpuLoad()'s comment for why
+    // this exists: maxConcurrentGrainsGlobal is a deliberately generous
+    // ceiling, not a hardware-profiled number, so this surfaces the
+    // actual measured load instead of asking the user to trust it blindly.
+    // Color-coded as a simple, cheap warning rather than a precise meter
+    // -- green/grey under normal load, amber approaching the block
+    // deadline, red at or past it (audible dropouts likely).
     const float cpuLoad = audioProcessor.getEstimatedCpuLoad();
     cpuLoadLabel.setText ("CPU: " + juce::String (cpuLoad * 100.0f, 1) + "%", juce::dontSendNotification);
     cpuLoadLabel.setColour (juce::Label::textColourId,
                              cpuLoad >= 1.0f ? UiColours::mute()
                                               : (cpuLoad >= 0.7f ? UiColours::solo() : UiColours::textSecondary()));
+
+    // Tells the ParameterPanel whether more than one object is currently
+    // competing for the shared grain budget (PluginProcessor::
+    // timerCallback()'s fair-share split), so it can warn that a cloud's
+    // own Max Concurrent Grains setting may not be fully honored right
+    // now -- computed here (not in ParameterPanel) since this is the only
+    // place with a reason to look across every object's GrainCloud at
+    // once, same as the CPU load reading just above.
+    auto& engineForGrainBudget = audioProcessor.getTrajectoryEngine();
+    int sumOfEnabledGrainSettings = 0;
+    for (int i = 0; i < engineForGrainBudget.getNumGrainClouds(); ++i)
+    {
+        auto& obj = engineForGrainBudget.getObject (i);
+        auto& settings = engineForGrainBudget.getGrainCloud (i).getSettings();
+        if (obj.inputChannel >= 0 && settings.enabled)
+            sumOfEnabledGrainSettings += settings.maxConcurrentGrains;
+    }
+    parameterPanel.setGrainBudgetOversubscribed (sumOfEnabledGrainSettings > KlangorbitProcessor::maxConcurrentGrainsGlobal);
 
     repaint();
 }
@@ -484,10 +502,15 @@ void KlangorbitEditor::paint (juce::Graphics& g)
     }
 
     // --- Depth-sorted objects + grains ------------------------------------
-    // Small, fixed-bound item count (<= SAPOC_MAX_LIVE_INPUTS objects plus
-    // <= maxConcurrentGrainsGlobal grains, currently 8 + 32) -- sorting
-    // this fresh every repaint is trivially cheap, no pooling/caching
-    // needed (see class comment on the performance requirement).
+    // Fixed-bound item count (<= SAPOC_MAX_LIVE_INPUTS objects plus <=
+    // maxConcurrentGrainsGlobal grains -- the latter raised well past its
+    // original small default, see Grain.h's GrainLimits::
+    // maxConcurrentGrainsGlobal). Sorting this fresh every repaint stays
+    // cheap in the common case (typically far fewer grains are actually
+    // active at once); reserve() below is sized for that common case, not
+    // the theoretical worst case, so it may reallocate on an unusually
+    // grain-heavy frame -- an acceptable, rare cost rather than always
+    // over-allocating on every frame for a bound almost never reached.
     auto& engine = audioProcessor.getTrajectoryEngine();
     std::vector<DrawItem> items;
     items.reserve (64);

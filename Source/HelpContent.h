@@ -275,13 +275,19 @@ that object's live input. Turn on with Enabled.
                                   pitch jitter toward it with this option).
   Position Jitter / Read Depth   how far back into recent audio a grain
    Min/Max/Distribution           reads from, and the depth distribution
-  Max Concurrent Grains          hard cap on simultaneously alive grains
-                                  (there's also a global cap across all
-                                  objects; default 256). If Grain Rate x
-                                  Duration exceeds this, new grains don't
-                                  stall -- the OLDEST active grain gets a
-                                  quick (10ms) fade-out and its slot is
-                                  reused immediately, so new grains keep
+  Max Concurrent Grains          cap on this object's own simultaneously
+                                  alive grains (default 256). There's also
+                                  a shared budget across all objects,
+                                  split fairly between whichever objects
+                                  are granulating at once -- if the panel
+                                  shows a hint that the budget is shared,
+                                  this object may use fewer than its own
+                                  setting while that's the case. If Grain
+                                  Rate x Duration exceeds this cap, new
+                                  grains don't stall -- the OLDEST active
+                                  grain gets a quick (10ms) fade-out and
+                                  its slot is reused immediately, so new
+                                  grains keep
                                   starting on schedule. Trade-off: some
                                   grains may then end up shorter than
                                   the configured Duration.

@@ -6,7 +6,63 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Fixed
+- **One object's grains could permanently starve every other object's
+  grains.** Reported: maxing out one object's "Max Concurrent Grains"
+  left a second object unable to spawn any grains at all, even though the
+  per-object setting is documented as "(this cloud)". Root cause: the
+  scene-wide grain budget (`KlangorbitProcessor::maxConcurrentGrainsGlobal`)
+  was handed out first-come-first-served in fixed object-index order each
+  control-rate tick (`timerCallback()`) -- once an early object's cloud
+  reached its own setting, it kept consuming the entire remaining global
+  headroom every tick just to sustain itself, leaving zero spawn headroom
+  for every later object's cloud regardless of that cloud's own (possibly
+  much smaller) setting. Fixed by splitting the remaining global headroom
+  PROPORTIONALLY to what each active, enabled cloud's own setting actually
+  asks for, recomputed fresh every tick: when every enabled cloud's
+  settings collectively still fit inside the global budget, nothing is
+  scaled down; only once they'd collectively exceed it does each cloud's
+  share shrink, in proportion to its own setting rather than its position
+  in the loop. `GrainCloud::update()`'s budget parameter was renamed
+  `globalGrainBudget` -> `spawnBudget` to reflect that it's now this ONE
+  cloud's own fair-share allotment for the tick, not a value shared/
+  decremented across other clouds' `update()` calls the way it once was.
+
+### Added
+- **`ParameterPanel`'s Grain Cloud category warns when the shared grain
+  budget is actively being split between multiple objects** (same
+  hint-label pattern as the existing Orbit-mode hint) -- without it, a
+  cloud using fewer grains than its own configured setting could read as
+  a bug rather than expected, shared-budget behavior. Computed each tick
+  by `KlangorbitEditor::timerCallback()` (the only place with a reason to
+  look across every object's `GrainCloudSettings` at once, same as its
+  existing CPU-load reading) and pushed into the panel via the new
+  `ParameterPanel::setGrainBudgetOversubscribed()`.
+
 ### Changed
+- **Scene-wide grain budget ceiling raised 256 -> 2000**
+  (`GrainLimits::maxConcurrentGrainsGlobal`, `Source/Grain.h`, now the
+  single source of truth `PluginProcessor::maxConcurrentGrainsGlobal` and
+  every UI/automation slider bound reads from). Requested after the
+  starvation bug above made clear that a small shared ceiling defeats the
+  point of per-object budgets once more than a couple of objects
+  granulate at once. The original 256 was sized as a rough, worst-case
+  operation-count estimate; investigating this request surfaced that it's
+  actually overly conservative for most output formats --
+  `AmbisonicsDecoder::ambisonicsOrderFor()` fixes every grain's encode
+  order at 3 (16ch) for every format except the four raw Ambisonics
+  passthrough modes, so only 5th Order Ambisonics (36ch/grain -- the case
+  the user's own "40% CPU at 256 grains" measurement was taken at)
+  approaches the cost the original ceiling was sized around; every other
+  format has substantially more headroom at the same grain count. 2000 is
+  deliberately high enough to allow configurations that CAN overload a
+  slower CPU at 5th Order Ambisonics -- the toolbar's existing, real
+  measured CPU meter (not this constant) is the safety net the user is
+  expected to watch and tune against on their own machine/format. Each
+  object's own per-cloud default stays at 256 (unchanged), so existing
+  presets and newly added objects don't silently start eating into other
+  objects' share of the larger shared budget until the user explicitly
+  raises it.
 - **Output Format naming unified across the dropdown and all docs.**
   Reported as inconsistent: some entries showed a channel count, some
   didn't; raw Ambisonics orders 1-3 used the FOA/SOA/TOA abbreviations

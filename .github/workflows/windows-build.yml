@@ -1,16 +1,18 @@
 name: Windows build
 
-# Builds the VST3 + Standalone app on a native Windows runner (MSVC) --
-# see README.md's "Windows build" section for why this can't be done by
-# cross-compiling from macOS. Runs on every push and can also be
-# triggered manually (workflow_dispatch) for an on-demand build without
-# a new commit.
+# Builds the VST3 + Standalone app AND runs the full automated test suite
+# on a native Windows runner (MSVC) -- see README.md's "Windows build"
+# section for why the build itself can't be done by cross-compiling from
+# macOS. Runs on every push (cheap on GitHub's per-minute pricing,
+# unlike macos-build.yml's job, see its own comment) and can also be
+# triggered manually (workflow_dispatch) for an on-demand build without a
+# new commit.
 on:
   push:
   workflow_dispatch:
 
 jobs:
-  build-windows:
+  build-and-test-windows:
     runs-on: windows-latest
 
     steps:
@@ -24,6 +26,57 @@ jobs:
 
       - name: Build VST3 + Standalone
         run: cmake --build build --config Release --target Klangorbit_VST3 Klangorbit_Standalone --parallel
+
+      # Every juce_add_console_app target in CMakeLists.txt EXCEPT
+      # vst3_bus_probe, which is its own manually-run diagnostic against a
+      # built .vst3, not a pass/fail check -- see its own CMakeLists.txt
+      # comment ("not part of the automated verify_*/validate_presets
+      # suite"). Kept as one explicit list (not a glob) so a newly added
+      # verify_* target has to be added here deliberately, the same way
+      # Docs/WORKFLOW.md's "load every preset once" sanity check was
+      # always meant to be wired into CI once one existed.
+      - name: Build test suite
+        run: >
+          cmake --build build --config Release --parallel --target
+          validate_presets
+          verify_propagation
+          verify_grain_cloud
+          verify_orbit
+          verify_camera
+          verify_mute_solo
+          verify_vbap
+          verify_parameter_registry
+          verify_automation_parameters
+          verify_canonical_input
+          verify_mapping_engine
+          verify_axis_shaping
+          verify_ambisonics_decoder
+          verify_midi_driver
+          verify_osc_driver
+          verify_gamepad_driver
+          verify_binaural_decoder
+
+      # bash (Git for Windows, preinstalled on windows-latest) rather than
+      # PowerShell -- lets this step's logic stay near-identical to
+      # macos-build.yml's own test step. `set -e` so ANY single test
+      # executable returning non-zero (this project's consistent
+      # pass/fail convention, see each Tools/verify_*.cpp) fails the whole
+      # step immediately, not just prints a failure and continues.
+      - name: Run test suite
+        shell: bash
+        run: |
+          set -e
+          cd build
+          ./validate_presets_artefacts/Release/validate_presets.exe ../Presets/factory
+          for t in verify_propagation verify_grain_cloud verify_orbit verify_camera \
+                   verify_mute_solo verify_vbap verify_parameter_registry \
+                   verify_automation_parameters verify_canonical_input \
+                   verify_mapping_engine verify_axis_shaping verify_ambisonics_decoder \
+                   verify_midi_driver verify_osc_driver verify_gamepad_driver \
+                   verify_binaural_decoder; do
+            echo "--- $t ---"
+            "./${t}_artefacts/Release/${t}.exe"
+          done
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4

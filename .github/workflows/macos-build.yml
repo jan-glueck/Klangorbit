@@ -1,0 +1,112 @@
+name: macOS build
+
+# Full macOS build (VST3 + AU + Standalone) + the complete automated test
+# suite + auval AU validation, on a native macOS runner. Deliberately
+# main-only (+ manual trigger) rather than every push like
+# windows-build.yml -- GitHub bills macOS runner minutes at a 10x
+# multiplier over Linux, and this job does noticeably more work per run
+# (three plugin formats instead of two, plus auval) than the Windows job,
+# so running it on every branch push would burn a private repo's monthly
+# free CI minutes fast for comparatively little extra safety over
+# catching the same regressions once, at the point things actually reach
+# main.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout (with JUCE submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Mirrors the one-time manual step documented in README.md's Build
+      # section (there: because a fresh macOS install doesn't ship these
+      # folders pre-made/world-writable) -- done here on every run instead
+      # of once, since a CI runner's filesystem doesn't persist between
+      # runs. Passwordless sudo is available by default on GitHub-hosted
+      # macOS runners.
+      - name: Prepare system-wide plugin folders
+        run: |
+          sudo mkdir -p "/Library/Audio/Plug-Ins/VST3"
+          sudo mkdir -p "/Library/Audio/Plug-Ins/Components"
+          sudo chmod 777 "/Library/Audio/Plug-Ins/VST3"
+          sudo chmod 777 "/Library/Audio/Plug-Ins/Components"
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3 + AU + Standalone
+        run: cmake --build build --config Release --target Klangorbit_VST3 Klangorbit_AU Klangorbit_Standalone --parallel
+
+      # Same target list as windows-build.yml's own "Build test suite"
+      # step -- see its comment for why vst3_bus_probe is excluded.
+      - name: Build test suite
+        run: >
+          cmake --build build --config Release --parallel --target
+          validate_presets
+          verify_propagation
+          verify_grain_cloud
+          verify_orbit
+          verify_camera
+          verify_mute_solo
+          verify_vbap
+          verify_parameter_registry
+          verify_automation_parameters
+          verify_canonical_input
+          verify_mapping_engine
+          verify_axis_shaping
+          verify_ambisonics_decoder
+          verify_midi_driver
+          verify_osc_driver
+          verify_gamepad_driver
+          verify_binaural_decoder
+
+      - name: Run test suite
+        run: |
+          set -e
+          cd build
+          ./validate_presets_artefacts/Release/validate_presets ../Presets/factory
+          for t in verify_propagation verify_grain_cloud verify_orbit verify_camera \
+                   verify_mute_solo verify_vbap verify_parameter_registry \
+                   verify_automation_parameters verify_canonical_input \
+                   verify_mapping_engine verify_axis_shaping verify_ambisonics_decoder \
+                   verify_midi_driver verify_osc_driver verify_gamepad_driver \
+                   verify_binaural_decoder; do
+            echo "--- $t ---"
+            "./${t}_artefacts/Release/${t}"
+          done
+
+      # Apple's own AU validator, against the just-built-and-installed
+      # component (Klangorbit_AU's COPY_PLUGIN_AFTER_BUILD put it in
+      # /Library/Audio/Plug-Ins/Components above) -- Klor/Jgck are this
+      # plugin's PLUGIN_CODE/PLUGIN_MANUFACTURER_CODE (CMakeLists.txt),
+      # same invocation this project has used by hand all along.
+      - name: auval AU validation
+        run: auval -v aufx Klor Jgck
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Klangorbit-VST3-macOS
+          path: build/Klangorbit_artefacts/Release/VST3/Klangorbit.vst3
+          if-no-files-found: error
+
+      - name: Upload AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: Klangorbit-AU-macOS
+          path: build/Klangorbit_artefacts/Release/AU/Klangorbit.component
+          if-no-files-found: error
+
+      - name: Upload Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: Klangorbit-Standalone-macOS
+          path: build/Klangorbit_artefacts/Release/Standalone/Klangorbit.app
+          if-no-files-found: error

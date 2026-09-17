@@ -27,12 +27,20 @@ SPARTA oder IEM Plugin Suite.
 
 ## Stand
 
-Code-Geruest existiert (Source/, siehe README.md fuer Architektur-Skizze
-und Signalfluss-Diagramm), ist aber NICHT kompiliert oder getestet --
-das war bisher ausserhalb einer Build-Umgebung entstanden. Erste Aufgabe
-ist ein lauffaehiger Build.
+Dieser Abschnitt beschrieb urspruenglich den Projektstart (Code-Geruest
+vorhanden, aber nicht kompiliert/getestet, erster lauffaehiger Build als
+Ziel) -- inzwischen weit ueberholt. Aktueller Stand: das Plugin baut und
+laeuft (VST3/AU/Standalone auf macOS, VST3/Standalone auf Windows),
+inklusive vollem Ambisonics-Signalpfad, Physik-Engine, granularer
+Synthese, Controller-Mapping (Gamepad/MIDI/OSC), Preset-System und einer
+automatisierten Testsuite (`Tools/verify_*`, `validate_presets`), die bei
+jedem Push per GitHub Actions auf Windows und (bei Merges nach `main`)
+macOS laeuft (`.github/workflows/`). Fuer den tatsaechlichen, laufend
+gepflegten Funktionsumfang, Architektur und offene Punkte siehe
+`README.md` (Signalfluss-Diagramm, "Known limitations / next steps") und
+`CHANGELOG.md` (chronologisch, jede Aenderung mit Begruendung).
 
-Projektstruktur, Preset-Format und Git-Workflow sind bereits festgelegt:
+Projektstruktur, Preset-Format und Git-Workflow:
 
 - `README.md` -- Architektur, Signalfluss, bekannte Einschraenkungen
 - `CHANGELOG.md` -- Code-Versionierung (SemVer)
@@ -42,17 +50,11 @@ Projektstruktur, Preset-Format und Git-Workflow sind bereits festgelegt:
 - `Docs/experiments/README.md` -- Konvention fuer Sitzungslogs zu
   Klangfunden, getrennt von Presets
 
-## Erste Schritte fuer Claude Code
-
-1. Git-Repo initialisieren, JUCE als Submodule einbinden (siehe
-   Build-Abschnitt in README.md)
-2. Ersten Build versuchen, Fehler beheben
-3. Gegen die "Testen mit Reaper + SPARTA/IEM"-Anleitung in README.md
-   pruefen, ob der Signalfluss grundsaetzlich funktioniert
-4. Danach nach Ansage weiterarbeiten -- offene Punkte stehen unter
-   "Bekannte Einschraenkungen" in README.md (u.a. 3D-Interaktion,
-   MIDI-Mapping, Dopplereffekt, Laufzeit-Ordnungswechsel)
+## Arbeitsweise
 
 Bei Unklarheiten in Architekturfragen: nachfragen statt raten, besonders
 bei allem, was die Preset-Schema-Version oder das Kanal-/Bus-Layout
-betrifft -- das sind bewusste Entscheidungen, keine Zufallswerte.
+betrifft -- das sind bewusste Entscheidungen, keine Zufallswerte. Bei
+groesseren/riskanten Aenderungen: erst Optionen/Trade-offs vorschlagen,
+erst nach explizitem Go-ahead umsetzen (siehe die Diskussions- vor
+Umsetzungs-Historie im CHANGELOG fuer das etablierte Muster).

@@ -6,6 +6,8 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-09-17
 ### Added
 - **GitHub Actions Windows build** (`.github/workflows/windows-build.yml`)
   -- builds the VST3 + Standalone on a hosted `windows-latest` runner on

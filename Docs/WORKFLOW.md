@@ -39,5 +39,6 @@ Quick sanity check before every release: load every file in
 `Presets/factory/` once. Done: `Tools/validate_presets` (C++ console app,
 see CMakeLists.txt) loads every preset in a given folder via the same
 `PresetManager` code path as the plugin GUI, checks schemaVersion + field
-validation, and fails with a non-zero exit code on any error -- ready to be
-hooked into CI once there is one.
+validation, and fails with a non-zero exit code on any error -- runs
+automatically in CI on every push now, alongside the full `verify_*`
+suite (see `.github/workflows/`).

@@ -1330,18 +1330,19 @@ Docs/WORKFLOW.md.
 
 ## Known limitations / next steps
 
-- **Windows build is unverified on an actual Windows machine.** The port
-  (`Source/GamepadBridge_Windows.cpp`'s XInput backend,
-  `CMakeLists.txt`'s per-platform `FORMATS`/install-dir/gamepad-link
-  guards -- see "Windows build" above) was written and reviewed for MSVC/
-  Windows-API correctness, and confirmed not to have broken the existing
-  macOS build (full rebuild + `auval` + the automated `verify_*` suite all
-  still pass), but no Windows machine/toolchain was available in this
-  environment to actually compile or run it there. Residual risk is
-  concentrated in things static review can't fully rule out: MSVC-
-  specific compile errors in code only ever built with Clang/AppleClang
-  before, and libmysofa (a third-party dependency, not this project's own
-  code) building cleanly under MSVC.
+- **Windows build compiles and passes the full automated test suite in
+  CI, but hasn't been used by hand on a real Windows machine.**
+  `.github/workflows/windows-build.yml` builds the VST3 + Standalone and
+  runs `validate_presets` + every `Tools/verify_*` console app on a
+  hosted Windows runner on every push, confirming the port (`Source/
+  GamepadBridge_Windows.cpp`'s XInput backend, `CMakeLists.txt`'s
+  per-platform `FORMATS`/install-dir/gamepad-link guards -- see "Windows
+  build" above) genuinely compiles and passes the same checks the macOS
+  build does. What's NOT yet confirmed: the actual GUI running/feeling
+  right in a real DAW on Windows, and a physical XInput controller (Xbox
+  or compatible) actually working end-to-end -- CI has no GPU/display or
+  attached gamepad hardware, only headless compilation and console-app
+  tests.
 - **3D camera view interaction is unverified by hand.** `Camera3D`'s
   projection/rotation/zoom math is covered by `Tools/verify_camera`
   (22+ passing checks, including that the default framing exactly matches
@@ -1509,7 +1510,9 @@ Docs/WORKFLOW.md.
   migrated automatically, and anything outside the supported range is
   rejected with an error message instead of being silently interpreted.
   `Tools/validate_presets` checks all presets in a folder via the same code
-  path (prepared for CI, see `Docs/WORKFLOW.md`). The default folder in the
+  path -- runs automatically against `Presets/factory/` in CI on every
+  push now (`.github/workflows/windows-build.yml`/`macos-build.yml`), the
+  "once there is one" `Docs/WORKFLOW.md` originally described. The default folder in the
   file dialog (`Presets/user/`) is just a convenience default for local dev
   builds from this checkout (absolute path baked in at build time via
   CMake) -- not portable to a plugin installed elsewhere.
@@ -1521,8 +1524,11 @@ Docs/WORKFLOW.md.
   `PropagationProcessor`.
 - **GrainCloud window shape is Hann only.** No alternative envelope shapes
   (Tukey, Gaussian, etc.) yet.
-- **GrainCloud's global spawn budget is first-come-first-served**, not
-  prioritized by object gain, distance to the listener, or any other
-  criterion -- with several clouds active simultaneously near the global
-  cap, which cloud gets the remaining budget on a given tick is
-  effectively arbitrary (iteration order).
+
+## License
+
+GPL-3.0 -- see `LICENSE`. Third-party dependencies (JUCE, libmysofa) and
+bundled HRTF datasets have their own separate licenses/attribution
+requirements -- see `THIRD_PARTY_LICENSES.md`, in particular the JUCE
+entry for why this project's own license is GPL-3.0 specifically (JUCE
+itself is used under its AGPLv3 option, not a commercial JUCE license).

@@ -18,7 +18,13 @@ else()
     FetchContent_Declare(
         JUCE
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-        GIT_TAG        7.0.12
+        # Kept in sync with the submodule's own pinned version (see
+        # ./JUCE, currently 9.0.1) so this fallback path can't silently
+        # drift onto a different JUCE version/license terms than the
+        # submodule the project actually develops/tests against -- see
+        # THIRD_PARTY_LICENSES.md's JUCE entry for why the exact version
+        # matters (AGPLv3/commercial dual license).
+        GIT_TAG        9.0.1
         GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(JUCE)

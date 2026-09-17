@@ -1,14 +1,46 @@
 # Third-party licenses
 
-Klangorbit bundles third-party code and data for the Binaural (HRTF)
-output format (`AmbisonicsDecoder::Mode::Binaural`, `Source/
-BinauralDecoder.h/.cpp`, `Source/HrtfDataset.h/.cpp`). This file documents
-each one's license and the exact attribution each requires, per that
-feature's own requirement to check and document dataset licensing before
-shipping it (see the CHANGELOG entry for the feature).
+Klangorbit statically links two third-party dependencies (JUCE, libmysofa)
+and bundles third-party data for the Binaural (HRTF) output format
+(`AmbisonicsDecoder::Mode::Binaural`, `Source/BinauralDecoder.h/.cpp`,
+`Source/HrtfDataset.h/.cpp`). This file documents each one's license and
+the exact attribution/compliance each requires.
 
-Everything else in this project is original code -- see the top-level
-project files for the plugin's own licensing.
+Everything else in this project is original code, licensed under the
+GPL-3.0 terms in the top-level `LICENSE` file.
+
+---
+
+## JUCE
+
+**What it's used for:** the application/plugin framework this entire
+project is built on (audio processing, VST3/AU wrapping, the editor GUI,
+MIDI/OSC I/O, etc.) -- essentially all of it. Included as a git submodule
+(`JUCE/`, see `.gitmodules`), currently pinned to `9.0.1`, statically
+linked into the built plugin/app, not redistributed as vendored source in
+this repo (the submodule only records a commit reference; `JUCE/` itself
+is gitignored from this project's own history).
+
+**Source:** <https://github.com/juce-framework/JUCE>
+**License:** dual-licensed -- [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html)
+or a commercial [JUCE licence](https://juce.com/legal/juce-9-licence/)
+(see `JUCE/LICENSE.md` in the submodule for JUCE's own full, authoritative
+terms). This project uses JUCE under the **AGPLv3** option -- no
+commercial JUCE licence is held.
+
+**Why this project's own `LICENSE` is GPL-3.0, not AGPLv3:** GPLv3 and
+AGPLv3 are explicitly designed to be combinable -- GPLv3 §13 ("Use with
+the GNU Affero General Public License") and AGPLv3's own mirrored §13
+permit linking/combining a GPLv3-licensed work with an AGPLv3-licensed
+one; the AGPLv3 portion (JUCE) keeps its own network-use source-disclosure
+term for that portion, which has no practical effect here since Klangorbit
+is a local audio plugin/app with no network service component. This is
+the same GPLv3-application-on-AGPLv3-JUCE combination widely used by other
+open source JUCE-based plugins. This is not legal advice -- if this
+project is ever distributed/sold commercially rather than kept as a
+personal/private project, get that combination reviewed properly (or
+obtain a commercial JUCE licence, which removes the AGPLv3 constraint
+entirely).
 
 ---
 

@@ -1,0 +1,40 @@
+name: Windows build
+
+# Builds the VST3 + Standalone app on a native Windows runner (MSVC) --
+# see README.md's "Windows build" section for why this can't be done by
+# cross-compiling from macOS. Runs on every push and can also be
+# triggered manually (workflow_dispatch) for an on-demand build without
+# a new commit.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout (with JUCE submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3 + Standalone
+        run: cmake --build build --config Release --target Klangorbit_VST3 Klangorbit_Standalone --parallel
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Klangorbit-VST3-Windows
+          path: build/Klangorbit_artefacts/Release/VST3/Klangorbit.vst3
+          if-no-files-found: error
+
+      - name: Upload Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: Klangorbit-Standalone-Windows
+          path: build/Klangorbit_artefacts/Release/Standalone/Klangorbit.exe
+          if-no-files-found: error

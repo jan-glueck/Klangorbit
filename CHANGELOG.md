@@ -6,6 +6,17 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Added
+- **GitHub Actions Windows build** (`.github/workflows/windows-build.yml`)
+  -- builds the VST3 + Standalone on a hosted `windows-latest` runner on
+  every push (or manually via workflow_dispatch), uploading both as
+  downloadable artifacts. Set up alongside the Windows port itself (see
+  the "Windows build support" entry below) specifically so the Windows
+  build can be exercised on a REAL Windows machine without anyone needing
+  to own one -- this project's own repo, previously local-only, was
+  pushed to GitHub (`https://github.com/jan-glueck/Klangorbit`, private)
+  for exactly this purpose.
+
 ### Fixed
 - **One object's grains could permanently starve every other object's
   grains.** Reported: maxing out one object's "Max Concurrent Grains"

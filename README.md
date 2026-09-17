@@ -266,6 +266,13 @@ Requirements: CMake >= 3.22, Visual Studio 2022 (Desktop development with
 C++ workload) or another MSVC-compatible generator, Windows 10 SDK
 (provides `xinput.h`/`Xinput9_1_0.lib` -- see "Gamepad support" below).
 
+**No Windows machine available?** `.github/workflows/windows-build.yml`
+builds this automatically on a hosted Windows runner on every push (and
+can be triggered manually via the Actions tab's "Run workflow" button) --
+the resulting `Klangorbit.vst3`/`Klangorbit.exe` are attached to that
+workflow run as downloadable artifacts, no local Windows setup needed at
+all.
+
 ```bash
 git submodule add https://github.com/juce-framework/JUCE.git JUCE
 

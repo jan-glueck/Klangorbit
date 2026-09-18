@@ -3,12 +3,20 @@ name: Windows build
 # Builds the VST3 + Standalone app AND runs the full automated test suite
 # on a native Windows runner (MSVC) -- see README.md's "Windows build"
 # section for why the build itself can't be done by cross-compiling from
-# macOS. Runs on every push (cheap on GitHub's per-minute pricing,
+# macOS. Runs on every branch push (cheap on GitHub's per-minute pricing,
 # unlike macos-build.yml's job, see its own comment) and can also be
 # triggered manually (workflow_dispatch) for an on-demand build without a
 # new commit.
+#
+# branches: ['**'] (not a bare `push:`): a bare push trigger also fires on
+# TAG pushes, not just branch pushes -- confirmed the hard way when tagging
+# v0.2.0 triggered a redundant second Windows run for the tag ref itself,
+# duplicating the run the branch push already triggered for the identical
+# commit. Matches every branch, excludes tags, without needing a separate
+# `tags-ignore` list to keep in sync.
 on:
   push:
+    branches: ['**']
   workflow_dispatch:
 
 jobs:

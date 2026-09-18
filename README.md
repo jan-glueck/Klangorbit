@@ -1,5 +1,7 @@
 # Klangorbit
 
+![Klangorbit -- an orbiting object with grain-cloud particles, seen in the Standalone app](Assets/demo.gif)
+
 Object-based Ambisonics encoder with a trajectory/physics engine, and an
 internal decoder to a selectable output format (toolbar -> "Output..." ->
 "Output Format", 16 formats, in dropdown order): Stereo (the default --

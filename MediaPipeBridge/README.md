@@ -101,12 +101,21 @@ needed.
 It also recognizes gestures (`gestures.py`, see below) and sends them as
 the messages listed in the next section.
 
-There is also **no in-plugin UI indicator yet** for "the bridge is
-running" / "a hand is currently visible" -- the `/klangorbit/mediapipe/status`
-and `/klangorbit/hand/<slot>/visible` messages above exist specifically so
-a future toolbar indicator can show this (the project's own requirement:
-camera activity must be visible in the UI, not silently active). Not
-built in this branch; flagging it here so it isn't forgotten.
+**In-plugin indicator** (toolbar, next to the CPU meter): `Hands: off`
+(no heartbeat from the bridge within 1.5 s), `Hands: none` (running, no
+hand visible), `Hands: 1`/`Hands: 2`, or `Hands: paused`. Driven by the
+`/klangorbit/mediapipe/status` heartbeat and the `visible` flags. Clicking
+it pauses/resumes *reacting* to gestures -- **it cannot stop the camera**:
+the camera belongs to the bridge process, which only stops when that
+process does (Ctrl+C; `--preview`, if enabled, also shows a local window
+while it's running). The label's rendering has not been checked by eye
+(logic is unit-tested; see `Tools/verify_gesture_driver.cpp`).
+
+**Mapping hand values to parameters**: nothing special is needed -- hand
+x/y/`z_estimate`/`pinch`/`spread` are ordinary OSC controllers. Open
+Mappings..., start Learn on a parameter, and move your hand (or pinch,
+or spread both hands); they appear as `OSC./klangorbit/hand/0/x` etc. and
+bind through the existing Learn-mode workflow -- no separate mapping UI.
 
 **Privacy**: no camera frame, image, or raw landmark data is ever written
 to disk or sent anywhere. Each frame is decoded, run through the
@@ -148,6 +157,24 @@ message interceptor) and executed through `GestureActions` -- the same code
 the gamepad's throw buttons now share, not a second implementation. Aim
 values use the gamepad stick's convention (right/up positive, magnitude
 <= 1); the plugin owns the mapping to world space.
+
+**Choosing which object a hand acts on** (the interaction proposal of this
+project's brief): the moment a pinch starts, the bridge sends a `grab`
+with where in the camera frame the hand is. The plugin treats the frame as
+a top-down map of the room (centre = origin, up = +X, right = -Y -- the
+gamepad stick's convention -- edge = room boundary) and picks the active
+object nearest that spot within a pick radius (1.5 m by default), remembers
+it for that hand slot, and makes it the globally selected object too (the
+editor highlight follows). A grab with nothing close enough changes
+nothing; a hand that hasn't grabbed anything acts on the globally selected
+object, like the gamepad. So **each hand can hold its own object**:
+pinch over one object with the left hand, another with the right, and each
+hand's throw/slingshot/orbit moves only its own. It's deliberately
+view-independent (the editor may be closed, and the 3D camera may be
+rotated) -- the trade-off is that the mapping is a fixed top-down one, not
+"the object under my hand in whatever view I'm looking at". Not built:
+dragging the object along with the pinched hand (pinch is a "holding"
+state and Learn-mappable value, but doesn't move anything by itself).
 
 **Two-hand spread** (distance between both hands) is just another
 continuous OSC value -- map it in Learn mode to e.g. orbit radius or room

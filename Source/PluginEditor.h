@@ -299,6 +299,14 @@ private:
 
     // Same lazily-created, hide-not-destroy pattern as helpWindow above.
     juce::TextButton mappingButton { "Mappings..." };
+
+    // Shows whether the MediaPipe hand-tracking bridge (a separate Python
+    // process, see MediaPipeBridge/README.md) is running and how many hands
+    // it currently sees -- the project's rule that camera activity must be
+    // visible in the UI, not silently on/off. Clicking pauses/resumes
+    // REACTING to hand gestures (GestureDriver::setPaused()); it cannot
+    // stop the camera itself, which only the bridge process controls.
+    juce::TextButton handTrackingButton { "Hands: off" };
     std::unique_ptr<MappingWindow> mappingWindow;
 
     // Output Format/Bass Management/Circular Array speaker count -- moved

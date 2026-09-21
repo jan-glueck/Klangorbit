@@ -74,6 +74,11 @@ plugin's GestureDriver, which runs them on the selected object through the
 same code as the gamepad's throw buttons. Arguments after the int slot are
 in the gamepad-stick-like convention: right/up positive, magnitude <= 1.
 
+    /klangorbit/gesture/grab           slot frameX frameY
+                                                        (pinch just started; where
+                                                         in the frame, -1..1, right/
+                                                         up positive -- the plugin
+                                                         picks that hand's object)
     /klangorbit/gesture/throw          slot aimX aimY   (fast swipe + release)
     /klangorbit/gesture/slingshot      slot aimX aimY   (pull back + release;
                                                          aim = launch direction)
@@ -294,6 +299,7 @@ def main():
                                      to_units (hand_landmarks[8]), to_units (hand_landmarks[9]))
                 ux, uy = to_units (wrist)
                 wrist_positions[slot_index] = (ux, uy)
+                recognizers[slot_index].cfg.frame_aspect = aspect
                 for event in recognizers[slot_index].update (frame_time, ux, uy, ratio):
                     send_gesture (osc, event)
                 state.pinched = recognizers[slot_index].pinched

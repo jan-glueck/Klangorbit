@@ -204,20 +204,6 @@ KlangorbitProcessor::KlangorbitProcessor()
         return mappingEngine.hasBindingFor (sourceId, mappingEngine.getCurrentBank());
     });
 
-    // Starts OSC listening on its own default port (see OscDriver.h) --
-    // unlike the gamepad/MIDI drivers above, which are always "on" and
-    // simply produce nothing when no controller/device is present,
-    // OscDriver needed an explicit setPort() call to bind its socket and
-    // never got one anywhere in the codebase, so OSC input was silently
-    // completely inert despite OscDriver itself being fully implemented
-    // and unit-tested (found while wiring up the MediaPipe hand-tracking
-    // bridge, which depends on this actually working). No user-facing
-    // port picker exists yet either (a real gap, same "no UI yet" class
-    // as GamepadDriver's own deadzone/curve tuning) -- starting on the
-    // documented default (9000) at least makes OSC input work out of the
-    // box, matching how MIDI/gamepad already need no explicit enabling.
-    oscDriver.setPort (9000);
-
     // Best-effort: load the shipped factory default mapping profile if
     // this build has one (see SAPOC_MAPPING_PROFILES_FACTORY_DIR's own
     // comment in CMakeLists.txt -- a local-dev-only convenience path, not

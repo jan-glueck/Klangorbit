@@ -65,6 +65,7 @@ jobs:
           verify_midi_driver
           verify_osc_driver
           verify_gamepad_driver
+          verify_gesture_driver
           verify_binaural_decoder
 
       - name: Run test suite
@@ -77,10 +78,18 @@ jobs:
                    verify_automation_parameters verify_canonical_input \
                    verify_mapping_engine verify_axis_shaping verify_ambisonics_decoder \
                    verify_midi_driver verify_osc_driver verify_gamepad_driver \
-                   verify_binaural_decoder; do
+                   verify_gesture_driver verify_binaural_decoder; do
             echo "--- $t ---"
             "./${t}_artefacts/Release/${t}"
           done
+
+      # Hand-gesture recognition (MediaPipeBridge/gestures.py) is pure
+      # Python, stdlib only -- no pip install, no camera needed.
+      - name: Run gesture-recognition unit tests
+        shell: bash
+        run: |
+          cd MediaPipeBridge
+          python3 -m unittest test_gestures -v
 
       # Apple's own AU validator, against the just-built-and-installed
       # component (Klangorbit_AU's COPY_PLUGIN_AFTER_BUILD put it in

@@ -198,6 +198,8 @@ KlangorbitProcessor::KlangorbitProcessor()
     // gives gamepadDriver a way to ask "is the left stick explicitly
     // bound right now?" (see GamepadDriver::setLeftStickOverrideQuery()'s
     // own comment on why this exists).
+    oscDriver.setMessageInterceptor ([this] (const juce::OSCMessage& m) { return gestureDriver.handleMessage (m); });
+
     canonicalInputHub.addListener (&mappingEngine);
     gamepadDriver.setLeftStickOverrideQuery ([this] (const juce::String& sourceId)
     {

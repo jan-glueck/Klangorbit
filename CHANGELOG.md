@@ -7,6 +7,23 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Hand-gesture recognition for the MediaPipe bridge**
+  (`MediaPipeBridge/gestures.py`): pinch as the "holding" state, Free
+  Throw (fast swing + release), Slingshot (slow pull-back + release) and
+  Orbit (circle while pinched), plus a two-hand spread value. Rule-based,
+  pure Python, unit-tested with synthetic trajectories
+  (`test_gestures.py`, run in CI on both platforms). Plugin side:
+  `GestureDriver` receives the multi-argument `/klangorbit/gesture/*` OSC
+  messages (via a new optional `OscDriver::setMessageInterceptor()`; they
+  don't fit the one-scalar canonical event model) and runs them on the
+  selected object through the new shared `GestureActions` -- the launch
+  sequences that used to live inside `GamepadDriver::driveThrowGesture()`,
+  extracted so the gamepad and hand gestures call identical code
+  (`verify_gamepad_driver` still passes unchanged; new
+  `verify_gesture_driver`). Finger-count mode switching intentionally not
+  built (see `MediaPipeBridge/README.md`). Thresholds are untuned guesses
+  -- no camera was available; per-hand object assignment is left to
+  `feature/mediapipe-parameter-mapping`.
 - **Webcam hand-tracking bridge** (`MediaPipeBridge/`, first of a planned
   multi-branch effort -- see its own README.md for the full reasoning).
   Runs as an independent Python process (MediaPipe Hand Landmarker,

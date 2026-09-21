@@ -16,6 +16,7 @@
 #include "GamepadDriver.h"
 #include "MidiDriver.h"
 #include "OscDriver.h"
+#include "GestureDriver.h"
 #include "MappingEngine.h"
 
 /**
@@ -477,6 +478,12 @@ private:
     // a reference to it, and dispatches to it directly from its own
     // message-thread-marshaled callback -- no polling needed here.
     OscDriver oscDriver { canonicalInputHub };
+
+    // Executes hand gestures recognized by MediaPipeBridge/ (arriving as
+    // multi-argument /klangorbit/gesture/* OSC messages, intercepted from
+    // oscDriver in the constructor) on the selected object -- see
+    // GestureDriver.h. Declared after trajectoryEngine/selectedObjectIndex.
+    GestureDriver gestureDriver { trajectoryEngine, [this] { return selectedObjectIndex; } };
 
     // See getMappingEngine() above. Constructed after parameterRegistry
     // (declared earlier in this class) since it holds a reference to it;

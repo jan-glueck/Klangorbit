@@ -210,6 +210,8 @@ target_sources(Klangorbit
         Source/GamepadDriver.cpp
         Source/MidiDriver.cpp
         Source/OscDriver.cpp
+        Source/GestureActions.cpp
+        Source/GestureDriver.cpp
         Source/MappingEngine.cpp
         Source/MappingProfileManager.cpp
         Source/TrajectoryEngine.cpp
@@ -698,6 +700,7 @@ target_sources(verify_gamepad_driver
     PRIVATE
         Tools/verify_gamepad_driver.cpp
         Source/GamepadDriver.cpp
+        Source/GestureActions.cpp
         Source/TrajectoryEngine.cpp
         Source/GrainCloud.cpp
         Source/CanonicalInput.cpp
@@ -788,6 +791,39 @@ target_sources(vst3_bus_probe
 target_link_libraries(vst3_bus_probe
     PRIVATE
         juce::juce_audio_processors
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Hand-gesture driver verification ------------------------------------------
+# GestureInterpretation::parse() (the /klangorbit/gesture/* OSC convention the
+# MediaPipe bridge sends, MediaPipeBridge/) and GestureDriver's execution of
+# recognized gestures against a real TrajectoryEngine, via the same
+# GestureActions the gamepad's throw buttons use -- no camera, socket or GUI
+# needed. (The recognition side itself is Python and has its own unit tests,
+# MediaPipeBridge/test_gestures.py.)
+juce_add_console_app(verify_gesture_driver
+    PRODUCT_NAME "verify_gesture_driver"
+)
+
+target_compile_definitions(verify_gesture_driver
+    PRIVATE
+        SAPOC_MAX_LIVE_INPUTS=${SAPOC_MAX_LIVE_INPUTS}
+)
+
+target_sources(verify_gesture_driver
+    PRIVATE
+        Tools/verify_gesture_driver.cpp
+        Source/GestureDriver.cpp
+        Source/GestureActions.cpp
+        Source/TrajectoryEngine.cpp
+        Source/GrainCloud.cpp
+)
+
+target_link_libraries(verify_gesture_driver
+    PRIVATE
+        juce::juce_osc
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags

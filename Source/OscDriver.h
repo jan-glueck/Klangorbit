@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <juce_osc/juce_osc.h>
 #include "CanonicalInput.h"
 
@@ -66,6 +67,14 @@ public:
     bool isConnected() const { return connected; }
     int getPort() const { return port; }
 
+    // Optional first refusal on every incoming message: if the interceptor
+    // returns true the message was handled elsewhere (e.g. GestureDriver's
+    // multi-argument /klangorbit/gesture/* messages, which don't fit the
+    // one-scalar CanonicalInputEvent model) and is NOT interpreted as a
+    // controller value. Called on the message thread, like everything else
+    // here. Default (none): every message goes through OscInterpretation.
+    void setMessageInterceptor (std::function<bool (const juce::OSCMessage&)> interceptor) { messageInterceptor = std::move (interceptor); }
+
 private:
     void oscMessageReceived (const juce::OSCMessage& message) override;
 
@@ -73,4 +82,5 @@ private:
     juce::OSCReceiver receiver;
     int port = 9000; // common OSC default (e.g. TouchOSC's own default receive port)
     bool connected = false;
+    std::function<bool (const juce::OSCMessage&)> messageInterceptor;
 };

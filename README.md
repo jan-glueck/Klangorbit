@@ -949,6 +949,16 @@ workflow described above, no separate MIDI-Learn or OSC-Learn step.
   `setOscPort()` exist for a future indicator/setting to use) -- the
   same kind of gap already noted above for gamepad deadzone/curve/
   inertia tuning, not an oversight.
+- **Webcam hand tracking** (`MediaPipeBridge/`) is a fourth input source
+  on top of this same OSC path -- a separate Python companion process
+  (MediaPipe Hand Landmarker) sends smoothed hand position as OSC
+  messages, bindable exactly like any other OSC controller above, no
+  dedicated UI of its own. See `MediaPipeBridge/README.md` for setup,
+  the OSC message convention, and why this runs as a separate process
+  rather than in-process C++ (short version: MediaPipe has no official
+  C++/Windows-supported build path, but a first-class, zero-friction
+  Python one). Gesture recognition (throw/slingshot/orbit-start/pinch) on
+  top of this raw hand-position stream is planned but not yet built.
 
 ## DAW automation
 

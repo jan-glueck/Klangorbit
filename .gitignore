@@ -26,3 +26,10 @@ Assets/raw/
 
 # Personal, unpolished experiments (see Docs/experiments/README.md)
 Docs/experiments/scratch/
+
+# MediaPipeBridge/ (see its own README.md) -- Python venv and the
+# auto-downloaded Hand Landmarker model, both regenerated locally, not
+# vendored
+MediaPipeBridge/venv/
+MediaPipeBridge/models/
+MediaPipeBridge/__pycache__/

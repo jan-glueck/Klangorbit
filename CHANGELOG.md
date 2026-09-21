@@ -6,6 +6,38 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Added
+- **Webcam hand-tracking bridge** (`MediaPipeBridge/`, first of a planned
+  multi-branch effort -- see its own README.md for the full reasoning).
+  Runs as an independent Python process (MediaPipe Hand Landmarker,
+  chosen over Apple's Vision framework specifically because this project
+  also targets Windows, and Vision is macOS/iOS-exclusive) that owns the
+  webcam and sends smoothed hand position over OSC to Klangorbit's
+  existing `OscDriver` -- no new parallel mapping system, reuses the
+  canonical-input/Learn-mode pipeline as-is. Chosen over embedding
+  MediaPipe's C++ SDK in-process after researching the alternative:
+  Google doesn't officially support/document a C++ Tasks API (Android/
+  Python/Web only), MediaPipe's build system is Bazel with no official
+  CMake path, and the most relevant community C-wrapper
+  (cpvrlab/libmediapipe) has been unmaintained since April 2023.
+  Deliberately pins `mediapipe<1.0` in `requirements.txt` -- 1.0.0/1.0.1
+  crash the whole process on startup on macOS (confirmed by reproducing
+  it locally; matches a known open upstream issue), 0.10.x doesn't.
+  Landmark z (depth) is intentionally NOT treated as a reliable 3rd
+  position axis -- MediaPipe's own training docs and a clinical
+  validation study both confirm it's a synthetic-data-only-trained
+  estimate, not a measurement; sent as a separately-named, heavily
+  smoothed `z_estimate` rather than folded into a false "3D position".
+- **`KlangorbitProcessor::oscDriver` now actually starts listening**
+  (`setPort (9000)` in the constructor). Found while verifying the hand-
+  tracking bridge end-to-end against a running Standalone instance:
+  `OscDriver` was fully implemented and unit-tested, but nothing in the
+  codebase ever called `setPort()`, so OSC input was silently completely
+  inert despite the class's own doc comment implying a live default port.
+  No user-facing port picker exists yet either (noted as a follow-up, not
+  fixed here) -- this at least makes OSC input work out of the box on the
+  documented default, matching how MIDI/gamepad already need no explicit
+  enabling.
 
 ## [0.2.0] - 2026-09-17
 ### Added

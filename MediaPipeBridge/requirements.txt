@@ -1,0 +1,21 @@
+# mediapipe: PINNED below 1.0 deliberately -- 1.0.0/1.0.1 crash on process
+# startup on macOS (confirmed, reproduced locally): HandLandmarker (and
+# other Tasks Vision APIs) unconditionally construct a Metal GPU helper
+# during graph setup even when only the CPU delegate is requested, which
+# aborts the whole process with "Check failed: service_ Service is
+# unavailable" the moment a Tasks Vision object is created -- not a
+# catchable Python exception, a hard process abort. 0.10.30-0.10.35 (the
+# last of the 0.10.x series) do not have this bug. See
+# https://github.com/google-ai-edge/mediapipe/issues/6356
+mediapipe>=0.10.30,<1.0
+
+# Webcam capture -- cross-platform (Windows/macOS/Linux), no separate
+# per-OS capture code needed (this bridge deliberately does NOT use
+# juce::CameraDevice -- see MediaPipeBridge/README.md for why: camera
+# capture lives entirely in this Python process, not in the JUCE plugin).
+opencv-python>=4.9
+
+# Sends the OSC messages this bridge's output consists of (see
+# hand_tracking_bridge.py's own module comment for the message
+# convention) to Klangorbit's existing OscDriver (Source/OscDriver.h/.cpp).
+python-osc>=1.8

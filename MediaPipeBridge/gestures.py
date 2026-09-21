@@ -20,6 +20,9 @@ slot, so two hands never interfere with each other):
 - Slingshot: pinch, pull the hand back and release it (slowly). Aim = the
   pull vector, anchor - release point -- the same "launch opposite to the
   drag" semantics as the mouse sling gesture.
+- Grab: the instant a pinch starts, reports where in the camera frame the
+  hand is (-1..1, right/up positive, frame centre = 0) so the plugin can
+  pick the object nearest that spot for this hand (see GestureDriver).
 - Orbit: while pinched, draw a circle (>= ~270 degrees of consistent
   turning). Radius = the circle's size, direction = its turning direction.
   Fires once per pinch; the release afterwards does not also throw.
@@ -67,13 +70,17 @@ class GestureConfig:
     orbit_min_step: float = 0.008  # ignore sub-jitter movements
     orbit_window_seconds: float = 1.5
 
+    # width / height of the camera frame -- lets the "grab" event report
+    # where in the FRAME the hand is (see HandGestureRecognizer.update()).
+    frame_aspect: float = 4.0 / 3.0
+
 
 @dataclass
 class GestureEvent:
-    kind: str  # "throw" | "slingshot" | "orbit"
+    kind: str  # "grab" | "throw" | "slingshot" | "orbit"
     slot: int
-    a: float  # throw/slingshot: aim_x ; orbit: radius01
-    b: float  # throw/slingshot: aim_y ; orbit: direction (+1 counter-clockwise, -1 clockwise)
+    a: float  # grab: frame_x ; throw/slingshot: aim_x ; orbit: radius01
+    b: float  # grab: frame_y ; throw/slingshot: aim_y ; orbit: direction (+1 counter-clockwise, -1 clockwise)
 
 
 def pinch_ratio(wrist, thumb_tip, index_tip, middle_mcp) -> float:
@@ -124,6 +131,8 @@ class HandGestureRecognizer:
             self.pinched = True
             self._anchor = (x, y)
             self._orbit_fired = False
+            events.append(GestureEvent("grab", self.slot,
+                                       (x / cfg.frame_aspect - 0.5) * 2.0, (y + 0.5) * 2.0))
         elif self.pinched and pinch > cfg.pinch_off_ratio:
             self.pinched = False
             if not self._orbit_fired:

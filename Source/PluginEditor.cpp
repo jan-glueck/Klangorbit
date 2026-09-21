@@ -256,6 +256,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     addAndMakeVisible (presetStatusLabel);
     addAndMakeVisible (cpuLoadLabel);
     addAndMakeVisible (mappingButton);
+    addAndMakeVisible (handTrackingButton);
     addAndMakeVisible (outputButton);
     addAndMakeVisible (helpButton);
     addAndMakeVisible (objectListPanel);
@@ -272,6 +273,14 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     savePresetButton.onClick = [this] { savePresetClicked(); };
     helpButton.onClick = [this] { showHelpClicked(); };
     helpButton.setTooltip ("Help -- every feature and parameter explained");
+    handTrackingButton.onClick = [this]
+    {
+        auto& gestures = audioProcessor.getGestureDriver();
+        gestures.setPaused (! gestures.isPaused());
+    };
+    handTrackingButton.setTooltip ("Webcam hand tracking (MediaPipeBridge/): shows whether the bridge is running and "
+                                   "how many hands it sees. Click to pause/resume reacting to gestures -- the camera "
+                                   "itself only stops when the bridge process is stopped.");
     mappingButton.onClick = [this] { showMappingClicked(); };
     mappingButton.setTooltip ("Controller mapping -- Learn mode, current bindings, mapping profiles");
     outputButton.onClick = [this] { showOutputClicked(); };
@@ -343,6 +352,22 @@ void KlangorbitEditor::timerCallback()
     cpuLoadLabel.setColour (juce::Label::textColourId,
                              cpuLoad >= 1.0f ? UiColours::mute()
                                               : (cpuLoad >= 0.7f ? UiColours::solo() : UiColours::textSecondary()));
+
+    // Hand-tracking indicator -- see handTrackingButton's comment in the header.
+    {
+        const auto& gestures = audioProcessor.getGestureDriver();
+        const auto status = gestures.getTrackingStatus();
+        juce::String text;
+        juce::Colour colour;
+        if (! status.bridgeActive)      { text = "Hands: off";                                         colour = UiColours::textDisabled(); }
+        else if (gestures.isPaused())   { text = "Hands: paused";                                      colour = UiColours::solo(); }
+        else if (status.handsVisible == 0) { text = "Hands: none";                                     colour = UiColours::textSecondary(); }
+        else                            { text = "Hands: " + juce::String (status.handsVisible);       colour = UiColours::accent(); }
+
+        if (handTrackingButton.getButtonText() != text)
+            handTrackingButton.setButtonText (text);
+        handTrackingButton.setColour (juce::TextButton::textColourOffId, colour);
+    }
 
     // Tells the ParameterPanel whether more than one object is currently
     // competing for the shared grain budget (PluginProcessor::
@@ -819,6 +844,7 @@ void KlangorbitEditor::resized()
     outputButton.setBounds (toolbar.removeFromRight (110).reduced (UiSpacing::xs));
     mappingButton.setBounds (toolbar.removeFromRight (130).reduced (UiSpacing::xs));
     cpuLoadLabel.setBounds (toolbar.removeFromRight (110).reduced (UiSpacing::xs));
+    handTrackingButton.setBounds (toolbar.removeFromRight (120).reduced (UiSpacing::xs));
     loadPresetButton.setBounds (toolbar.removeFromLeft (140).reduced (UiSpacing::xs));
     toolbar.removeFromLeft (UiSpacing::s);
     savePresetButton.setBounds (toolbar.removeFromLeft (140).reduced (UiSpacing::xs));

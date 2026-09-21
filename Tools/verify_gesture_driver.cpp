@@ -119,6 +119,88 @@ int main()
         check (! driver.handleMessage (juce::OSCMessage ("/klangorbit/hand/0/x", 0.5f)), "handleMessage: leaves ordinary OSC messages alone");
     }
 
+    // --- Grab: per-hand object selection ---------------------------------------
+    {
+        TrajectoryEngine engine (SAPOC_MAX_LIVE_INPUTS);
+        engine.activateObject (0);
+        engine.activateObject (1);
+        engine.getObject (0).position = { 2.5f, 0.0f, 0.0f };   // in front  -> frame (aimX 0, aimY +0.5)
+        engine.getObject (1).position = { 0.0f, -2.5f, 0.0f };  // to the right -> frame (aimX +0.5, aimY 0)
+        engine.getSceneSettings().roomSize = 5.0f;
+
+        int selected = -1;
+        int callbackIndex = -99;
+        GestureDriver driver (engine, [&selected] { return selected; });
+        driver.setSelectionCallback ([&] (int i) { callbackIndex = i; selected = i; });
+
+        GestureEvent e;
+        check (GestureInterpretation::parse (msg ("/klangorbit/gesture/grab", 1, 0.25f, -0.75f), e)
+               && e.kind == GestureEvent::Kind::Grab && e.handSlot == 1 && approx (e.a, 0.25f) && approx (e.b, -0.75f), "grab: parses (frame position carried through)");
+        check (GestureInterpretation::parse (msg ("/klangorbit/gesture/grab", 0, 4.0f, -4.0f), e) && approx (e.a, 1.0f) && approx (e.b, -1.0f), "grab: frame position clamped to -1..1");
+
+        driver.execute ({ GestureEvent::Kind::Grab, 0, 0.0f, 0.5f });
+        check (callbackIndex == 0 && selected == 0, "grab: hand 0 over the front object picks it and reports the selection");
+        driver.execute ({ GestureEvent::Kind::Grab, 1, 0.5f, 0.0f });
+        check (callbackIndex == 1, "grab: hand 1 over the right-hand object picks that one");
+
+        // each hand throws ITS OWN object, regardless of the global selection (now object 1)
+        driver.execute ({ GestureEvent::Kind::Throw, 0, 0.0f, 1.0f });
+        check (engine.getObject (0).mode == SoundObject::Mode::Impulse && engine.getObject (1).mode != SoundObject::Mode::Impulse, "hand 0's throw moves only its own object");
+        driver.execute ({ GestureEvent::Kind::Throw, 1, 0.0f, 1.0f });
+        check (engine.getObject (1).mode == SoundObject::Mode::Impulse, "hand 1's throw moves its own object");
+
+        // a grab with nothing near changes nothing
+        callbackIndex = -99;
+        driver.execute ({ GestureEvent::Kind::Grab, 0, -1.0f, -1.0f });
+        check (callbackIndex == -99, "grab: no object within the pick radius -> selection unchanged, no callback");
+
+        // hand that never grabbed falls back to the global selection
+        TrajectoryEngine engine2 (SAPOC_MAX_LIVE_INPUTS);
+        engine2.activateObject (3);
+        int sel2 = 3;
+        GestureDriver driver2 (engine2, [&sel2] { return sel2; });
+        driver2.execute ({ GestureEvent::Kind::Throw, 1, 0.0f, 1.0f });
+        check (engine2.getObject (3).mode == SoundObject::Mode::Impulse, "un-grabbed hand acts on the globally selected object");
+
+        // a grabbed object that gets deactivated falls back too
+        engine.deactivateObject (1);
+        selected = 0;
+        engine.getObject (0).mode = SoundObject::Mode::Static;
+        driver.execute ({ GestureEvent::Kind::Throw, 1, 0.0f, 1.0f });
+        check (engine.getObject (0).mode == SoundObject::Mode::Impulse, "hand whose grabbed object was removed falls back to the global selection");
+    }
+
+    // --- Pause + tracking status -------------------------------------------------
+    {
+        TrajectoryEngine engine (SAPOC_MAX_LIVE_INPUTS);
+        engine.activateObject (0);
+        GestureDriver driver (engine, [] { return 0; });
+        driver.setStatusTimeoutMs (60);
+
+        check (! driver.getTrackingStatus().bridgeActive, "status: bridge is 'off' before any heartbeat arrived");
+
+        juce::OSCMessage status ("/klangorbit/mediapipe/status", 1.0f);
+        check (! driver.handleMessage (status), "status: heartbeat is observed but NOT consumed (still a Learn-mappable controller value)");
+        check (driver.getTrackingStatus().bridgeActive && driver.getTrackingStatus().handsVisible == 0, "status: heartbeat -> bridge active, no hands yet");
+
+        check (! driver.handleMessage (juce::OSCMessage ("/klangorbit/hand/1/visible", 1.0f)), "status: visible flag is observed, not consumed");
+        check (driver.getTrackingStatus().handsVisible == 1, "status: one visible hand counted");
+        driver.handleMessage (juce::OSCMessage ("/klangorbit/hand/0/visible", 1.0f));
+        check (driver.getTrackingStatus().handsVisible == 2, "status: two visible hands counted");
+        driver.handleMessage (juce::OSCMessage ("/klangorbit/hand/1/visible", 0.0f));
+        check (driver.getTrackingStatus().handsVisible == 1, "status: a hand dropping out is counted again");
+
+        juce::Thread::sleep (150);
+        check (! driver.getTrackingStatus().bridgeActive && driver.getTrackingStatus().handsVisible == 0, "status: no heartbeat within the timeout -> bridge 'off' again");
+
+        driver.setPaused (true);
+        driver.handleMessage (msg ("/klangorbit/gesture/throw", 0, 0.0f, 1.0f));
+        check (engine.getObject (0).mode != SoundObject::Mode::Impulse, "paused: gesture message is consumed but changes nothing");
+        driver.setPaused (false);
+        driver.handleMessage (msg ("/klangorbit/gesture/throw", 0, 0.0f, 1.0f));
+        check (engine.getObject (0).mode == SoundObject::Mode::Impulse, "resumed: gestures act again");
+    }
+
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED", g_failures, g_failures == 1 ? "" : "s");
     return g_failures == 0 ? 0 : 1;
 }

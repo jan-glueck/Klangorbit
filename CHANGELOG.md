@@ -7,6 +7,21 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Per-hand object selection and a hand-tracking indicator** for the
+  MediaPipe bridge. A `grab` (sent when a pinch starts) picks the active
+  object nearest the hand's position -- the camera frame read as a top-down
+  map of the room, same axis convention as the gamepad stick -- and is
+  remembered per hand slot, so each hand throws/slings/orbits its own
+  object; the most recent grab also becomes the globally selected object.
+  Toolbar indicator (`Hands: off / none / 1 / 2 / paused`) from the
+  bridge's heartbeat and per-hand visibility flags; clicking it pauses
+  reacting to gestures (it cannot stop the camera, which belongs to the
+  bridge process). Hand x/y/`z_estimate`/`pinch`/`spread` need no code to
+  be mappable: they're ordinary OSC controllers in the existing Learn mode.
+  Selection is deliberately a fixed top-down mapping, not
+  view-dependent -- documented trade-off. Logic unit-tested
+  (`verify_gesture_driver`, `test_gestures.py`); the indicator's on-screen
+  rendering is not verified by eye.
 - **Hand-gesture recognition for the MediaPipe bridge**
   (`MediaPipeBridge/gestures.py`): pinch as the "holding" state, Free
   Throw (fast swing + release), Slingshot (slow pull-back + release) and

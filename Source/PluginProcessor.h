@@ -220,6 +220,7 @@ public:
     // is a display convenience, not a second source of truth.
     // -1 = nothing selected.
     int getSelectedObjectIndex() const { return selectedObjectIndex; }
+    GestureDriver& getGestureDriver() { return gestureDriver; }
     void setSelectedObjectIndex (int index) { selectedObjectIndex = index; }
 
     // --- Canonical controller input ---------------------------------------

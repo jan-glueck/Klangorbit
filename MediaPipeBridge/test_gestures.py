@@ -12,13 +12,17 @@ DT = 1.0 / 30.0
 OPEN, CLOSED = 1.0, 0.1
 
 
-def run(rec, frames, t0=0.0):
-    """frames: list of (x, y, pinch). Returns (all events, end time)."""
+def run(rec, frames, t0=0.0, keep_grab=False):
+    """frames: list of (x, y, pinch). Returns (events, end time). Grab events
+    (one at every pinch start) are dropped unless keep_grab -- the gesture
+    tests below are about what happens AFTER the grab."""
     events = []
     t = t0
     for x, y, p in frames:
         events += rec.update(t, x, y, p)
         t += DT
+    if not keep_grab:
+        events = [e for e in events if e.kind != "grab"]
     return events, t
 
 
@@ -50,6 +54,31 @@ class PinchTests(unittest.TestCase):
         wrist, mcp = (0, 0), (0, 0.2)
         self.assertLess(pinch_ratio(wrist, (0.01, 0.3), (0.02, 0.3), mcp), 0.25)
         self.assertGreater(pinch_ratio(wrist, (-0.1, 0.3), (0.1, 0.35), mcp), 0.5)
+
+
+class GrabTests(unittest.TestCase):
+    def test_pinch_start_reports_frame_position_once(self):
+        rec = HandGestureRecognizer(1)
+        aspect = rec.cfg.frame_aspect
+        # image centre: x = aspect/2 height units, y_up = -0.5
+        ev, _ = run(rec, still(aspect / 2, -0.5, OPEN, 2) + still(aspect / 2, -0.5, CLOSED, 5), keep_grab=True)
+        self.assertEqual([e.kind for e in ev], ["grab"])
+        self.assertEqual(ev[0].slot, 1)
+        self.assertAlmostEqual(ev[0].a, 0.0, places=6)
+        self.assertAlmostEqual(ev[0].b, 0.0, places=6)
+
+    def test_grab_maps_right_and_up_positive(self):
+        rec = HandGestureRecognizer(0)
+        aspect = rec.cfg.frame_aspect
+        # right edge, top edge of the image (y_img = 0 -> y_up = 0)
+        ev, _ = run(rec, still(aspect, 0.0, CLOSED, 2), keep_grab=True)
+        self.assertAlmostEqual(ev[0].a, 1.0, places=6)
+        self.assertAlmostEqual(ev[0].b, 1.0, places=6)
+
+    def test_no_grab_without_pinch(self):
+        rec = HandGestureRecognizer(0)
+        ev, _ = run(rec, still(0.5, -0.5, OPEN, 10))
+        self.assertEqual(ev, [])
 
 
 class ThrowTests(unittest.TestCase):

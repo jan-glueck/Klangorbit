@@ -957,8 +957,12 @@ workflow described above, no separate MIDI-Learn or OSC-Learn step.
   the OSC message convention, and why this runs as a separate process
   rather than in-process C++ (short version: MediaPipe has no official
   C++/Windows-supported build path, but a first-class, zero-friction
-  Python one). Gesture recognition (throw/slingshot/orbit-start/pinch) on
-  top of this raw hand-position stream is planned but not yet built.
+  Python one). It also recognizes hand gestures (pinch-to-hold, free
+  throw, slingshot, orbit-by-drawing-a-circle, two-hand spread) and
+  executes them on the selected object through the same launch code the
+  gamepad's throw buttons use (`GestureDriver`/`GestureActions`) -- see
+  the bridge README's "Gestures" section for the full vocabulary and its
+  untuned-thresholds caveat.
 
 ## DAW automation
 

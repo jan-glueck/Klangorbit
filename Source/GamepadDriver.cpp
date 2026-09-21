@@ -1,5 +1,6 @@
 #include "GamepadDriver.h"
 #include "SlingGesture.h"
+#include "GestureActions.h"
 #include <cmath>
 #include <vector>
 
@@ -285,48 +286,10 @@ void GamepadDriver::driveThrowGesture (int selectedObjectIndex, const GamepadSta
 
     switch (firedMode)
     {
-        case ThrowMode::FreeThrow:
-            engine.throwObject (objectIndex, pullVector * SlingGesture::throwVelocityScale);
-            break;
-
-        case ThrowMode::OrbitShot:
-        {
-            // Always centers on the world origin ("Center") and always
-            // circular (eccentricity 0) -- gamepad throw has no Tab-cycle
-            // equivalent to instead orbit another object, and no
-            // Alt-cycle equivalent for eccentricity. A deliberate,
-            // disclosed scope decision (see the class comment), not an
-            // oversight -- both remain available via the mouse gesture.
-            const Vec3 center { 0.0f, 0.0f, 0.0f };
-            const float semiMajor = juce::jmax (SlingGesture::minOrbitRadiusMeters, pullVector.length() * SlingGesture::orbitRadiusScale);
-            const float orientation = SlingGesture::computeOrbitOrientation (pullVector);
-            const Vec3 anchorPos = engine.getObject (objectIndex).position; // rest position -- never moved while aiming
-            const float directionSign = SlingGesture::computeOrbitDirectionSign (anchorPos - center, pullVector);
-            engine.startOrbit (objectIndex, center, semiMajor, directionSign * SlingGesture::orbitAngularSpeedMagnitude, 0.0f, orientation, -1);
-            break;
-        }
-
-        case ThrowMode::Slingshot:
-        {
-            // Auto-targets the first other active object -- the same
-            // fallback the mouse gesture's own updateSlingModifiers() uses
-            // when Ctrl-cycling into Slingshot with nothing chosen yet
-            // (SlingGesture::cycleSlingReference()'s own "Center has no
-            // gravity-well meaning" comment). Gamepad throw has no
-            // Tab-cycle equivalent to pick a SPECIFIC target -- same
-            // disclosed scope decision as Orbit Shot's fixed center above.
-            std::vector<int> activeIds;
-            for (int i = 0; i < engine.getNumObjects(); ++i)
-                if (engine.getObject (i).inputChannel >= 0)
-                    activeIds.push_back (i);
-            const int targetId = SlingGesture::cycleSlingReference (-1, activeIds, objectIndex);
-            const float strength = (targetId >= 0) ? SlingGesture::slingshotGravityStrength : 0.0f;
-            engine.throwObject (objectIndex, pullVector * SlingGesture::throwVelocityScale, targetId, strength);
-            break;
-        }
-
-        case ThrowMode::None:
-            break;
+        case ThrowMode::FreeThrow:  GestureActions::fire (engine, GestureActions::LaunchMode::FreeThrow, objectIndex, pullVector); break;
+        case ThrowMode::OrbitShot:  GestureActions::fire (engine, GestureActions::LaunchMode::OrbitShot, objectIndex, pullVector); break;
+        case ThrowMode::Slingshot:  GestureActions::fire (engine, GestureActions::LaunchMode::Slingshot, objectIndex, pullVector); break;
+        case ThrowMode::None:       break;
     }
 }
 

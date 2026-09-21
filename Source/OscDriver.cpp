@@ -44,6 +44,9 @@ bool OscDriver::setPort (int newPort)
 
 void OscDriver::oscMessageReceived (const juce::OSCMessage& message)
 {
+    if (messageInterceptor && messageInterceptor (message))
+        return;
+
     CanonicalInputEvent event;
     if (OscInterpretation::interpretMessage (message, event))
         hub.dispatch (event);

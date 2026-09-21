@@ -7,6 +7,23 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Hand-gesture recognition for the MediaPipe bridge**
+  (`MediaPipeBridge/gestures.py`): pinch as the "holding" state, Free
+  Throw (fast swing + release), Slingshot (slow pull-back + release) and
+  Orbit (circle while pinched), plus a two-hand spread value. Rule-based,
+  pure Python, unit-tested with synthetic trajectories
+  (`test_gestures.py`, run in CI on both platforms). Plugin side:
+  `GestureDriver` receives the multi-argument `/klangorbit/gesture/*` OSC
+  messages (via a new optional `OscDriver::setMessageInterceptor()`; they
+  don't fit the one-scalar canonical event model) and runs them on the
+  selected object through the new shared `GestureActions` -- the launch
+  sequences that used to live inside `GamepadDriver::driveThrowGesture()`,
+  extracted so the gamepad and hand gestures call identical code
+  (`verify_gamepad_driver` still passes unchanged; new
+  `verify_gesture_driver`). Finger-count mode switching intentionally not
+  built (see `MediaPipeBridge/README.md`). Thresholds are untuned guesses
+  -- no camera was available; per-hand object assignment is left to
+  `feature/mediapipe-parameter-mapping`.
 - **Webcam hand-tracking bridge** (`MediaPipeBridge/`, first of a planned
   multi-branch effort -- see its own README.md for the full reasoning).
   Runs as an independent Python process (MediaPipe Hand Landmarker,
@@ -28,16 +45,16 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   validation study both confirm it's a synthetic-data-only-trained
   estimate, not a measurement; sent as a separately-named, heavily
   smoothed `z_estimate` rather than folded into a false "3D position".
-- **`KlangorbitProcessor::oscDriver` now actually starts listening**
-  (`setPort (9000)` in the constructor). Found while verifying the hand-
-  tracking bridge end-to-end against a running Standalone instance:
-  `OscDriver` was fully implemented and unit-tested, but nothing in the
-  codebase ever called `setPort()`, so OSC input was silently completely
-  inert despite the class's own doc comment implying a live default port.
-  No user-facing port picker exists yet either (noted as a follow-up, not
-  fixed here) -- this at least makes OSC input work out of the box on the
-  documented default, matching how MIDI/gamepad already need no explicit
-  enabling.
+- **Correction to the entry above / the merge commit of
+  `feature/mediapipe-hand-tracking`:** that commit claimed OSC input was
+  "silently completely inert" because nothing called `setPort()`, and
+  added `oscDriver.setPort (9000)` to `KlangorbitProcessor`'s constructor.
+  That was wrong -- `OscDriver`'s own constructor already calls
+  `setPort (port)` (Source/OscDriver.cpp), my search for callers only
+  looked outside the class. OSC was live on port 9000 all along
+  (re-verified with the redundant line removed: `lsof -iUDP:9000` shows
+  the Standalone process bound). The redundant line is removed again; no
+  behavior changed.
 
 ## [0.2.0] - 2026-09-17
 ### Added

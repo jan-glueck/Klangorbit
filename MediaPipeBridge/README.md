@@ -98,9 +98,8 @@ exactly like any other OSC controller: open Mappings..., enter Learn mode,
 move your hand -- no MediaPipe-specific UI or mapping path exists or is
 needed.
 
-This script does **not** recognize gestures (throw, slingshot, orbit-start,
-pinch) yet -- that's `feature/gesture-recognition-mediapipe`, built on top
-of this branch's raw hand-position stream, not part of it.
+It also recognizes gestures (`gestures.py`, see below) and sends them as
+the messages listed in the next section.
 
 There is also **no in-plugin UI indicator yet** for "the bridge is
 running" / "a hand is currently visible" -- the `/klangorbit/mediapipe/status`
@@ -115,6 +114,61 @@ landmarker, reduced to the few smoothed scalars above, and discarded.
 `--preview` (off by default) opens a local, on-screen-only OpenCV window
 so the person running the script can see what's being tracked -- it does
 not write anything to disk either.
+
+## Gestures
+
+Rule-based (thresholds on distances, speeds and path curvature -- no
+trained classifier), per hand, each hand independent. **Pinch** (thumb tip
+to index tip, relative to hand size, with hysteresis) is the "holding"
+state, like a pressed mouse button. While pinched:
+
+| Gesture | Motion | Result on the selected object |
+|---|---|---|
+| **Free Throw** | swing quickly, open the pinch while still moving | thrown along the hand's velocity at release (Impulse) |
+| **Slingshot** | pull the hand back slowly, release | launched opposite to the pull, with the gravity-assist toward another object -- same semantics as the mouse Shift+drag sling |
+| **Orbit** | draw a circle (>= ~270 degrees, consistent turn) | orbit around the origin; radius = circle size, direction = turning direction; fires once per pinch, and the release after it does not also throw |
+
+A fast release is a Throw, a slow one is a Slingshot -- that distinction is
+this project's own interpretation of the brief's "pull back and release"
+wording (the mouse sling releases from a held pull, not at speed); a
+quick forward flick past that point is what the Free Throw is.
+
+```
+/klangorbit/hand/<slot>/pinch   1.0 / 0.0 (Learn-mappable like any control)
+/klangorbit/hands/spread        0..1 distance between both hands (only while both are visible)
+/klangorbit/gesture/throw       slot aimX aimY
+/klangorbit/gesture/slingshot   slot aimX aimY
+/klangorbit/gesture/orbit       slot radius01 direction   (+1 counter-clockwise on screen, -1 clockwise)
+```
+
+Launch gestures are multi-argument messages (a slot plus values), which
+don't fit `OscDriver`'s one-scalar-per-message model, so they're consumed
+by a small `GestureDriver` in the plugin (via `OscDriver`'s new optional
+message interceptor) and executed through `GestureActions` -- the same code
+the gamepad's throw buttons now share, not a second implementation. Aim
+values use the gamepad stick's convention (right/up positive, magnitude
+<= 1); the plugin owns the mapping to world space.
+
+**Two-hand spread** (distance between both hands) is just another
+continuous OSC value -- map it in Learn mode to e.g. orbit radius or room
+size, no extra code. **One hand per object** works at the recognition
+level (both hands are recognized independently and tagged with their slot);
+assigning each hand to its own object is part of the object-selection work
+in `feature/mediapipe-parameter-mapping`, not this branch -- until then all
+gestures act on the currently selected object.
+
+**Finger-count mode switching was deliberately not built.** Deciding "how
+many fingers are extended" from 21 landmarks degrades quickly with hand
+rotation, partial occlusion and camera angle, and a wrong mode switch is
+worse than none. A pinch/motion-based vocabulary is much more robust.
+
+**All thresholds are informed guesses, not tuned against real hands and a
+real camera** (no camera was available during development) -- expect to
+adjust `GestureConfig` in `gestures.py` first. The recognition itself is
+covered by `test_gestures.py` (synthetic 30fps trajectories, stdlib only:
+`python3 -m unittest test_gestures`), the plugin side by
+`Tools/verify_gesture_driver.cpp`; the aim/direction sign conventions (like
+the gamepad's) are unverified by eye.
 
 ## Depth (z) reliability -- don't treat it as a real 3rd axis
 

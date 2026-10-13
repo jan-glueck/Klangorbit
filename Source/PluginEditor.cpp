@@ -359,7 +359,7 @@ void KlangorbitEditor::timerCallback()
         const auto status = gestures.getTrackingStatus();
         juce::String text;
         juce::Colour colour;
-        if (! status.bridgeActive)      { text = "Hands: off";                                         colour = UiColours::textDisabled(); }
+        if (! status.bridgeActive)      { text = "Hands: off";                                         colour = UiColours::textSecondary(); }
         else if (gestures.isPaused())   { text = "Hands: paused";                                      colour = UiColours::solo(); }
         else if (status.handsVisible == 0) { text = "Hands: none";                                     colour = UiColours::textSecondary(); }
         else                            { text = "Hands: " + juce::String (status.handsVisible);       colour = UiColours::accent(); }

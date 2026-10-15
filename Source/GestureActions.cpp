@@ -14,9 +14,9 @@ namespace GestureActions
             case LaunchMode::OrbitShot:
             {
                 // Always centers on the world origin and always circular --
-                // no Tab/Alt-cycle equivalent for a gamepad or a hand, a
-                // disclosed scope decision, not an oversight (both remain
-                // available via the mouse gesture).
+                // no Tab/Alt-cycle equivalent for a gamepad, a disclosed
+                // scope decision, not an oversight (both remain available
+                // via the mouse gesture).
                 const Vec3 center { 0.0f, 0.0f, 0.0f };
                 const float semiMajor = juce::jmax (SlingGesture::minOrbitRadiusMeters, pullVector.length() * SlingGesture::orbitRadiusScale);
                 const float orientation = SlingGesture::computeOrbitOrientation (pullVector);
@@ -41,13 +41,5 @@ namespace GestureActions
                 break;
             }
         }
-    }
-
-    void fireOrbit (TrajectoryEngine& engine, int objectIndex, float radiusMeters, float directionSign)
-    {
-        const Vec3 center { 0.0f, 0.0f, 0.0f };
-        const float semiMajor = juce::jmax (SlingGesture::minOrbitRadiusMeters, radiusMeters * SlingGesture::orbitRadiusScale);
-        const float sign = directionSign >= 0.0f ? 1.0f : -1.0f;
-        engine.startOrbit (objectIndex, center, semiMajor, sign * SlingGesture::orbitAngularSpeedMagnitude, 0.0f, 0.0f, -1);
     }
 }

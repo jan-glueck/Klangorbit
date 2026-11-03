@@ -417,6 +417,12 @@ private:
                    "otherwise a grain at the extremes of the allowed duration/rate/jitter ranges "
                    "could read past what the ring buffer actually holds.");
 
+    // Sized from DelayLimits (DelayTap.h) -- same discipline as
+    // grainRingBufferSeconds above, see DelayLimits::requiredBufferSeconds
+    // for the worst-case-lookback derivation (longest tap's reach, plus
+    // delayTimeJitter headroom).
+    static constexpr float delayLineBufferSeconds = DelayLimits::requiredBufferSeconds;
+
     TrajectoryEngine trajectoryEngine { numLiveInputs, grainPoolSizePerCloud };
     AmbisonicsEncoder encoder;
     AmbisonicsDecoder decoder;
@@ -593,6 +599,49 @@ private:
     // signal at a time before encoding -- reused serially within a block,
     // sized once in prepareToPlay.
     juce::AudioBuffer<float> grainScratch;
+
+    // --- DelayInstance audio-thread state (feature/delay-instance; the
+    // DelayInstance objects themselves -- settings, tap positions/delay
+    // times -- live in TrajectoryEngine, same split as GrainCloud above)
+    // ------------------------------------------------------------------
+    // One RECIRCULATING buffer per object slot -- unlike grainRingBuffers
+    // (dry, no feedback), this one stores its own fed-back output (see
+    // DelayRenderer.h's own comment), so it's only written while that
+    // object's DelayInstance is actually enabled; while disabled it's
+    // simply frozen (never cleared either), so re-enabling resumes rather
+    // than restarting -- a deliberate simplification, not a bug: no
+    // separate "warm up"/"reset on enable" logic is needed because of it.
+    std::vector<juce::AudioBuffer<float>> delayLineBuffers; // mono, circular
+    // Audio-thread-private (no other thread ever reads/writes the buffer
+    // or this position, unlike grainRingBufferWriteHead, which the
+    // control-rate thread also reads for new-grain spawn positions --
+    // DelayInstance needs no such cross-thread read, see its own class
+    // comment), so a plain int suffices, no atomic needed.
+    std::vector<int> delayLineWritePos;
+    // One persistent damping filter per object -- the audio-rate half of
+    // VoiceFilter's split (see VoiceFilter.h's own comment): the
+    // control-rate half (which cutoff, from DelayInstanceSettings::
+    // feedbackDamping) lives in DelayInstance::Snapshot::dampingCutoffHz
+    // instead. ONE filter per object, not per tap: there is only one
+    // recirculating signal; taps are multiple read points into it, not
+    // independent feedback paths (see DelayRenderer.h).
+    std::vector<VoiceFilter> delayDampingFilters;
+
+    // Audio-thread-owned per-(object, tap) gain-ramp state -- same
+    // purpose as GrainAudioState's previousChannelGains/
+    // previousSpeakerGains, but a tap has no envelope/pitch/generation to
+    // track (a continuous readback, not a spawn-move-fade event), so this
+    // is the whole of what a tap needs on the audio side.
+    struct DelayTapAudioState
+    {
+        std::vector<float> previousChannelGains;
+        std::vector<float> previousSpeakerGains;
+    };
+    std::vector<std::vector<DelayTapAudioState>> delayTapAudioState; // [objectIndex][tapIndex]
+    // Scratch for rendering one tap's mono signal at a time before
+    // encoding -- reused serially within a block, same role as
+    // grainScratch above, sized once in prepareToPlay.
+    juce::AudioBuffer<float> delayTapScratch;
 
     // Mono scratch, accumulated into (ONLY while the active mode is
     // AmbisonicsDecoder::usesDirectPan() AND has an LFE channel) from both

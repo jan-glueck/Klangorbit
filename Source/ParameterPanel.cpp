@@ -183,7 +183,7 @@ bool ParameterPanel::categoryRequiresObject (Category category)
     // SETTINGS" button-group partition, see the class comment.
     return category == Category::Object || category == Category::Attraction
         || category == Category::Orbit || category == Category::Doppler
-        || category == Category::GrainCloud;
+        || category == Category::GrainCloud || category == Category::Delay;
 }
 
 ParameterPanel::ParameterPanel()
@@ -222,6 +222,7 @@ ParameterPanel::ParameterPanel()
     addCategoryButton ("Orbit", Category::Orbit);
     addCategoryButton ("Doppler", Category::Doppler);
     addCategoryButton ("Grains", Category::GrainCloud);
+    addCategoryButton ("Delay", Category::Delay);
 
     // --- Scene ------------------------------------------------------------
     // Purely visual -- the boundary keeps applying physically even while
@@ -424,7 +425,12 @@ ParameterPanel::ParameterPanel()
 
     // --- Grains -------------------------------------------------------------
     grainEnabledRow = std::make_unique<ToggleRowComponent> ("Enabled");
-    grainEnabledRow->onToggled = [this] (bool v) { if (editedGrainCloud != nullptr) editedGrainCloud->enabled = v; };
+    grainEnabledRow->onToggled = [this] (bool v)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->enabled = v;
+        updateGrainDelayMutualExclusion();
+    };
     content.addAndMakeVisible (*grainEnabledRow);
     addToLayout (*grainEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
 
@@ -670,6 +676,61 @@ ParameterPanel::ParameterPanel()
     content.addChildComponent (*grainFilterDriftAmountRow);
     addToLayout (*grainFilterDriftAmountRow, FloatRowComponent::preferredHeight, Category::GrainCloud);
 
+    // Shown in the Grains category itself while this object's Delay is
+    // enabled, explaining why grainEnabledRow's toggle above is greyed
+    // out -- see updateGrainDelayMutualExclusion().
+    styleRowLabel (grainDisabledByDelayHintLabel,
+                    "Delay is active for this object -- Grains and Delay can't run together on the "
+                    "same object. Disable Delay first to turn Grains on.", 12.5f, UiColours::solo());
+    grainDisabledByDelayHintLabel.setJustificationType (juce::Justification::topLeft);
+    content.addChildComponent (grainDisabledByDelayHintLabel); // hidden until updateGrainDelayMutualExclusion() shows it
+    addToLayout (grainDisabledByDelayHintLabel, 48, Category::GrainCloud);
+
+    // --- Delay (feature/delay-instance) -------------------------------------
+    delayEnabledRow = std::make_unique<ToggleRowComponent> ("Enabled");
+    delayEnabledRow->onToggled = [this] (bool v)
+    {
+        if (editedDelayInstance != nullptr)
+            editedDelayInstance->enabled = v;
+        updateGrainDelayMutualExclusion();
+    };
+    content.addAndMakeVisible (*delayEnabledRow);
+    addToLayout (*delayEnabledRow, ToggleRowComponent::preferredHeight, Category::Delay);
+
+    // Shown in the Delay category itself while this object's Grains is
+    // enabled, explaining why delayEnabledRow's toggle above is greyed
+    // out -- see updateGrainDelayMutualExclusion().
+    styleRowLabel (delayDisabledByGrainHintLabel,
+                    "Grains is active for this object -- Grains and Delay can't run together on the "
+                    "same object. Disable Grains first to turn Delay on.", 12.5f, UiColours::solo());
+    delayDisabledByGrainHintLabel.setJustificationType (juce::Justification::topLeft);
+    content.addChildComponent (delayDisabledByGrainHintLabel); // hidden until updateGrainDelayMutualExclusion() shows it
+    addToLayout (delayDisabledByGrainHintLabel, 48, Category::Delay);
+
+    // Seeds this instance's own delayTimeJitter sampling (see
+    // Source/RandomEngine.h) -- same "New Seed" convention as
+    // grainSeedRow above.
+    delaySeedRow = std::make_unique<SeedRowComponent> ("Seed");
+    delaySeedRow->onNewSeed = [this]
+    {
+        if (editedDelayInstance != nullptr)
+        {
+            editedDelayInstance->seed = juce::Random::getSystemRandom().nextInt64();
+            delaySeedRow->setSeedValue (editedDelayInstance->seed);
+        }
+    };
+    content.addAndMakeVisible (*delaySeedRow);
+    addToLayout (*delaySeedRow, SeedRowComponent::preferredHeight, Category::Delay);
+
+    addDelayIntRow ("Number of Taps", &DelayInstanceSettings::numTaps, 1.0, (double) DelayLimits::maxTaps, Category::Delay);
+    addDelayFloatRow ("Delay Time (s)", &DelayInstanceSettings::delayTime, 0.01, (double) DelayLimits::maxDelayTimeSeconds, 0.01, Category::Delay);
+    addDelayFloatRow ("Delay Time Jitter", &DelayInstanceSettings::delayTimeJitter, 0.0, 1.0, 0.01, Category::Delay);
+    addDelayFloatRow ("Feedback", &DelayInstanceSettings::feedback, 0.0, (double) DelayLimits::maxFeedback, 0.01, Category::Delay);
+    addDelayFloatRow ("Feedback Damping", &DelayInstanceSettings::feedbackDamping, 0.0, 1.0, 0.01, Category::Delay);
+    addDelayFloatRow ("Tap Spread Radius (m)", &DelayInstanceSettings::tapSpreadRadius, 0.0, (double) DelayLimits::maxTapSpreadRadius, 0.01, Category::Delay);
+    addDelayFloatRow ("Tap Orbit Angular Speed (rad/s)", &DelayInstanceSettings::tapOrbitAngularSpeed,
+                       -(double) DelayLimits::maxTapOrbitAngularSpeed, (double) DelayLimits::maxTapOrbitAngularSpeed, 0.01, Category::Delay);
+
     updateCategoryButtonsEnabled();
     selectCategory (Category::Scene);
 }
@@ -775,6 +836,36 @@ FloatRowComponent& ParameterPanel::addGrainIntRow (const juce::String& name, int
     return *grainIntRows.back().row;
 }
 
+FloatRowComponent& ParameterPanel::addDelayFloatRow (const juce::String& name, float DelayInstanceSettings::* member,
+                                                       double min, double max, double step, Category category)
+{
+    auto row = std::make_unique<FloatRowComponent> (name, min, max, step);
+    row->onValueChanged = [this, member] (float v) { if (editedDelayInstance != nullptr) editedDelayInstance->*member = v; };
+    row->setDefaultValue (DelayInstanceSettings{}.*member);
+    content.addAndMakeVisible (*row);
+    addToLayout (*row, FloatRowComponent::preferredHeight, category);
+
+    delayFloatRows.push_back ({ std::move (row), member });
+    return *delayFloatRows.back().row;
+}
+
+FloatRowComponent& ParameterPanel::addDelayIntRow (const juce::String& name, int DelayInstanceSettings::* member,
+                                                      double min, double max, Category category)
+{
+    auto row = std::make_unique<FloatRowComponent> (name, min, max, 1.0);
+    row->onValueChanged = [this, member] (float v)
+    {
+        if (editedDelayInstance != nullptr)
+            editedDelayInstance->*member = (int) std::round (v);
+    };
+    row->setDefaultValue ((float) (DelayInstanceSettings{}.*member));
+    content.addAndMakeVisible (*row);
+    addToLayout (*row, FloatRowComponent::preferredHeight, category);
+
+    delayIntRows.push_back ({ std::move (row), member });
+    return *delayIntRows.back().row;
+}
+
 void ParameterPanel::addToLayout (juce::Component& c, int height, Category category,
                                    std::optional<GrainMovementMode> requiredMovementMode)
 {
@@ -830,6 +921,7 @@ void ParameterPanel::selectCategory (Category category)
     updateGrainMovementModeVisibility();
     updatePitchJitterModeVisibility();
     updateGrainFilterVisibility();
+    updateGrainDelayMutualExclusion();
     updateGrainBudgetHintVisibility();
 
     viewport.setViewPosition (0, 0);
@@ -874,6 +966,23 @@ void ParameterPanel::updateGrainFilterVisibility()
     grainFilterDriftAmountRow->setVisible (on);
 }
 
+void ParameterPanel::updateGrainDelayMutualExclusion()
+{
+    const bool grainOn = editedGrainCloud != nullptr && editedGrainCloud->enabled;
+    const bool delayOn = editedDelayInstance != nullptr && editedDelayInstance->enabled;
+
+    // Both toggles stay fully interactive whenever the OTHER one is
+    // already off -- only actually greyed out once the other is on, so
+    // a brand-new object (both off) never starts up looking disabled.
+    grainEnabledRow->toggle.setEnabled (! delayOn);
+    delayEnabledRow->toggle.setEnabled (! grainOn);
+
+    if (currentCategory == Category::GrainCloud)
+        grainDisabledByDelayHintLabel.setVisible (delayOn);
+    if (currentCategory == Category::Delay)
+        delayDisabledByGrainHintLabel.setVisible (grainOn);
+}
+
 void ParameterPanel::setGrainBudgetOversubscribed (bool oversubscribed)
 {
     if (grainBudgetOversubscribed == oversubscribed)
@@ -915,6 +1024,12 @@ void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader
 void ParameterPanel::setEditedGrainCloud (GrainCloudSettings* settings)
 {
     editedGrainCloud = settings;
+    refreshFromModel();
+}
+
+void ParameterPanel::setEditedDelayInstance (DelayInstanceSettings* settings)
+{
+    editedDelayInstance = settings;
     refreshFromModel();
 }
 
@@ -976,6 +1091,18 @@ void ParameterPanel::refreshFromModel()
     updateGrainMovementModeVisibility(); // movementMode may have changed (e.g. a preset load, or switching selected object) without going through grainMovementModeRow's own onSelected
     updatePitchJitterModeVisibility(); // same idea, for pitchJitterMode
     updateGrainFilterVisibility(); // same idea, for filter.enabled
+
+    if (editedDelayInstance == nullptr)
+        return;
+
+    delayEnabledRow->setValueQuiet (editedDelayInstance->enabled);
+    delaySeedRow->setSeedValue (editedDelayInstance->seed);
+    for (auto& b : delayFloatRows)
+        b.row->setValueQuiet (editedDelayInstance->*b.member);
+    for (auto& b : delayIntRows)
+        b.row->setValueQuiet ((float) (editedDelayInstance->*b.member));
+
+    updateGrainDelayMutualExclusion(); // either enabled flag may have changed (e.g. a preset load) without going through either toggle's own onToggled
 }
 
 void ParameterPanel::layoutContent()

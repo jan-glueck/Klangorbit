@@ -52,6 +52,10 @@ TrajectoryEngine::TrajectoryEngine (int maxObjects, int grainPoolSizePerCloud)
     grainClouds.reserve ((size_t) maxObjects);
     for (int i = 0; i < maxObjects; ++i)
         grainClouds.push_back (std::make_unique<GrainCloud> (grainPoolSizePerCloud));
+
+    delayInstances.reserve ((size_t) maxObjects);
+    for (int i = 0; i < maxObjects; ++i)
+        delayInstances.push_back (std::make_unique<DelayInstance>());
 }
 
 SoundObject& TrajectoryEngine::getObject (int index)
@@ -91,6 +95,7 @@ bool TrajectoryEngine::deactivateObject (int index)
     obj = SoundObject {};
     obj.id = id;
     grainClouds[(size_t) index]->reset(); // don't let a later reactivation resume with stale settings/grains
+    delayInstances[(size_t) index]->reset();
     reseedOrbitNoise (index);
     return true;
 }

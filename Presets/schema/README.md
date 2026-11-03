@@ -215,6 +215,31 @@ defaults for everything new.
           "driftAmplitude": 0.0,       // Hz, noise strength -- 0 = disabled
           "driftSmoothing": 0.2        // seconds, smooths the underlying noise
         }
+      },
+
+      // Optional -- missing entirely (every preset saved before
+      // feature/delay-instance existed) behaves exactly like
+      // "enabled": false below. A genuinely separate spatial sound
+      // source from grainCloud above (Source/DelayInstance.h/
+      // DelayTap.h) -- a multi-tap delay with real feedback
+      // (recirculation), mutually exclusive with grainCloud per object
+      // (see ParameterPanel's Grains/Delay categories: enabling one
+      // greys out the other's toggle in the UI, though the preset
+      // format itself doesn't enforce this -- both blocks can
+      // technically be "enabled": true at once if hand-edited).
+      "delayInstance": {
+        "enabled": false,
+        "numTaps": 3,                 // 1..8 -- tap i's delay == delayTime*(i+1)
+        "delayTime": 0.3,             // seconds, the base unit
+        "delayTimeJitter": 0.0,       // 0..1, random +/- variation of each tap's own multiple, sampled once per config change
+        "feedback": 0.3,              // 0..0.95, recirculation gain -- the SAME recirculating buffer taps read from already contains its own decayed repeats, so taps don't each need an independent feedback path
+        "feedbackDamping": 0.0,       // 0..1, darkens the recirculating signal (a VoiceFilter LowPass in the feedback path) -- 0 = bright/undamped
+        "tapSpreadRadius": 1.0,       // meters -- taps sit evenly spaced around a circle of this radius, centered on the parent's current position
+        "tapOrbitAngularSpeed": 0.0,  // rad/s -- 0 = static tap positions, >0 = the whole ring of taps rotates around the parent
+        // String (not a JSON number, same 64-bit-exact-round-trip reason
+        // as grainCloud's own "seed") -- seeds this instance's own
+        // delayTimeJitter sampling.
+        "seed": "123456789"
       }
     }
   ]

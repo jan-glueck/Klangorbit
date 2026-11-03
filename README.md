@@ -127,6 +127,14 @@ absorption/directivity) -- only `SoundObject`s go through it. See
 subsection for the optional filter stage each grain's rendered audio can
 pass through before reaching the encoder.
 
+Not shown above: `DelayInstance`, a third, independent per-object branch
+parallel to GrainCloud's (own recirculating buffer fed every block, own
+control-rate taps, each tap reaching `AmbisonicsEncoder` the same way a
+grain does) -- see "DelayInstance: multi-tap delay with feedback" below.
+Mutually exclusive with GrainCloud per object (the UI greys out whichever
+toggle isn't already on), so never actually a fourth simultaneous input
+into the encoder alongside a SoundObject and its grains.
+
 ## Build
 
 This section covers macOS. See "Windows build" below for the Windows-specific
@@ -1286,6 +1294,56 @@ purely random.
   reimplemented) plus all five movement modes and the spawn-budget logic,
   no GUI/audio device needed.
 
+## DelayInstance: multi-tap delay with feedback
+
+Optional, per object, off by default, mutually exclusive with GrainCloud
+on the same object (see below). A genuinely separate spatial sound
+source -- unlike a grain, which independently re-reads a dry, non-
+recirculating buffer, a delay tap reads from a buffer that recirculates
+its own past output, so echoes actually decay over repeated passes.
+
+- **One recirculating buffer, multiple read taps.** `DelayInstance`
+  (`Source/DelayInstance.h/.cpp`) owns no audio buffer itself -- like
+  GrainCloud, it only decides *where* (spatially) and *when* (delay time)
+  each tap reads from; `KlangorbitProcessor` owns the actual per-object
+  buffer and does the real-time read/write (`Source/DelayRenderer.h`).
+  That buffer stores `y[n] = input[n] + feedback * damped(y[n-D])` --
+  because `y` already contains its OWN decayed past repeats by
+  definition, reading it at `D`, `2D`, `3D`, ... (ordinary multiples of
+  the SAME delay) naturally yields progressively quieter, darker copies.
+  Multiple taps are therefore just multiple read offsets into one
+  buffer, not independent per-tap feedback paths -- `numTaps` (1..8) taps
+  exist continuously whenever enabled, tap *i* reading `delayTime*(i+1)`
+  seconds back.
+- **Feedback damping.** `feedbackDamping` (0..1) darkens the recirculating
+  signal via a shared `VoiceFilter` (`Source/VoiceFilter.h`) LowPass in
+  the feedback path -- the classic "repeats get duller as they decay"
+  analog/tape-delay character. One filter for the whole feedback bus
+  (there's only one recirculating signal), not one per tap.
+  `delayTimeJitter` (0..1) randomizes each tap's own multiple of
+  `delayTime` once per config change (`RandomEngine.h::RandomizedParam`
+  under the hood), for a less perfectly-metronomic rhythm.
+- **Spatial taps.** Taps sit evenly spaced around a circle of
+  `tapSpreadRadius` meters, centered on the parent object's *current*
+  (possibly moving) position -- same "tracks the live parent" treatment
+  as `GrainMovementMode::OrbitAroundParent`. `tapOrbitAngularSpeed` (0 by
+  default = static) optionally rotates the whole ring around the parent,
+  each tap keeping its own fixed phase offset from the others.
+- **Mutually exclusive with GrainCloud, per object.** Enabling one greys
+  out the other's "Enabled" toggle in the parameter panel (Grains/Delay
+  categories), each with an explanatory hint label -- the two features
+  are two different uses of the same object's live input (a dry ring
+  buffer vs. a recirculating one) not designed to run together on the
+  same object. Nothing in the preset *format* itself enforces this (a
+  hand-edited preset could technically set both `enabled: true`), only
+  the UI.
+- **Verification:** `Tools/verify_delay_instance.cpp` exercises
+  `DelayRenderer.h`'s write/read functions (feedback decay settles to the
+  exact geometric-series gain `1/(1-feedback)` for a sustained input,
+  fractional-delay interpolation) and `DelayInstance`'s tap configuration
+  (spacing, orbiting vs. static, delay-time jitter, damping-cutoff
+  mapping, feedback clamping) -- no GUI/audio device needed.
+
 ## GUI design
 
 Dark, cyan-accented, reduced "sci-fi HUD" look, applied uniformly rather
@@ -1555,6 +1613,14 @@ Docs/WORKFLOW.md.
   `PropagationProcessor`.
 - **GrainCloud window shape is Hann only.** No alternative envelope shapes
   (Tukey, Gaussian, etc.) yet.
+- **DelayInstance's taps aren't shown in the 3D scene view.** Grains
+  render as small, paler, fading dots around their parent object (see
+  "3D camera view" above); delay taps have no equivalent visualization
+  yet, even though they move/orbit the same way -- purely a GUI gap, the
+  audio/spatial-encoding side is unaffected. Each tap's own filter/
+  resonance also isn't exposed (unlike grains, see "Per-grain filter"
+  above) -- only the shared feedback-path damping filter is, by design
+  (there's one recirculating signal, not independent per-tap signals).
 
 ## License
 

@@ -7,6 +7,7 @@
 #include "SoundObject.h"
 #include "SceneSettings.h"
 #include "Grain.h"
+#include "DelayTap.h"
 
 /**
     A row widget: label + a slider, with a generic onValueChanged callback.
@@ -174,7 +175,7 @@ public:
 class ParameterPanel : public juce::Component
 {
 public:
-    enum class Category { Scene, Acoustics, Object, Attraction, Orbit, Doppler, GrainCloud };
+    enum class Category { Scene, Acoustics, Object, Attraction, Orbit, Doppler, GrainCloud, Delay };
 
     ParameterPanel();
 
@@ -189,6 +190,11 @@ public:
     // a separate settings struct owned by PluginProcessor, not a
     // SoundObject field.
     void setEditedGrainCloud (GrainCloudSettings* settings);
+
+    // nullptr = no selection. Same relationship as setEditedGrainCloud()
+    // above -- DelayInstance (feature/delay-instance) belongs to the same
+    // selected object, owned by TrajectoryEngine, not a SoundObject field.
+    void setEditedDelayInstance (DelayInstanceSettings* settings);
 
     // Called every tick from the editor's timer (same cadence as its CPU
     // load display), which is the only place that can see EVERY object's
@@ -228,6 +234,14 @@ private:
     // (a whole-number slider) rather than a dedicated int row type for one field.
     FloatRowComponent& addGrainIntRow (const juce::String& name, int GrainCloudSettings::* member,
                                         double min, double max, Category category);
+    // Same pointer-to-member binding pattern as addGrainFloatRow() above,
+    // for DelayInstanceSettings (feature/delay-instance) -- no
+    // requiredMovementMode-style gating needed here, DelayInstance has no
+    // per-field movement-mode concept.
+    FloatRowComponent& addDelayFloatRow (const juce::String& name, float DelayInstanceSettings::* member,
+                                          double min, double max, double step, Category category);
+    FloatRowComponent& addDelayIntRow (const juce::String& name, int DelayInstanceSettings::* member,
+                                         double min, double max, Category category);
     void addToLayout (juce::Component& c, int height, Category category,
                        std::optional<GrainMovementMode> requiredMovementMode = std::nullopt);
     void addCategoryButton (const juce::String& label, Category category);
@@ -275,6 +289,20 @@ private:
     // refreshFromModel(), and grainFilterEnabledRow's own onToggled.
     void updateGrainFilterVisibility();
 
+    // Grain Cloud and DelayInstance are mutually exclusive per object --
+    // a Delay's recirculating buffer and a Grain cloud's dry ring buffer
+    // are two different uses of the same object's live input, not
+    // designed to run together (per the user's own explicit request when
+    // this branch was scoped): disables
+    // grainEnabledRow.toggle whenever editedDelayInstance->enabled is
+    // true (and vice versa for delayEnabledRow.toggle), each paired with
+    // an explanatory hint label in the OTHER category explaining why its
+    // own toggle is greyed out. Called wherever either settings pointer
+    // or either `enabled` flag could have changed: selectCategory(),
+    // setEditedGrainCloud()/setEditedDelayInstance()/refreshFromModel(),
+    // and both enabled toggles' own onToggled.
+    void updateGrainDelayMutualExclusion();
+
     // Shows/hides grainBudgetHintLabel: visible only while the GrainCloud
     // category is showing AND grainBudgetOversubscribed (see
     // setGrainBudgetOversubscribed()) is currently true. Same trigger
@@ -287,6 +315,7 @@ private:
     SceneSettings* sceneSettings = nullptr;
     SoundObject* editedObject = nullptr;
     GrainCloudSettings* editedGrainCloud = nullptr;
+    DelayInstanceSettings* editedDelayInstance = nullptr;
 
     Category currentCategory = Category::Scene;
     // See setGrainBudgetOversubscribed()/updateGrainBudgetHintVisibility().
@@ -317,6 +346,12 @@ private:
 
     struct GrainIntBinding { std::unique_ptr<FloatRowComponent> row; int GrainCloudSettings::* member; };
     std::vector<GrainIntBinding> grainIntRows;
+
+    struct DelayFloatBinding { std::unique_ptr<FloatRowComponent> row; float DelayInstanceSettings::* member; };
+    std::vector<DelayFloatBinding> delayFloatRows;
+
+    struct DelayIntBinding { std::unique_ptr<FloatRowComponent> row; int DelayInstanceSettings::* member; };
+    std::vector<DelayIntBinding> delayIntRows;
 
     juce::Label objectHeaderLabel;
     // Sit above the (scrollable) category-button groups, see resized() --
@@ -361,4 +396,14 @@ private:
     std::unique_ptr<FloatRowComponent> grainFilterResonanceRow;   // VoiceFilterSettings::resonance.base
     std::unique_ptr<FloatRowComponent> grainFilterCutoffJitterRow; // VoiceFilterSettings::cutoffHz.spread
     std::unique_ptr<FloatRowComponent> grainFilterDriftAmountRow;  // VoiceFilterSettings::driftAmplitude
+
+    // Delay (feature/delay-instance, DelayInstanceSettings, DelayTap.h) --
+    // a genuinely separate spatial sound source from Grains, mutually
+    // exclusive with it per object (see updateGrainDelayMutualExclusion()):
+    // grainEnabledRow.toggle is disabled while Delay is enabled and vice
+    // versa, each with an explanatory hint label.
+    std::unique_ptr<ToggleRowComponent> delayEnabledRow;
+    std::unique_ptr<SeedRowComponent> delaySeedRow; // DelayInstanceSettings::seed
+    juce::Label delayDisabledByGrainHintLabel; // shown in the Delay category while Grains is enabled
+    juce::Label grainDisabledByDelayHintLabel; // shown in the Grains category while Delay is enabled
 };

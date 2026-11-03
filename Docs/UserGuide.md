@@ -4,7 +4,7 @@ Klangorbit is an object-based Ambisonics spatializer built around a live
 physics engine: instead of automating position with envelopes or curves,
 you give sound objects mass, velocity, gravity, and momentum, and let
 their motion emerge from that. Its output format is selectable (Output
-category, section 12, 16 formats in dropdown order): an internally
+category, section 13, 16 formats in dropdown order): an internally
 decoded Stereo (the default -- audible immediately, no external decoder
 needed), Binaural (HRTF-based headphone output), Quad, Octophonic (a
 fixed 8-speaker circular array), Circular Array (any speaker count
@@ -30,7 +30,7 @@ internal architecture notes, see `README.md` in the project root.
 2. Feed a decoder (SPARTA AmbiDEC/AmbiBIN, IEM BinauralDecoder, etc.)
    from Klangorbit's Ambisonics output -- or switch Output Format to
    Binaural (HRTF)/Stereo/Quad/5.1/7.1/an Atmos-bed variant instead to
-   skip an external decoder entirely (see section 12).
+   skip an external decoder entirely (see section 13).
 3. Open the Klangorbit editor: you'll see a 3D scene view in the middle,
    an object list on the left, a toolbar across the top, and a parameter
    panel on the right.
@@ -412,8 +412,47 @@ trajectory. Turn it on with **Enabled**.
   object's own Doppler Factor (Doppler category). Each grain has its
   own position/velocity, so the actual pitch shift is genuinely
   different per grain even though they share that one strength knob.
+- **Filter** -- an optional multi-mode filter (Low-Pass/High-Pass/
+  Band-Pass/Notch) applied to each grain's own audio independently, off
+  by default. Each grain samples its own **Cutoff**/**Resonance** once
+  when it spawns (**Cutoff Jitter** randomizes that per-grain spawn-time
+  value by +/- the given amount, same spirit as the other Jitter
+  sliders above); **Cutoff Drift** optionally keeps that cutoff slowly
+  wandering for as long as the grain lives, instead of staying perfectly
+  fixed (0, the default, keeps it static).
 
-## 12. Output format (toolbar -> Output...)
+## 12. Delay (parameter panel -> Delay category)
+
+An optional multi-tap delay with real feedback, per object -- off by
+default, and **mutually exclusive with Grains on the same object**:
+turning one on greys out the other's Enabled toggle, with a hint
+explaining why (they're two different uses of the same object's audio,
+not designed to run together). Unlike Grains, which re-reads a plain,
+non-repeating buffer, Delay's echoes genuinely recirculate and decay
+over time, like a real analog/tape delay.
+
+- **Number of Taps / Delay Time** -- how many echoes you hear at once
+  (1-8) and the spacing between them: tap 1 sits `Delay Time` seconds
+  behind the input, tap 2 sits twice that, tap 3 three times that, and so
+  on. Because every tap reads from the SAME recirculating signal, later
+  taps are automatically quieter and (if Feedback Damping is used)
+  darker than earlier ones -- you don't need to tune each tap separately.
+- **Delay Time Jitter** -- randomizes each tap's own spacing slightly
+  (0..1), so the echoes land in a less perfectly metronomic rhythm.
+  Re-rolled whenever you change Number of Taps/Delay Time/Jitter itself
+  or press **New Seed**, not continuously.
+- **Feedback** -- how much of the delayed signal recirculates back into
+  itself each pass (0..0.95); higher values mean more, longer-lasting
+  repeats. 0 = a single, non-repeating echo per tap.
+- **Feedback Damping** -- darkens the recirculating signal a little more
+  on every pass it takes (0..1, 0 = bright/undamped), the classic
+  "repeats get duller as they fade out" character of a real tape delay.
+- **Tap Spread Radius / Tap Orbit Angular Speed** -- the taps sit evenly
+  spaced around a circle of this radius, centered on the object's
+  current position. Angular Speed (0 by default = static) optionally
+  spins the whole ring of taps slowly around the object.
+
+## 13. Output format (toolbar -> Output...)
 
 Chooses what the plugin's output bus actually carries -- a plugin-wide
 setting, not tied to the scene or any object, so it lives in its own
@@ -528,7 +567,7 @@ window (toolbar -> **Output...**) rather than the parameter panel:
   addition when enabled: a low-passed (~120Hz) version of the
   omnidirectional (W) channel is sent to the LFE channel.
 
-## 13. Presets
+## 14. Presets
 
 **Load Preset...** / **Save Preset...** in the toolbar save/load the
 entire scene (every active object, its mode and all parameters, scene
@@ -539,7 +578,7 @@ wrong. (Output Format/Bass Management/Binaural HRTF Dataset are
 plugin-instance state, not part of the scene the preset saves -- see
 Presets/schema/README.md.)
 
-## 14. Keyboard shortcuts summary
+## 15. Keyboard shortcuts summary
 
 | Action | Shortcut |
 |---|---|
@@ -554,12 +593,12 @@ Presets/schema/README.md.)
 | Zoom the camera | Scroll wheel |
 | Clear selection | Click empty space |
 
-## 15. Tips for use with Reaper + SPARTA/IEM
+## 16. Tips for use with Reaper + SPARTA/IEM
 
 1. Route Klangorbit's Ambisonics output (ACN/SN3D) into a matching
    decoder (SPARTA AmbiDEC for speakers, AmbiBIN for headphones; IEM's
    BinauralDecoder/AllRADecoder are also compatible) -- or switch Output
-   Format to Binaural (HRTF) (section 12) to skip the external decoder
+   Format to Binaural (HRTF) (section 13) to skip the external decoder
    for headphone monitoring.
 2. Automate nothing in Reaper for movement -- the physics engine is the
    automation. Instead, perform gestures live (drag, throw, sling) while
@@ -573,12 +612,12 @@ Presets/schema/README.md.)
    amber/red means audible dropouts are actually likely, not just
    theoretical.
 
-## 16. Gamepad control
+## 17. Gamepad control
 
 Connect a game controller (Xbox/PlayStation-style, wired or Bluetooth --
 macOS's GameController framework covers most modern ones). Every control
 has a sensible built-in default -- no setup needed -- and every one of
-them can still be rebound to something else via Learn mode (section 17):
+them can still be rebound to something else via Learn mode (section 18):
 
 - **Left stick**: rate-controls the selected object's position on the
   ground plane -- deflection sets its current velocity continuously;
@@ -611,17 +650,17 @@ runs independent of it. Only one controller is read at a time. An
 optional inertia mode for the left stick's movement (movement continues
 after release, decelerating like a thrown object) exists but has no UI
 toggle yet. Button X has no built-in behavior -- free for a Learn-mode
-binding of your own, same as any other raw control (section 17). The
+binding of your own, same as any other raw control (section 18). The
 Learn-mode "second bank" modifier defaults to the left trigger, not a
 shoulder button, so it never competes with Orbit Shot/Slingshot above.
 
-## 17. Controller mapping (toolbar -> Mappings...)
+## 18. Controller mapping (toolbar -> Mappings...)
 
 Bind any gamepad, MIDI, or OSC control to any parameter: pick a **Target
 parameter** from the dropdown, press **Learn**, then move the
 stick/trigger/button/MIDI knob/OSC control you want -- the next control
 that changes gets bound automatically, the same way regardless of which
-of the three it came from (see section 18 for MIDI/OSC specifics). The
+of the three it came from (see section 19 for MIDI/OSC specifics). The
 list below shows every current binding, each with its own **Remove**.
 **Load Profile...**/**Save Profile...** save the whole binding set (plus
 the paging modifier) as its own file, completely separate from scene
@@ -634,19 +673,19 @@ profile's JSON, but not through this picker).
 
 **Paging**: hold the control shown next to "Paging modifier" (left
 trigger by default -- not a shoulder button, since Left/Right Shoulder
-already have a built-in meaning of their own, see section 16) to unlock
+already have a built-in meaning of their own, see section 17) to unlock
 a second layer of bindings -- the same stick can drive one parameter
 normally and a different one while the modifier is held. Learn a
 binding while holding the modifier to place it in that second layer.
 
 Binding either of the left stick's axes here takes over the built-in
-rate-control movement (section 16) completely for that axis pair --
+rate-control movement (section 17) completely for that axis pair --
 the object it was moving just stays where it is.
 
-## 18. MIDI / OSC control
+## 19. MIDI / OSC control
 
 MIDI and OSC controls are bindable through the same **Mappings...**
-window and Learn mode as section 17 -- there's no separate MIDI-Learn or
+window and Learn mode as section 18 -- there's no separate MIDI-Learn or
 OSC-Learn step.
 
 **MIDI**: the plugin already accepts MIDI input, so anything your host
@@ -665,7 +704,7 @@ trigger/button message (no arguments) binds as a button.
 There's no on-screen indicator yet for MIDI/OSC connection status, and
 no UI yet to change the OSC port from its default.
 
-## 19. DAW automation
+## 20. DAW automation
 
 Separate from -- and complementary to -- the gamepad/MIDI/OSC Learn-mode
 mapping in sections 16-18: every field exposed there is ALSO a real,

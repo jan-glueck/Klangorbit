@@ -1029,11 +1029,13 @@ void KlangorbitEditor::selectObject (int index)
     {
         parameterPanel.setEditedObject (nullptr, -1, engine.getNumObjects());
         parameterPanel.setEditedGrainCloud (nullptr);
+        parameterPanel.setEditedDelayInstance (nullptr);
     }
     else
     {
         parameterPanel.setEditedObject (&engine.getObject (index), index, engine.getNumObjects());
         parameterPanel.setEditedGrainCloud (&engine.getGrainCloud (index).getSettings());
+        parameterPanel.setEditedDelayInstance (&engine.getDelayInstance (index).getSettings());
     }
 
     // Reflects the selection into the list's own highlight regardless of

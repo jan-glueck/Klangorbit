@@ -214,6 +214,7 @@ target_sources(Klangorbit
         Source/MappingEngine.cpp
         Source/MappingProfileManager.cpp
         Source/TrajectoryEngine.cpp
+        Source/DelayInstance.cpp
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
         Source/PropagationProcessor.cpp
@@ -286,6 +287,7 @@ target_sources(validate_presets
         Tools/validate_presets.cpp
         Source/PresetManager.cpp
         Source/TrajectoryEngine.cpp
+        Source/DelayInstance.cpp
         Source/GrainCloud.cpp
 )
 
@@ -368,6 +370,60 @@ target_link_libraries(verify_voice_filter
         juce::juce_recommended_warning_flags
 )
 
+# --- DelayInstance verification ---------------------------------------
+# Runs DelayRenderer.h's write/read functions (feedback decay math,
+# fractional-delay interpolation) and DelayInstance (tap count/spacing,
+# orbiting vs. static taps, tap delay times/jitter, damping-cutoff
+# mapping, feedback clamping) against known-correct behavior, no GUI/
+# audio device needed.
+juce_add_console_app(verify_delay_instance
+    PRODUCT_NAME "verify_delay_instance"
+)
+
+target_sources(verify_delay_instance
+    PRIVATE
+        Tools/verify_delay_instance.cpp
+        Source/DelayInstance.cpp
+)
+
+target_link_libraries(verify_delay_instance
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Delay instance preset round-trip verification --------------------
+# Round-trips DelayInstanceSettings through the REAL PresetManager save/
+# load path, including backward compatibility with a preset that has no
+# "delayInstance" key at all. Same sources as validate_presets.
+juce_add_console_app(verify_delay_instance_preset
+    PRODUCT_NAME "verify_delay_instance_preset"
+)
+
+target_sources(verify_delay_instance_preset
+    PRIVATE
+        Tools/verify_delay_instance_preset.cpp
+        Source/PresetManager.cpp
+        Source/GrainCloud.cpp
+        Source/TrajectoryEngine.cpp
+        Source/DelayInstance.cpp
+)
+
+target_compile_definitions(verify_delay_instance_preset
+    PRIVATE
+        SAPOC_MAX_LIVE_INPUTS=${SAPOC_MAX_LIVE_INPUTS}
+)
+
+target_link_libraries(verify_delay_instance_preset
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- Grain filter preset round-trip verification ---------------------------
 # Round-trips GrainCloudSettings::filter (VoiceFilterSettings) through the
 # REAL PresetManager save/load path (sceneToVar()/loadFromVar()), including
@@ -384,6 +440,7 @@ target_sources(verify_grain_filter_preset
         Source/PresetManager.cpp
         Source/GrainCloud.cpp
         Source/TrajectoryEngine.cpp
+        Source/DelayInstance.cpp
 )
 
 target_compile_definitions(verify_grain_filter_preset
@@ -436,6 +493,7 @@ target_sources(verify_orbit
     PRIVATE
         Tools/verify_orbit.cpp
         Source/TrajectoryEngine.cpp
+        Source/DelayInstance.cpp
         Source/GrainCloud.cpp
 )
 
@@ -575,6 +633,7 @@ target_sources(verify_automation_parameters
         # already links, for the same PresetManager dependency).
         Source/PresetManager.cpp
         Source/TrajectoryEngine.cpp
+        Source/DelayInstance.cpp
         Source/GrainCloud.cpp
 )
 
@@ -778,6 +837,7 @@ target_sources(verify_gamepad_driver
         Source/GamepadDriver.cpp
         Source/GestureActions.cpp
         Source/TrajectoryEngine.cpp
+        Source/DelayInstance.cpp
         Source/GrainCloud.cpp
         Source/CanonicalInput.cpp
         Source/ParameterRegistry.cpp

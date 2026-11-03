@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "GrainRenderer.h"
 #include "GrainDoppler.h"
+#include "DelayRenderer.h"
 #include "MuteSoloLogic.h"
 #include "MappingProfileManager.h"
 #include "PresetManager.h"
@@ -332,6 +333,19 @@ void KlangorbitProcessor::timerCallback()
         cloud.setRingBufferContext (getGrainRingBufferWriteHead (i), getSampleRate());
         cloud.update (dt, obj.position, obj.velocity, cloudBudget);
     }
+
+    // DelayInstance: control-rate update, same loop/rate as GrainCloud
+    // above. No global-budget sharing needed (unlike grains) -- numTaps
+    // is small and fixed (DelayLimits::maxTaps), not a pooled/dynamic
+    // spawn count, so there's no analogous CPU-ceiling concern.
+    for (int i = 0; i < trajectoryEngine.getNumDelayInstances(); ++i)
+    {
+        auto& obj = trajectoryEngine.getObject (i);
+        if (obj.inputChannel < 0)
+            continue; // no active parent -- freeze this instance instead of updating it with a meaningless position
+
+        trajectoryEngine.getDelayInstance (i).update (dt, obj.position, getSampleRate());
+    }
 }
 
 void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -391,6 +405,34 @@ void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     grainScratch.setSize (1, samplesPerBlock);
     lfeDrySumScratch.setSize (1, samplesPerBlock);
+
+    delayLineBuffers.resize ((size_t) numLiveInputs);
+    const int delayBufferSamples = juce::jmax (1, (int) (delayLineBufferSeconds * sampleRate));
+    for (auto& line : delayLineBuffers)
+    {
+        line.setSize (1, delayBufferSamples);
+        line.clear();
+    }
+    delayLineWritePos.assign ((size_t) numLiveInputs, 0);
+
+    delayDampingFilters.assign ((size_t) numLiveInputs, VoiceFilter {});
+    for (auto& f : delayDampingFilters)
+        f.prepare (sampleRate);
+
+    // Pre-allocated to DelayLimits::maxTaps per object (the worst case),
+    // never resized again at runtime even if DelayInstanceSettings::
+    // numTaps itself changes live -- same "pre-size to the max, nothing
+    // allocates on the audio thread afterward" discipline as
+    // grainPoolSizePerCloud above.
+    delayTapAudioState.assign ((size_t) numLiveInputs, std::vector<DelayTapAudioState> ((size_t) DelayLimits::maxTaps));
+    for (auto& perObject : delayTapAudioState)
+        for (auto& state : perObject)
+        {
+            state.previousChannelGains.assign ((size_t) encoder.getNumChannels(), 0.0f);
+            state.previousSpeakerGains.assign ((size_t) numRealSpeakerCh, 0.0f);
+        }
+
+    delayTapScratch.setSize (1, samplesPerBlock);
 }
 
 void KlangorbitProcessor::releaseResources() {}
@@ -662,6 +704,12 @@ void KlangorbitProcessor::setDecoderMode (AmbisonicsDecoder::Mode newMode)
             state.previousChannelGains.assign ((size_t) encoder.getNumChannels(), 0.0f);
             state.previousSpeakerGains.assign ((size_t) numRealSpeakerCh, 0.0f);
         }
+    for (auto& perObject : delayTapAudioState)
+        for (auto& state : perObject)
+        {
+            state.previousChannelGains.assign ((size_t) encoder.getNumChannels(), 0.0f);
+            state.previousSpeakerGains.assign ((size_t) numRealSpeakerCh, 0.0f);
+        }
 
     // Output Format switching never requests a new bus layout from the
     // host, for AU OR VST3/Standalone: Logic fixes its own per-track
@@ -885,6 +933,29 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                 }
                 grainRingBufferWriteHead[(size_t) objIdx].store (head, std::memory_order_relaxed);
             }
+
+            // Feed this object's recirculating delay line (feature/delay-
+            // instance), ONLY while its DelayInstance is actually enabled
+            // -- unlike the dry grain ring buffer above, there's no
+            // "always keep it warm" need here (the delay's own feedback
+            // IS the history; see PluginProcessor.h's own comment on
+            // delayLineBuffers for why not clearing on enable/disable is
+            // a deliberate simplification, not a bug).
+            DelayInstance::Snapshot delaySnap;
+            trajectoryEngine.getDelayInstance (objIdx).getSnapshot (delaySnap);
+            if (delaySnap.enabled)
+            {
+                auto& line = delayLineBuffers[(size_t) objIdx];
+                const int lineSize = line.getNumSamples();
+                if (lineSize > 0)
+                {
+                    auto& dampingFilter = delayDampingFilters[(size_t) objIdx];
+                    dampingFilter.setCutoffAndResonance (delaySnap.dampingCutoffHz, 0.707f);
+                    writeDelayLineBlock (line.getWritePointer (0), lineSize, delayLineWritePos[(size_t) objIdx],
+                                          inputCopy.getReadPointer (obj.inputChannel), numSamples,
+                                          delaySnap.feedbackDelaySamples, delaySnap.feedbackGain, dampingFilter);
+                }
+            }
         }
 
         if (! active)
@@ -1100,6 +1171,73 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             {
                 encoder.encodeBlock (grainOut, numSamples, azimuth, elevation, distance,
                                       totalGrainGain, encodeTarget, state.previousChannelGains);
+            }
+        }
+    }
+
+    // --- DelayInstance rendering ----------------------------------------
+    // Each tap reads a continuous (non-windowed -- no envelope/generation
+    // concept, unlike grains) signal from its object's already-fed-back
+    // delay line (see the write pass above, and DelayRenderer.h) and is
+    // spatially encoded exactly like a grain, just without any pitch/
+    // Doppler/filter step of its own (not yet -- see CHANGELOG for what
+    // this branch deliberately left for later).
+    float* delayTapOut = delayTapScratch.getWritePointer (0);
+
+    for (int objIdx = 0; objIdx < trajectoryEngine.getNumObjects(); ++objIdx)
+    {
+        auto& obj = trajectoryEngine.getObject (objIdx);
+        if (obj.inputChannel < 0)
+            continue; // no parent -- see DelayInstance/PluginEditor: an inactive object's delay is frozen, not rendered
+
+        const bool effectivelyMuted = MuteSoloLogic::isEffectivelyMuted (obj.muted, obj.soloed, anySoloed);
+        const float muteRamp = muteRampGain[(size_t) objIdx];
+        if (effectivelyMuted && muteRamp <= 0.0f)
+            continue;
+
+        DelayInstance::Snapshot delaySnap;
+        trajectoryEngine.getDelayInstance (objIdx).getSnapshot (delaySnap);
+        if (! delaySnap.enabled)
+            continue;
+
+        auto& line = delayLineBuffers[(size_t) objIdx];
+        const int lineSize = line.getNumSamples();
+        if (lineSize <= 0)
+            continue;
+        const float* lineData = line.getReadPointer (0);
+        const int writePosAfterBlock = delayLineWritePos[(size_t) objIdx];
+
+        auto& tapStatesForObject = delayTapAudioState[(size_t) objIdx];
+        const size_t numTapsToRender = juce::jmin (delaySnap.taps.size(), tapStatesForObject.size());
+
+        for (size_t tapIdx = 0; tapIdx < numTapsToRender; ++tapIdx)
+        {
+            auto& tap = delaySnap.taps[tapIdx];
+            auto& state = tapStatesForObject[tapIdx];
+
+            readDelayTapBlock (lineData, lineSize, writePosAfterBlock, tap.delaySamples, delayTapOut, numSamples);
+
+            float azimuth, elevation, distance;
+            cartesianToSpherical (tap.position, azimuth, elevation, distance);
+
+            const float totalTapGain = obj.gain * muteRamp;
+
+            if (directPan)
+            {
+                const auto speakerGains = decoder.computeDirectPanGains (tap.position);
+                encoder.panDirectBlock (delayTapOut, numSamples, speakerGains, distance, totalTapGain,
+                                         encodeTarget, state.previousSpeakerGains);
+                if (needsDirectLfe)
+                {
+                    const float lfeGain = totalTapGain * encoder.getDistanceGain (distance);
+                    for (int i = 0; i < numSamples; ++i)
+                        lfeDrySum[i] += delayTapOut[i] * lfeGain;
+                }
+            }
+            else
+            {
+                encoder.encodeBlock (delayTapOut, numSamples, azimuth, elevation, distance,
+                                      totalTapGain, encodeTarget, state.previousChannelGains);
             }
         }
     }

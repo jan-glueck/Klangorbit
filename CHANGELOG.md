@@ -87,6 +87,40 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   `Tools/verify_grain_filter_preset.cpp` (full save/load round-trip
   through the real `PresetManager` path, plus the no-`filter`-key
   backward-compatibility case).
+- **DelayInstance: a multi-tap delay with real feedback, as its own
+  spatial sound source** (`Source/DelayInstance.h/.cpp`,
+  `Source/DelayTap.h`, `Source/DelayRenderer.h`,
+  `feature/delay-instance`, Branch 3) -- deliberately a genuinely
+  separate class from `GrainCloud`, not an extension of it: taps read
+  from a per-object buffer that recirculates its own past output
+  (`y[n] = input[n] + feedback * damped(y[n-D])`), so echoes actually
+  decay over repeated passes, rather than each tap independently
+  re-reading a dry, non-recirculating signal the way grains do. Because
+  that buffer already contains its own decayed repeats, multiple taps
+  (`numTaps`, 1..8) are just multiple read offsets into ONE buffer (tap
+  *i* at `delayTime*(i+1)` seconds back), not independent per-tap
+  feedback paths. `feedbackDamping` darkens the recirculating signal via
+  a shared `VoiceFilter` (Branch 1) LowPass in the feedback path -- one
+  filter for the whole bus, not per tap. Taps sit evenly spaced around a
+  circle (`tapSpreadRadius`) centered on the parent's current position,
+  optionally orbiting it (`tapOrbitAngularSpeed`); `delayTimeJitter`
+  randomizes each tap's own multiple once per config change
+  (`RandomizedParam`, same Branch-0 primitive). Split across
+  TrajectoryEngine (control-rate tap decisions, `DelayInstance::
+  Snapshot`) and `PluginProcessor` (audio-rate recirculating buffer +
+  damping filter + per-tap gain-ramp state), mirroring GrainCloud's own
+  control/audio split. **Grains and Delay are now mutually exclusive per
+  object**: enabling one greys out the other's "Enabled" toggle in the
+  parameter panel (new "Delay" category), each paired with an
+  explanatory hint label -- the UI's own enforcement, not the preset
+  format's. Persisted via a new, fully optional `delayInstance` preset
+  block -- missing entirely (every existing preset) loads with the delay
+  off, so this does NOT bump `schemaVersion`. Verified via
+  `Tools/verify_delay_instance.cpp` (feedback decay math, fractional-
+  delay interpolation, tap spacing/orbiting, delay-time jitter, damping-
+  cutoff mapping, feedback clamping) and
+  `Tools/verify_delay_instance_preset.cpp` (full save/load round-trip,
+  plus the no-`delayInstance`-key backward-compatibility case).
 
 ## [0.2.0] - 2026-09-17
 ### Added

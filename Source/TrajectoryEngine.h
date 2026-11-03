@@ -5,6 +5,7 @@
 #include "SoundObject.h"
 #include "SceneSettings.h"
 #include "GrainCloud.h"
+#include "DelayInstance.h"
 #include "RandomEngine.h"
 
 /**
@@ -74,6 +75,14 @@ public:
     // knows.
     GrainCloud& getGrainCloud (int objectIndex) { return *grainClouds[(size_t) objectIndex]; }
     int getNumGrainClouds() const { return (int) grainClouds.size(); }
+
+    // One DelayInstance per object slot, always present -- same ownership
+    // rationale as GrainCloud above (feature/delay-instance's own
+    // control-rate/preset-serialized state, not an audio-thread concern).
+    // Updated from the same control-rate timer as GrainCloud (see
+    // KlangorbitProcessor::timerCallback()).
+    DelayInstance& getDelayInstance (int objectIndex) { return *delayInstances[(size_t) objectIndex]; }
+    int getNumDelayInstances() const { return (int) delayInstances.size(); }
 
     // Gives objectIndex's orbit-radius noise source (see SoundObject::
     // orbitNoiseSeed) a fresh, genuinely random seed and syncs it onto
@@ -159,6 +168,10 @@ private:
     // grow/reallocate. Only the pointers move here, never the
     // CriticalSection itself.
     std::vector<std::unique_ptr<GrainCloud>> grainClouds;
+
+    // unique_ptr for the same reason as grainClouds above (DelayInstance
+    // owns a juce::CriticalSection for its own audio-thread snapshot).
+    std::vector<std::unique_ptr<DelayInstance>> delayInstances;
 
     // Double buffering for lock-free access from the audio thread
     mutable juce::CriticalSection snapshotLock;

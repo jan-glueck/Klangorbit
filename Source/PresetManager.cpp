@@ -587,6 +587,49 @@ namespace
 
         return juce::Result::ok();
     }
+
+    // DelayInstance (feature/delay-instance, Source/DelayTap.h) -- same
+    // "fully optional, no schemaVersion bump" treatment as GrainCloud's
+    // own filter block above: a preset saved before this existed simply
+    // leaves `out` at its default (disabled) VoiceFilterSettings.
+    juce::var delayInstanceSettingsToVar (const DelayInstanceSettings& s)
+    {
+        auto* obj = new juce::DynamicObject();
+        obj->setProperty ("enabled", s.enabled);
+        obj->setProperty ("numTaps", s.numTaps);
+        obj->setProperty ("delayTime", (double) s.delayTime);
+        obj->setProperty ("delayTimeJitter", (double) s.delayTimeJitter);
+        obj->setProperty ("feedback", (double) s.feedback);
+        obj->setProperty ("feedbackDamping", (double) s.feedbackDamping);
+        obj->setProperty ("tapSpreadRadius", (double) s.tapSpreadRadius);
+        obj->setProperty ("tapOrbitAngularSpeed", (double) s.tapOrbitAngularSpeed);
+        // String, not a JSON number -- same 64-bit-exact-round-trip reason
+        // as GrainCloudSettings::seed (see its own comment).
+        obj->setProperty ("seed", juce::String (s.seed));
+        return juce::var (obj);
+    }
+
+    juce::Result delayInstanceSettingsFromVar (const juce::var& diVar, DelayInstanceSettings& out)
+    {
+        if (diVar.isVoid())
+            return juce::Result::ok();
+        if (! diVar.isObject())
+            return juce::Result::fail ("'delayInstance' is not a JSON object.");
+
+        if (diVar.hasProperty ("enabled"))
+            out.enabled = (bool) diVar.getProperty ("enabled", out.enabled);
+        out.numTaps              = (int) diVar.getProperty ("numTaps", out.numTaps);
+        out.delayTime             = (float) diVar.getProperty ("delayTime", (double) out.delayTime);
+        out.delayTimeJitter       = (float) diVar.getProperty ("delayTimeJitter", (double) out.delayTimeJitter);
+        out.feedback              = (float) diVar.getProperty ("feedback", (double) out.feedback);
+        out.feedbackDamping       = (float) diVar.getProperty ("feedbackDamping", (double) out.feedbackDamping);
+        out.tapSpreadRadius       = (float) diVar.getProperty ("tapSpreadRadius", (double) out.tapSpreadRadius);
+        out.tapOrbitAngularSpeed  = (float) diVar.getProperty ("tapOrbitAngularSpeed", (double) out.tapOrbitAngularSpeed);
+        if (diVar.hasProperty ("seed"))
+            out.seed = diVar.getProperty ("seed", juce::var()).toString().getLargeIntValue();
+
+        return juce::Result::ok();
+    }
 }
 
 juce::var PresetManager::migrateSchemaV1toV2 (const juce::var& v1Root)
@@ -670,6 +713,9 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         // GrainCloud (optional, schemaVersion 2+, see Grain.h)
         objVar->setProperty ("grainCloud", grainCloudSettingsToVar (engine.getGrainCloud (i).getSettings()));
 
+        // DelayInstance (optional, see DelayTap.h) -- feature/delay-instance
+        objVar->setProperty ("delayInstance", delayInstanceSettingsToVar (engine.getDelayInstance (i).getSettings()));
+
         objectsArray.add (juce::var (objVar));
     }
 
@@ -710,6 +756,7 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         const int id = engine.getObject (i).id;
         engine.getObject (i) = SoundObject { id };
         engine.getGrainCloud (i).reset();
+        engine.getDelayInstance (i).reset();
         engine.reseedOrbitNoise (i);
     }
 
@@ -809,6 +856,13 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
                                                               engine.getGrainCloud (id).getSettings());
         if (grainCloudResult.failed())
             return grainCloudResult;
+
+        // DelayInstance (optional -- absent for every preset saved before
+        // feature/delay-instance existed, defaults/disabled stays)
+        auto delayInstanceResult = delayInstanceSettingsFromVar (element.getProperty ("delayInstance", juce::var()),
+                                                                   engine.getDelayInstance (id).getSettings());
+        if (delayInstanceResult.failed())
+            return delayInstanceResult;
 
         // Not part of the schema (runtime state, not a starting parameter):
         // reset cleanly, so a freshly loaded orbit/pulse object doesn't

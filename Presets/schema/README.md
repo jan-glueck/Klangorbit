@@ -173,7 +173,48 @@ defaults for everything new.
         // seed it was already assigned on construction/reset (see
         // GrainCloud::reset()). Saved so a specific grain pattern reloads
         // exactly, not just approximately.
-        "seed": "987654321"
+        "seed": "987654321",
+
+        // Optional -- missing entirely (every preset saved before
+        // feature/grain-filter-integration existed) behaves exactly like
+        // "enabled": false below, so an older preset's sound is
+        // unaffected. Per-grain multi-mode filter (Source/VoiceFilter.h)
+        // applied to each grain's own rendered audio independently.
+        "filter": {
+          "enabled": false,
+          "type": "lowPass",           // lowPass | highPass | bandPass | notch
+          // RandomizedParam (Source/RandomEngine.h) -- each grain samples
+          // its OWN cutoff once at spawn from [base-spread, base+spread]
+          // (or base/spread as a ratio for "logUniform", see
+          // RandomEngine.h), same "decided once" treatment as pitchJitter.
+          "cutoffHz": {
+            "base": 2000.0,
+            "spread": 0.0,
+            "distribution": "uniform", // uniform | normal | ramp | logUniform | powerLaw | discrete
+            "rampTowardMax": true,     // ramp only
+            "powerExponent": 2.0,      // powerLaw only
+            "discreteValues": [],      // discrete only
+            "quantizeToSet": false,    // snaps the sampled value to the nearest entry in quantizeValues afterward, any distribution
+            "quantizeValues": []
+          },
+          "resonance": {               // same RandomizedParam shape as cutoffHz, for Q
+            "base": 0.707,
+            "spread": 0.0,
+            "distribution": "uniform",
+            "rampTowardMax": true,
+            "powerExponent": 2.0,
+            "discreteValues": [],
+            "quantizeToSet": false,
+            "quantizeValues": []
+          },
+          // Optional continuous wander of a grain's cutoff around its own
+          // spawn-time sampled value, for as long as that grain lives
+          // (Ornstein-Uhlenbeck, Source/RandomEngine.h::MeanReverting) --
+          // driftAmplitude == 0 (the default) disables this entirely.
+          "driftReversionRate": 1.0,   // 1/s, pull-back strength toward the grain's own sampled cutoff
+          "driftAmplitude": 0.0,       // Hz, noise strength -- 0 = disabled
+          "driftSmoothing": 0.2        // seconds, smooths the underlying noise
+        }
       }
     }
   ]

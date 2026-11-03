@@ -603,6 +603,73 @@ ParameterPanel::ParameterPanel()
     addGrainFloatRow ("Orbit Sphere Spread (2D -> 3D)", &GrainCloudSettings::orbitSphereSpread, 0.0, 1.0, 0.01, Category::GrainCloud, GrainMovementMode::OrbitAroundParent);
     addGrainFloatRow ("Attraction Strength (Siblings)", &GrainCloudSettings::attractionStrength, -10.0, 10.0, 0.01, Category::GrainCloud, GrainMovementMode::AttractRepelSiblings);
 
+    // --- Per-grain filter (feature/grain-filter-integration) ---------------
+    // Shared VoiceFilter module (VoiceFilter.h) applied to each grain's own
+    // rendered audio independently -- see Grain.h/GrainCloud.cpp/
+    // PluginProcessor.cpp for the control-rate/audio-rate split this
+    // crosses. Off by default, so existing presets are unaffected. Custom-
+    // wired (not addGrainFloatRow()) since every field here lives on the
+    // nested GrainCloudSettings::filter (VoiceFilterSettings), not directly
+    // on GrainCloudSettings itself.
+    grainFilterEnabledRow = std::make_unique<ToggleRowComponent> ("Filter Enabled");
+    grainFilterEnabledRow->onToggled = [this] (bool v)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->filter.enabled = v;
+        updateGrainFilterVisibility();
+        layoutContent(); // heights above/below the now-hidden/shown rows changed -- re-flow immediately
+    };
+    content.addAndMakeVisible (*grainFilterEnabledRow);
+    addToLayout (*grainFilterEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
+
+    grainFilterTypeRow = std::make_unique<ComboRowComponent> ("Filter Type");
+    grainFilterTypeRow->combo.addItem ("Low-Pass", 1);
+    grainFilterTypeRow->combo.addItem ("High-Pass", 2);
+    grainFilterTypeRow->combo.addItem ("Band-Pass", 3);
+    grainFilterTypeRow->combo.addItem ("Notch", 4);
+    grainFilterTypeRow->onSelected = [this] (int index)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->filter.type = (VoiceFilterType) index;
+    };
+    content.addChildComponent (*grainFilterTypeRow); // hidden until updateGrainFilterVisibility() shows it
+    addToLayout (*grainFilterTypeRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
+
+    grainFilterCutoffRow = std::make_unique<FloatRowComponent> ("Filter Cutoff (Hz)",
+                                                                  (double) VoiceFilterLimits::minCutoffHz, 20000.0, 1.0);
+    grainFilterCutoffRow->onValueChanged = [this] (float v) { if (editedGrainCloud != nullptr) editedGrainCloud->filter.cutoffHz.base = v; };
+    grainFilterCutoffRow->setDefaultValue (VoiceFilterSettings{}.cutoffHz.base);
+    content.addChildComponent (*grainFilterCutoffRow);
+    addToLayout (*grainFilterCutoffRow, FloatRowComponent::preferredHeight, Category::GrainCloud);
+
+    grainFilterResonanceRow = std::make_unique<FloatRowComponent> ("Filter Resonance (Q)",
+                                                                     (double) VoiceFilterLimits::minResonance, (double) VoiceFilterLimits::maxResonance, 0.01);
+    grainFilterResonanceRow->onValueChanged = [this] (float v) { if (editedGrainCloud != nullptr) editedGrainCloud->filter.resonance.base = v; };
+    grainFilterResonanceRow->setDefaultValue (VoiceFilterSettings{}.resonance.base);
+    content.addChildComponent (*grainFilterResonanceRow);
+    addToLayout (*grainFilterResonanceRow, FloatRowComponent::preferredHeight, Category::GrainCloud);
+
+    // Per-grain, spawn-time-only +/- randomization of the cutoff above
+    // (VoiceFilterSettings::cutoffHz.spread, RandomDistribution::Uniform
+    // is cutoffHz's default distribution) -- each grain picks its own
+    // fixed cutoff once at spawn within [cutoff-jitter, cutoff+jitter],
+    // same "decided once" treatment as Pitch Jitter.
+    grainFilterCutoffJitterRow = std::make_unique<FloatRowComponent> ("Filter Cutoff Jitter (Hz)", 0.0, 10000.0, 1.0);
+    grainFilterCutoffJitterRow->onValueChanged = [this] (float v) { if (editedGrainCloud != nullptr) editedGrainCloud->filter.cutoffHz.spread = v; };
+    grainFilterCutoffJitterRow->setDefaultValue (VoiceFilterSettings{}.cutoffHz.spread);
+    content.addChildComponent (*grainFilterCutoffJitterRow);
+    addToLayout (*grainFilterCutoffJitterRow, FloatRowComponent::preferredHeight, Category::GrainCloud);
+
+    // Optional continuous wander on TOP of each grain's own spawn-time
+    // cutoff, for as long as that grain lives (VoiceFilterSettings::
+    // driftAmplitude, 0 = disabled/static) -- driftReversionRate/
+    // driftSmoothing stay at their struct defaults, not exposed here.
+    grainFilterDriftAmountRow = std::make_unique<FloatRowComponent> ("Filter Cutoff Drift (Hz)", 0.0, 10000.0, 1.0);
+    grainFilterDriftAmountRow->onValueChanged = [this] (float v) { if (editedGrainCloud != nullptr) editedGrainCloud->filter.driftAmplitude = v; };
+    grainFilterDriftAmountRow->setDefaultValue (VoiceFilterSettings{}.driftAmplitude);
+    content.addChildComponent (*grainFilterDriftAmountRow);
+    addToLayout (*grainFilterDriftAmountRow, FloatRowComponent::preferredHeight, Category::GrainCloud);
+
     updateCategoryButtonsEnabled();
     selectCategory (Category::Scene);
 }
@@ -762,6 +829,7 @@ void ParameterPanel::selectCategory (Category category)
     // the generic pass above just made visible.
     updateGrainMovementModeVisibility();
     updatePitchJitterModeVisibility();
+    updateGrainFilterVisibility();
     updateGrainBudgetHintVisibility();
 
     viewport.setViewPosition (0, 0);
@@ -791,6 +859,19 @@ void ParameterPanel::updatePitchJitterModeVisibility()
         return;
 
     pitchQuantizeScaleRow->setVisible (editedGrainCloud->pitchJitterMode == PitchJitterMode::Scale);
+}
+
+void ParameterPanel::updateGrainFilterVisibility()
+{
+    if (currentCategory != Category::GrainCloud || editedGrainCloud == nullptr)
+        return;
+
+    const bool on = editedGrainCloud->filter.enabled;
+    grainFilterTypeRow->setVisible (on);
+    grainFilterCutoffRow->setVisible (on);
+    grainFilterResonanceRow->setVisible (on);
+    grainFilterCutoffJitterRow->setVisible (on);
+    grainFilterDriftAmountRow->setVisible (on);
 }
 
 void ParameterPanel::setGrainBudgetOversubscribed (bool oversubscribed)
@@ -884,8 +965,17 @@ void ParameterPanel::refreshFromModel()
     grainReadDepthDistributionRow->combo.setSelectedItemIndex ((int) editedGrainCloud->grainReadDepthDistribution, juce::dontSendNotification);
     pitchJitterModeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->pitchJitterMode, juce::dontSendNotification);
     pitchQuantizeScaleRow->combo.setSelectedItemIndex ((int) editedGrainCloud->pitchQuantizeScale, juce::dontSendNotification);
+
+    grainFilterEnabledRow->setValueQuiet (editedGrainCloud->filter.enabled);
+    grainFilterTypeRow->combo.setSelectedItemIndex ((int) editedGrainCloud->filter.type, juce::dontSendNotification);
+    grainFilterCutoffRow->setValueQuiet (editedGrainCloud->filter.cutoffHz.base);
+    grainFilterResonanceRow->setValueQuiet (editedGrainCloud->filter.resonance.base);
+    grainFilterCutoffJitterRow->setValueQuiet (editedGrainCloud->filter.cutoffHz.spread);
+    grainFilterDriftAmountRow->setValueQuiet (editedGrainCloud->filter.driftAmplitude);
+
     updateGrainMovementModeVisibility(); // movementMode may have changed (e.g. a preset load, or switching selected object) without going through grainMovementModeRow's own onSelected
     updatePitchJitterModeVisibility(); // same idea, for pitchJitterMode
+    updateGrainFilterVisibility(); // same idea, for filter.enabled
 }
 
 void ParameterPanel::layoutContent()

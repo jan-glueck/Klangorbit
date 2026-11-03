@@ -102,6 +102,157 @@ namespace
         return false;
     }
 
+    juce::String voiceFilterTypeToString (VoiceFilterType t)
+    {
+        switch (t)
+        {
+            case VoiceFilterType::LowPass:  return "lowPass";
+            case VoiceFilterType::HighPass: return "highPass";
+            case VoiceFilterType::BandPass: return "bandPass";
+            case VoiceFilterType::Notch:    return "notch";
+        }
+        return "lowPass";
+    }
+
+    bool voiceFilterTypeFromString (const juce::String& s, VoiceFilterType& out)
+    {
+        if (s == "lowPass")  { out = VoiceFilterType::LowPass;  return true; }
+        if (s == "highPass") { out = VoiceFilterType::HighPass; return true; }
+        if (s == "bandPass") { out = VoiceFilterType::BandPass; return true; }
+        if (s == "notch")    { out = VoiceFilterType::Notch;    return true; }
+        return false;
+    }
+
+    juce::String randomDistributionToString (RandomDistribution d)
+    {
+        switch (d)
+        {
+            case RandomDistribution::Uniform:    return "uniform";
+            case RandomDistribution::Normal:     return "normal";
+            case RandomDistribution::Ramp:       return "ramp";
+            case RandomDistribution::LogUniform: return "logUniform";
+            case RandomDistribution::PowerLaw:   return "powerLaw";
+            case RandomDistribution::Discrete:   return "discrete";
+        }
+        return "uniform";
+    }
+
+    bool randomDistributionFromString (const juce::String& s, RandomDistribution& out)
+    {
+        if (s == "uniform")    { out = RandomDistribution::Uniform;    return true; }
+        if (s == "normal")     { out = RandomDistribution::Normal;     return true; }
+        if (s == "ramp")       { out = RandomDistribution::Ramp;       return true; }
+        if (s == "logUniform") { out = RandomDistribution::LogUniform; return true; }
+        if (s == "powerLaw")   { out = RandomDistribution::PowerLaw;   return true; }
+        if (s == "discrete")   { out = RandomDistribution::Discrete;   return true; }
+        return false;
+    }
+
+    // Generic RandomizedParam <-> var round-trip (RandomEngine.h) -- the
+    // ONE serialization every future RandomizedParam-based field routes
+    // through (VoiceFilterSettings::cutoffHz/resonance here, more to come
+    // in later branches), rather than each hand-rolling its own.
+    juce::var randomizedParamToVar (const RandomizedParam& p)
+    {
+        auto* obj = new juce::DynamicObject();
+        obj->setProperty ("base", (double) p.base);
+        obj->setProperty ("spread", (double) p.spread);
+        obj->setProperty ("distribution", randomDistributionToString (p.distribution));
+        obj->setProperty ("rampTowardMax", p.rampTowardMax);
+        obj->setProperty ("powerExponent", (double) p.powerExponent);
+        juce::Array<juce::var> discrete;
+        for (float v : p.discreteValues) discrete.add ((double) v);
+        obj->setProperty ("discreteValues", discrete);
+        obj->setProperty ("quantizeToSet", p.quantizeToSet);
+        juce::Array<juce::var> quantize;
+        for (float v : p.quantizeValues) quantize.add ((double) v);
+        obj->setProperty ("quantizeValues", quantize);
+        return juce::var (obj);
+    }
+
+    // "paramVar" missing/not-an-object leaves `out` at whatever default
+    // the caller already set it to (same "optional, sensible default"
+    // convention as every other field here) -- not a failure case.
+    juce::Result randomizedParamFromVar (const juce::var& paramVar, RandomizedParam& out, const juce::String& fieldPathForErrors)
+    {
+        if (paramVar.isVoid())
+            return juce::Result::ok();
+        if (! paramVar.isObject())
+            return juce::Result::fail ("'" + fieldPathForErrors + "' is not a JSON object.");
+
+        out.base   = (float) paramVar.getProperty ("base", (double) out.base);
+        out.spread = (float) paramVar.getProperty ("spread", (double) out.spread);
+        if (paramVar.hasProperty ("distribution"))
+        {
+            const auto s = paramVar.getProperty ("distribution", juce::var()).toString();
+            if (! randomDistributionFromString (s, out.distribution))
+                return juce::Result::fail ("'" + fieldPathForErrors + ".distribution': unknown value '" + s + "'.");
+        }
+        out.rampTowardMax  = (bool) paramVar.getProperty ("rampTowardMax", out.rampTowardMax);
+        out.powerExponent  = (float) paramVar.getProperty ("powerExponent", (double) out.powerExponent);
+
+        if (auto* discreteArr = paramVar.getProperty ("discreteValues", juce::var()).getArray())
+        {
+            out.discreteValues.clear();
+            for (auto& v : *discreteArr)
+                out.discreteValues.push_back ((float) (double) v);
+        }
+        out.quantizeToSet = (bool) paramVar.getProperty ("quantizeToSet", out.quantizeToSet);
+        if (auto* quantizeArr = paramVar.getProperty ("quantizeValues", juce::var()).getArray())
+        {
+            out.quantizeValues.clear();
+            for (auto& v : *quantizeArr)
+                out.quantizeValues.push_back ((float) (double) v);
+        }
+        return juce::Result::ok();
+    }
+
+    juce::var voiceFilterSettingsToVar (const VoiceFilterSettings& f)
+    {
+        auto* obj = new juce::DynamicObject();
+        obj->setProperty ("enabled", f.enabled);
+        obj->setProperty ("type", voiceFilterTypeToString (f.type));
+        obj->setProperty ("cutoffHz", randomizedParamToVar (f.cutoffHz));
+        obj->setProperty ("resonance", randomizedParamToVar (f.resonance));
+        obj->setProperty ("driftReversionRate", (double) f.driftReversionRate);
+        obj->setProperty ("driftAmplitude", (double) f.driftAmplitude);
+        obj->setProperty ("driftSmoothing", (double) f.driftSmoothing);
+        return juce::var (obj);
+    }
+
+    // "filterVar" missing entirely -- always true for a preset saved
+    // before feature/grain-filter-integration existed -- leaves `out` at
+    // GrainCloudSettings' default VoiceFilterSettings, i.e. disabled, so
+    // such a preset's sound is unaffected. Does NOT bump schemaVersion
+    // for the same reason GrainCloudSettings::seed didn't (see its own
+    // comment): an optional field with a harmless, sensible default.
+    juce::Result voiceFilterSettingsFromVar (const juce::var& filterVar, VoiceFilterSettings& out)
+    {
+        if (filterVar.isVoid())
+            return juce::Result::ok();
+        if (! filterVar.isObject())
+            return juce::Result::fail ("'grainCloud.filter' is not a JSON object.");
+
+        if (filterVar.hasProperty ("enabled"))
+            out.enabled = (bool) filterVar.getProperty ("enabled", out.enabled);
+        if (filterVar.hasProperty ("type"))
+        {
+            const auto s = filterVar.getProperty ("type", juce::var()).toString();
+            if (! voiceFilterTypeFromString (s, out.type))
+                return juce::Result::fail ("'grainCloud.filter.type': unknown value '" + s + "'.");
+        }
+        if (auto result = randomizedParamFromVar (filterVar.getProperty ("cutoffHz", juce::var()), out.cutoffHz, "grainCloud.filter.cutoffHz");
+            result.failed())
+            return result;
+        if (auto result = randomizedParamFromVar (filterVar.getProperty ("resonance", juce::var()), out.resonance, "grainCloud.filter.resonance");
+            result.failed())
+            return result;
+        out.driftReversionRate = (float) filterVar.getProperty ("driftReversionRate", (double) out.driftReversionRate);
+        out.driftAmplitude     = (float) filterVar.getProperty ("driftAmplitude", (double) out.driftAmplitude);
+        out.driftSmoothing     = (float) filterVar.getProperty ("driftSmoothing", (double) out.driftSmoothing);
+        return juce::Result::ok();
+    }
+
     juce::String movementModeToString (GrainMovementMode m)
     {
         switch (m)
@@ -320,6 +471,7 @@ namespace
         // sequence exactly reproducible on reload, not just approximately
         // close. A string round-trips through JSON exactly.
         obj->setProperty ("seed", juce::String (s.seed));
+        obj->setProperty ("filter", voiceFilterSettingsToVar (s.filter));
         return juce::var (obj);
     }
 
@@ -428,6 +580,10 @@ namespace
         // optional field's "no value saved yet" default here.
         if (gcVar.hasProperty ("seed"))
             out.seed = gcVar.getProperty ("seed", juce::var()).toString().getLargeIntValue();
+
+        if (auto result = voiceFilterSettingsFromVar (gcVar.getProperty ("filter", juce::var()), out.filter);
+            result.failed())
+            return result;
 
         return juce::Result::ok();
     }

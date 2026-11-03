@@ -63,7 +63,12 @@ Live input (up to 8 mono channels)
    variable delay line), air                          modes, control rate;
    absorption (simplified one-pole                    each active grain reads
    lowpass), directivity gain                          a short, windowed burst
-        |                                              from the ring buffer
+        |                                              from the ring buffer,
+        |                                              then an optional per-
+        |                                              grain filter (lowPass/
+        |                                              highPass/bandPass/
+        |                                              notch, see "Per-grain
+        |                                              filter" below)
         |                                                   |
         v                                                   v
         +-------------------------> [AmbisonicsEncoder] <---+
@@ -118,7 +123,9 @@ Live input (up to 8 mono channels)
 
 Note: grains skip `PropagationProcessor` (no per-grain Doppler/delay/air
 absorption/directivity) -- only `SoundObject`s go through it. See
-"GrainCloud: granular synthesis" below.
+"GrainCloud: granular synthesis" below, and its "Per-grain filter"
+subsection for the optional filter stage each grain's rendered audio can
+pass through before reaching the encoder.
 
 ## Build
 
@@ -1175,6 +1182,28 @@ purely random.
   deliberately *not* run through `PropagationProcessor`, since a full
   per-grain delay/air-absorption/directivity pass would be too expensive
   with dozens of concurrent grains.
+- **Per-grain filter** (`filter`, off by default). A shared, cheap-enough-
+  for-hundreds-of-instances multi-mode resonant filter (`Source/
+  VoiceFilter.h` -- LowPass/HighPass/BandPass/Notch), applied to each
+  grain's own windowed audio independently, right after it's read from the
+  ring buffer and before it reaches the encoder. `cutoffHz`/`resonance`
+  are each a full randomizable parameter (base/spread/distribution, same
+  shared primitive -- `Source/RandomEngine.h::RandomizedParam` -- orbit-
+  radius mean-reversion and the grain-cloud's own seed already use): every
+  grain samples its own cutoff/resonance once at spawn, same "decided
+  once, fixed for this grain's life" treatment as `pitchJitter`. On top of
+  that, an optional continuous drift ("Filter Cutoff Drift" in the UI,
+  `driftAmplitude`, 0 = disabled) lets a grain's cutoff keep wandering
+  around its own sampled value for as long as it lives, via the same
+  Ornstein-Uhlenbeck process driving orbit radius. Architecturally split
+  across the same control-rate/audio-rate boundary as everything else
+  here: `GrainCloud` decides each grain's cutoff/resonance (and advances
+  drift) at control rate and publishes them through its `Snapshot`;
+  `PluginProcessor::GrainAudioState::filter` holds the actual per-sample
+  DSP state on the audio thread, never touching the RNG itself. See
+  `Tools/verify_voice_filter.cpp` (the filter module in isolation) and
+  `Tools/verify_grain_cloud.cpp`'s `testGrainFilter*` tests (the
+  integration).
 - **Optional per-grain Doppler** (`Source/GrainDoppler.h`, "Doppler" toggle
   in the Grains parameter category, **off by default**): a much
   cheaper approximation than `PropagationProcessor`'s delay-line-based

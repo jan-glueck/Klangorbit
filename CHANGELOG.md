@@ -63,6 +63,30 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   standalone against DC/frequency response per mode, resonance peaking,
   per-voice reproducibility, drift behavior, and a wide finite/bounded-
   output stability sweep (`Tools/verify_voice_filter.cpp`).
+- **Per-grain filter** (`GrainCloudSettings::filter`,
+  `feature/grain-filter-integration`, Branch 2) -- wires Branch 1's
+  `VoiceFilter` into `GrainCloud`'s grains. Each grain samples its own
+  cutoff/resonance once at spawn and optionally keeps drifting (same
+  "decided once, fixed for this grain's life" treatment as `pitchJitter`,
+  disabled/off by default so existing presets are unaffected). Split
+  across the control-rate/audio-rate boundary GrainCloud/PluginProcessor
+  already have: `GrainCloud::spawnGrain()`/`updateGrain()` decide/drift
+  each grain's own cutoff/resonance (plain fields on `Grain`, no RNG
+  touches the audio thread) and publish them through `GrainCloud::
+  Snapshot`; `PluginProcessor::GrainAudioState::filter` (a `VoiceFilter`)
+  applies them to that grain's rendered audio every block via its new
+  RNG-free `resetWithValues()`/`setCutoffAndResonance()` methods, right
+  after `renderGrainBlock()` and before spatial encoding. New
+  `ParameterPanel` controls (Filter Enabled/Type/Cutoff/Resonance/Cutoff
+  Jitter/Cutoff Drift, Grain Cloud category, hidden until Filter Enabled
+  is on). Persisted via a new, fully optional `grainCloud.filter` preset
+  block (`Presets/schema/README.md`) -- missing entirely (every existing
+  preset) loads with the filter off, so this does NOT bump
+  `schemaVersion`. Verified via new `Tools/verify_grain_cloud.cpp` tests
+  (per-grain sampling/range, drift on/off) and a new
+  `Tools/verify_grain_filter_preset.cpp` (full save/load round-trip
+  through the real `PresetManager` path, plus the no-`filter`-key
+  backward-compatibility case).
 
 ## [0.2.0] - 2026-09-17
 ### Added

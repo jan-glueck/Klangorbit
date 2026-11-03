@@ -61,6 +61,14 @@ public:
         int bufferReadStartSample = 0;
         float playbackRate = 1.0f;
         int grainLengthSamples = 0;
+        // Per-grain filter state (feature/grain-filter-integration), only
+        // meaningful while GrainCloudSettings::filter.enabled -- see
+        // Grain::filterCutoffHz/filterResonance. PluginProcessor's audio-
+        // rate GrainAudioState::filter reads these each tick (no RNG
+        // involved on that side, see VoiceFilter.h's resetWithValues()/
+        // setCutoffAndResonance()).
+        float filterCutoffHz = 2000.0f;
+        float filterResonance = 0.707f;
     };
     void getSnapshot (std::vector<Snapshot>& out) const;
 

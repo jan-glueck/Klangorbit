@@ -1,6 +1,7 @@
 #pragma once
 #include "Vec3.h"
 #include "RandomEngine.h"
+#include "VoiceFilter.h"
 
 /**
     How a grain moves for the duration of its (short) life. See
@@ -314,6 +315,18 @@ struct GrainCloudSettings
     float orbitSphereSpread = 0.0f;
 
     float attractionStrength = 1.0f;          // AttractRepelSiblings, negative = repel
+
+    // --- Per-grain filter (feature/grain-filter-integration) -------------
+    // Shared VoiceFilter module (VoiceFilter.h) applied to each grain's
+    // rendered audio independently -- disabled by default, so existing
+    // presets/behavior are unaffected. cutoffHz/resonance are sampled
+    // ONCE PER GRAIN at spawn (see GrainCloud::spawnGrain(), Grain::
+    // filterBaseCutoffHz/filterResonance below), same "decided once,
+    // fixed for this grain's life" treatment as playbackRate -- except
+    // for the optional cutoff drift (driftAmplitude > 0), which keeps
+    // wandering around that spawn-time value for the grain's whole life
+    // (see GrainCloud::updateGrain(), Grain::filterCutoffHz).
+    VoiceFilterSettings filter;
 };
 
 /**
@@ -362,4 +375,22 @@ struct Grain
     int bufferReadStartSample = 0;   // position in the parent's ring buffer at spawn
     float playbackRate = 1.0f;       // pitch ratio (1 +/- pitchJitter deviation)
     int grainLengthSamples = 0;      // grainDuration in samples, fixed at spawn (sample-rate dependent)
+
+    // Per-grain filter state (feature/grain-filter-integration), only
+    // meaningful while GrainCloudSettings::filter.enabled -- the CONTROL-
+    // RATE half of VoiceFilter's decision state (see VoiceFilter.h's own
+    // comment on why this is plain floats here rather than an owned
+    // VoiceFilter instance: that class's audio-rate DSP state lives in
+    // PluginProcessor::GrainAudioState instead, across the thread
+    // boundary this struct doesn't cross). filterBaseCutoffHz/
+    // filterResonance are sampled once at spawn (GrainCloud::spawnGrain());
+    // filterCutoffHz starts equal to filterBaseCutoffHz and then, only if
+    // driftAmplitude > 0, keeps wandering around it every tick
+    // (GrainCloud::updateGrain(), via the same MeanReverting::step() used
+    // for orbit radius) -- filterDriftSmoothedNoise is that process's own
+    // persistent noise state.
+    float filterBaseCutoffHz = 2000.0f;
+    float filterCutoffHz = 2000.0f;
+    float filterResonance = 0.707f;
+    float filterDriftSmoothedNoise = 0.0f;
 };

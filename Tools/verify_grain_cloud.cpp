@@ -1051,6 +1051,178 @@ static void testPitchJitterScaleQuantizes()
     }
 }
 
+// --- Per-grain filter (feature/grain-filter-integration) --------------------
+
+static void testGrainFilterDisabledByDefaultLeavesGrainsUnaffected()
+{
+    GrainCloud cloud (16);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 50.0f;
+    cloud.getSettings().grainDuration = 0.2f;
+    cloud.getSettings().maxConcurrentGrains = 16;
+    cloud.getSettings().seed = 11;
+    // settings.filter.enabled left at its default (false) -- this test
+    // confirms that default is genuinely inert, matching every other
+    // optional-field "no behavior change until opted in" guarantee in
+    // this project (see GrainCloudSettings::seed/filter's own comments).
+
+    int budget = 32;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int tick = 0; tick < 30; ++tick)
+        cloud.update (1.0 / 90.0, {}, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    bool anyActive = false;
+    for (auto& s : snap)
+        if (s.active) anyActive = true;
+    check (anyActive, "GrainCloud: filter-disabled test setup actually spawned active grains");
+    check (cloud.getNumActiveGrains() > 0, "GrainCloud: filter.enabled == false (the default) doesn't prevent grains from spawning/playing normally");
+}
+
+static void testGrainFilterSamplesPerGrainCutoffAndResonance()
+{
+    GrainCloud cloud (32);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 200.0f;
+    cloud.getSettings().grainDuration = 0.3f;
+    cloud.getSettings().maxConcurrentGrains = 32;
+    cloud.getSettings().seed = 2001;
+
+    auto& filter = cloud.getSettings().filter;
+    filter.enabled = true;
+    filter.cutoffHz = { 1000.0f, 500.0f }; // Uniform within [500, 1500]
+    filter.resonance = { 2.0f, 1.0f };     // Uniform within [1.0, 3.0]
+
+    int budget = 64;
+    cloud.setRingBufferContext (0, kSampleRate);
+
+    std::vector<int> lastGen (32, 0);
+    std::vector<float> observedCutoffs, observedResonances;
+    for (int tick = 0; tick < 90; ++tick) // ~1s at 90 ticks/s
+    {
+        cloud.update (1.0 / 90.0, {}, {}, budget);
+        std::vector<GrainCloud::Snapshot> snap;
+        cloud.getSnapshot (snap);
+        for (size_t i = 0; i < snap.size(); ++i)
+        {
+            if (snap[i].active && snap[i].spawnGeneration != lastGen[i])
+            {
+                lastGen[i] = snap[i].spawnGeneration;
+                observedCutoffs.push_back (snap[i].filterCutoffHz);
+                observedResonances.push_back (snap[i].filterResonance);
+            }
+        }
+    }
+
+    check (observedCutoffs.size() > 5, "GrainCloud: filter test setup actually spawned multiple grains");
+
+    bool allCutoffsInRange = true, allResonancesInRange = true, cutoffsVary = false, resonancesVary = false;
+    for (float c : observedCutoffs)
+    {
+        if (c < 499.0f || c > 1501.0f) allCutoffsInRange = false;
+        if (std::abs (c - observedCutoffs.front()) > 1.0f) cutoffsVary = true;
+    }
+    for (float r : observedResonances)
+    {
+        if (r < 0.99f || r > 3.01f) allResonancesInRange = false;
+        if (std::abs (r - observedResonances.front()) > 0.01f) resonancesVary = true;
+    }
+
+    check (allCutoffsInRange, "GrainCloud: each grain's own filterCutoffHz (snapshot) stays within cutoffHz's RandomizedParam range");
+    check (cutoffsVary, "GrainCloud: filterCutoffHz actually varies grain-to-grain (sampled once per grain at spawn, not one fixed value)");
+    check (allResonancesInRange, "GrainCloud: each grain's own filterResonance (snapshot) stays within resonance's RandomizedParam range");
+    check (resonancesVary, "GrainCloud: filterResonance actually varies grain-to-grain (sampled once per grain at spawn)");
+}
+
+static void testGrainFilterCutoffIsStableWithoutDrift()
+{
+    GrainCloud cloud (4);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 1.0f;
+    cloud.getSettings().grainDuration = 2.0f;
+    cloud.getSettings().maxConcurrentGrains = 4;
+    cloud.getSettings().seed = 55;
+
+    auto& filter = cloud.getSettings().filter;
+    filter.enabled = true;
+    filter.cutoffHz = { 1200.0f, 0.0f }; // spread=0 -- every grain gets exactly 1200 Hz
+    // driftAmplitude left at its default (0.0f, disabled).
+
+    int budget = 8;
+    cloud.setRingBufferContext (0, kSampleRate);
+    // grainRate=1 => a 1s spawn interval -- tick a full second's worth to
+    // force the spawn regardless of rate/interval timing (same pattern as
+    // testLifetimeExpiry()).
+    for (int i = 0; i < 100; ++i)
+        cloud.update (0.01, {}, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int activeSlot = -1;
+    for (size_t i = 0; i < snap.size(); ++i)
+        if (snap[i].active) { activeSlot = (int) i; break; }
+    check (activeSlot >= 0, "GrainCloud: no-drift test setup actually spawned a grain");
+
+    const float cutoffRightAfterSpawn = snap[(size_t) activeSlot].filterCutoffHz;
+
+    for (int i = 0; i < 100; ++i) // another ~1s, well within the 2s grainDuration
+        cloud.update (0.01, {}, {}, budget);
+
+    cloud.getSnapshot (snap);
+    check (snap[(size_t) activeSlot].filterCutoffHz == cutoffRightAfterSpawn,
+           "GrainCloud: with driftAmplitude == 0 (disabled, the default), a grain's filterCutoffHz never changes after spawn");
+}
+
+static void testGrainFilterDriftMovesCutoffOverTime()
+{
+    GrainCloud cloud (4);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 1.0f;
+    cloud.getSettings().grainDuration = 5.0f;
+    cloud.getSettings().maxConcurrentGrains = 4;
+    cloud.getSettings().seed = 56;
+
+    auto& filter = cloud.getSettings().filter;
+    filter.enabled = true;
+    filter.cutoffHz = { 1200.0f, 0.0f };
+    filter.driftAmplitude = 600.0f;
+    filter.driftReversionRate = 0.5f;
+    filter.driftSmoothing = 0.1f;
+
+    int budget = 8;
+    cloud.setRingBufferContext (0, kSampleRate);
+    // grainRate=1 => a 1s spawn interval -- tick a full second's worth to
+    // force the spawn regardless of rate/interval timing (same pattern as
+    // testLifetimeExpiry()).
+    for (int i = 0; i < 100; ++i)
+        cloud.update (0.01, {}, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int activeSlot = -1;
+    for (size_t i = 0; i < snap.size(); ++i)
+        if (snap[i].active) { activeSlot = (int) i; break; }
+    check (activeSlot >= 0, "GrainCloud: drift test setup actually spawned a grain");
+
+    const float cutoffRightAfterSpawn = snap[(size_t) activeSlot].filterCutoffHz;
+
+    bool everMoved = false;
+    bool everOutOfRange = false;
+    for (int i = 0; i < 200; ++i) // another ~2s, well within the remaining ~4s of grainDuration
+    {
+        cloud.update (0.01, {}, {}, budget);
+        cloud.getSnapshot (snap);
+        const float c = snap[(size_t) activeSlot].filterCutoffHz;
+        if (std::abs (c - cutoffRightAfterSpawn) > 0.5f) everMoved = true;
+        if (c < VoiceFilterLimits::minCutoffHz || c > (float) kSampleRate * VoiceFilterLimits::maxCutoffRatioOfSampleRate)
+            everOutOfRange = true;
+    }
+
+    check (everMoved, "GrainCloud: with driftAmplitude > 0, a grain's filterCutoffHz actually wanders over its own lifetime");
+    check (! everOutOfRange, "GrainCloud: a drifting filterCutoffHz never leaves VoiceFilterLimits' safe range");
+}
+
 int main()
 {
     testRenderGrainBlock();
@@ -1072,6 +1244,10 @@ int main()
     testReadDepthRangeIsRespected();
     testReadDepthDistributionBias();
     testPitchJitterScaleQuantizes();
+    testGrainFilterDisabledByDefaultLeavesGrainsUnaffected();
+    testGrainFilterSamplesPerGrainCutoffAndResonance();
+    testGrainFilterCutoffIsStableWithoutDrift();
+    testGrainFilterDriftMovesCutoffOverTime();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

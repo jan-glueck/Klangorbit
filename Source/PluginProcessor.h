@@ -576,6 +576,17 @@ private:
         double readPosition = 0.0;
         std::vector<float> previousChannelGains; // SH-space, see PluginProcessor::previousGainsPerObject's own comment
         std::vector<float> previousSpeakerGains; // real-speaker-space, see PluginProcessor::previousSpeakerGainsPerObject's own comment
+
+        // Audio-rate half of the per-grain filter (feature/grain-filter-
+        // integration) -- the control-rate half (which cutoff/resonance,
+        // and any drift on top) lives in Grain/GrainCloud::Snapshot
+        // instead, see VoiceFilter.h's own comment on this split. Reset
+        // (VoiceFilter::resetWithValues()) whenever lastSeenGeneration
+        // changes, same as readPosition/samplesPlayed above; otherwise
+        // only its coefficients are nudged each block (VoiceFilter::
+        // setCutoffAndResonance()), never its ic1eq/ic2eq state, so a
+        // drifting cutoff doesn't click.
+        VoiceFilter filter;
     };
     std::vector<std::vector<GrainAudioState>> grainAudioState; // [objectIndex][grainPoolSlot]
     // Scratch for rendering one grain's windowed, pitch-shifted mono

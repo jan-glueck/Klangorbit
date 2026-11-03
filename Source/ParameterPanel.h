@@ -267,6 +267,14 @@ private:
     // refreshFromModel(), and pitchJitterModeRow's own onSelected.
     void updatePitchJitterModeVisibility();
 
+    // Shows/hides grainFilterTypeRow/-CutoffRow/-ResonanceRow/
+    // -CutoffJitterRow/-DriftAmountRow: visible only while the GrainCloud
+    // category is showing AND grainFilterEnabledRow is on -- same pattern
+    // as updatePitchJitterModeVisibility() above, on an independent axis.
+    // Same trigger points: selectCategory(), setEditedGrainCloud()/
+    // refreshFromModel(), and grainFilterEnabledRow's own onToggled.
+    void updateGrainFilterVisibility();
+
     // Shows/hides grainBudgetHintLabel: visible only while the GrainCloud
     // category is showing AND grainBudgetOversubscribed (see
     // setGrainBudgetOversubscribed()) is currently true. Same trigger
@@ -338,4 +346,19 @@ private:
     // Visible only while pitchJitterModeRow == Scale, see
     // updatePitchJitterModeVisibility().
     std::unique_ptr<ComboRowComponent> pitchQuantizeScaleRow;
+
+    // Per-grain filter (feature/grain-filter-integration, GrainCloudSettings
+    // ::filter, VoiceFilter.h) -- grainFilterTypeRow/-CutoffRow/-ResonanceRow/
+    // -CutoffJitterRow/-DriftAmountRow are visible only while
+    // grainFilterEnabledRow is on, see updateGrainFilterVisibility().
+    // driftReversionRate/driftSmoothing (VoiceFilterSettings) are
+    // deliberately NOT exposed here, keeping this first UI pass to the
+    // controls that matter most for audibly shaping the effect; they stay
+    // at their struct defaults.
+    std::unique_ptr<ToggleRowComponent> grainFilterEnabledRow;
+    std::unique_ptr<ComboRowComponent> grainFilterTypeRow;
+    std::unique_ptr<FloatRowComponent> grainFilterCutoffRow;      // VoiceFilterSettings::cutoffHz.base
+    std::unique_ptr<FloatRowComponent> grainFilterResonanceRow;   // VoiceFilterSettings::resonance.base
+    std::unique_ptr<FloatRowComponent> grainFilterCutoffJitterRow; // VoiceFilterSettings::cutoffHz.spread
+    std::unique_ptr<FloatRowComponent> grainFilterDriftAmountRow;  // VoiceFilterSettings::driftAmplitude
 };

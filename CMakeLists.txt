@@ -368,6 +368,37 @@ target_link_libraries(verify_voice_filter
         juce::juce_recommended_warning_flags
 )
 
+# --- Grain filter preset round-trip verification ---------------------------
+# Round-trips GrainCloudSettings::filter (VoiceFilterSettings) through the
+# REAL PresetManager save/load path (sceneToVar()/loadFromVar()), including
+# backward compatibility with a preset that has no "filter" key at all.
+# Needs the full PresetManager/TrajectoryEngine/GrainCloud stack, same
+# sources as validate_presets.
+juce_add_console_app(verify_grain_filter_preset
+    PRODUCT_NAME "verify_grain_filter_preset"
+)
+
+target_sources(verify_grain_filter_preset
+    PRIVATE
+        Tools/verify_grain_filter_preset.cpp
+        Source/PresetManager.cpp
+        Source/GrainCloud.cpp
+        Source/TrajectoryEngine.cpp
+)
+
+target_compile_definitions(verify_grain_filter_preset
+    PRIVATE
+        SAPOC_MAX_LIVE_INPUTS=${SAPOC_MAX_LIVE_INPUTS}
+)
+
+target_link_libraries(verify_grain_filter_preset
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- Grain cloud DSP verification -----------------------------------------
 # Runs GrainCloud (spawn timing, all 5 movement modes, global/per-cloud
 # caps, lifetime expiry) and renderGrainBlock (the exact function

@@ -398,10 +398,42 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
     g.playbackRate = juce::jmax (0.1f, rate);
 
     g.grainLengthSamples = juce::jmax (1, (int) (g.lifetimeSeconds * sampleRate));
+
+    // Per-grain filter (feature/grain-filter-integration): sampled once
+    // here, same "decided once, fixed for this grain's life" treatment as
+    // playbackRate above -- see Grain.h's own comment on filterCutoffHz/
+    // filterBaseCutoffHz for why these are plain fields rather than an
+    // owned VoiceFilter instance. Left at their defaults (harmless) when
+    // the filter is disabled, since PluginProcessor only ever reads them
+    // while settings.filter.enabled is true.
+    if (settings.filter.enabled)
+    {
+        g.filterBaseCutoffHz = settings.filter.cutoffHz.sample (rng);
+        g.filterCutoffHz = g.filterBaseCutoffHz;
+        g.filterResonance = settings.filter.resonance.sample (rng);
+        g.filterDriftSmoothedNoise = 0.0f;
+    }
 }
 
 void GrainCloud::updateGrain (Grain& g, float fdt, Vec3 parentPosition, Vec3 /*parentVelocity*/)
 {
+    // Optional per-grain cutoff drift (feature/grain-filter-integration),
+    // same Ornstein-Uhlenbeck process (MeanReverting::step()) as orbit-
+    // radius mean-reversion -- disabled (driftAmplitude <= 0) by default.
+    // Runs here (once per grain per control tick, independent of
+    // movementMode) rather than inside the switch below since it's
+    // orthogonal to how the grain moves.
+    if (settings.filter.enabled && settings.filter.driftAmplitude > 0.0f)
+    {
+        g.filterCutoffHz = MeanReverting::step (g.filterCutoffHz, g.filterBaseCutoffHz,
+                                                 settings.filter.driftReversionRate, settings.filter.driftAmplitude,
+                                                 settings.filter.driftSmoothing, fdt, rng.nextGaussian(),
+                                                 g.filterDriftSmoothedNoise);
+        g.filterCutoffHz = juce::jlimit (VoiceFilterLimits::minCutoffHz,
+                                          (float) ringBufferSampleRate * VoiceFilterLimits::maxCutoffRatioOfSampleRate,
+                                          g.filterCutoffHz);
+    }
+
     switch (settings.movementMode)
     {
         case GrainMovementMode::RandomWalk:
@@ -578,5 +610,7 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
         s.bufferReadStartSample = g.bufferReadStartSample;
         s.playbackRate = g.playbackRate;
         s.grainLengthSamples = g.grainLengthSamples;
+        s.filterCutoffHz = g.filterCutoffHz;
+        s.filterResonance = g.filterResonance;
     }
 }

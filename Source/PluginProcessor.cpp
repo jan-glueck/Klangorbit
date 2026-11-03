@@ -1031,7 +1031,8 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                 continue;
             }
 
-            if (snap.spawnGeneration != state.lastSeenGeneration)
+            const bool isNewGrain = (snap.spawnGeneration != state.lastSeenGeneration);
+            if (isNewGrain)
             {
                 state.lastSeenGeneration = snap.spawnGeneration;
                 state.samplesPlayed = 0;
@@ -1054,6 +1055,29 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
             renderGrainBlock (ringData, ringSize, state.readPosition, effectivePlaybackRate,
                                snap.grainLengthSamples, state.samplesPlayed, grainOut, numSamples);
+
+            // Optional per-grain filter (feature/grain-filter-integration,
+            // default off): cutoff/resonance were already decided at
+            // control rate (GrainCloud::spawnGrain()/updateGrain(), see
+            // Grain::filterCutoffHz) and published through the snapshot --
+            // this side only ever applies them, never samples RNG itself
+            // (see VoiceFilter.h's own comment on this split).
+            const auto& grainFilterSettings = trajectoryEngine.getGrainCloud (objIdx).getSettings().filter;
+            if (grainFilterSettings.enabled)
+            {
+                if (isNewGrain)
+                {
+                    state.filter.prepare (currentSampleRate);
+                    state.filter.resetWithValues (grainFilterSettings.type, snap.filterCutoffHz, snap.filterResonance);
+                }
+                else
+                {
+                    state.filter.setCutoffAndResonance (snap.filterCutoffHz, snap.filterResonance);
+                }
+
+                for (int i = 0; i < numSamples; ++i)
+                    grainOut[i] = state.filter.processSample (grainOut[i]);
+            }
 
             float azimuth, elevation, distance;
             cartesianToSpherical (snap.position, azimuth, elevation, distance);

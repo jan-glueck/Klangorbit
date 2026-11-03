@@ -43,6 +43,18 @@
     be called once per BLOCK (control rate), not once per sample, same
     cadence GrainCloud::update()/TrajectoryEngine::update() already use;
     processSample() is the only per-sample call and touches no RNG at all.
+
+    A real-time consumer that itself splits decision state (control rate)
+    from DSP state (audio rate) across a thread boundary -- as GrainCloud/
+    PluginProcessor do for grains, see feature/grain-filter-integration --
+    doesn't use start()/advanceDrift() at all: the control-rate side
+    samples/drifts its OWN plain cutoff/resonance floats directly via
+    RandomizedParam::sample()/MeanReverting::step() (same primitives these
+    methods wrap) and publishes them; the audio-rate side then only ever
+    calls resetWithValues()/setCutoffAndResonance()/processSample(), none
+    of which touch SeededRandom. start()/advanceDrift() remain the
+    convenient all-in-one path for any consumer that doesn't need that
+    split (e.g. this module's own tests).
 */
 
 enum class VoiceFilterType
@@ -128,6 +140,40 @@ public:
             settings.driftSmoothing, dt, rng.nextGaussian(), driftSmoothedNoise);
 
         updateCoefficients (driftedCutoffHz, currentResonance);
+    }
+
+    // Audio-thread-safe counterpart to start(): resets filter state for a
+    // new voice whose cutoff/resonance have ALREADY been decided at
+    // control rate elsewhere (e.g. GrainCloud::spawnGrain() sampling from
+    // RandomizedParam and publishing the result through its Snapshot) --
+    // touches no RNG, so unlike start()/advanceDrift() this is safe to
+    // call from the audio thread. Used when a consumer's decision state
+    // (which per-voice cutoff/resonance to use, and any drift on top of
+    // it) must live on the control-rate side of a thread boundary this
+    // class itself doesn't cross -- see GrainCloud.cpp/PluginProcessor.cpp
+    // for exactly that split (Grain holds the decided values, GrainAudioState
+    // holds this filter's audio-rate DSP state).
+    void resetWithValues (VoiceFilterType newType, float cutoffHz, float resonanceQ)
+    {
+        type = newType;
+        baseCutoffHz = cutoffHz;
+        currentResonance = resonanceQ;
+        driftSmoothedNoise = 0.0f;
+        ic1eq = 0.0f;
+        ic2eq = 0.0f;
+        updateCoefficients (cutoffHz, resonanceQ);
+    }
+
+    // Audio-thread-safe counterpart to advanceDrift(): re-derives this
+    // block's coefficients from an already-decided cutoff/resonance (e.g.
+    // this tick's post-drift snapshot value) WITHOUT touching ic1eq/ic2eq
+    // -- keeps the filter's own state continuous across blocks instead of
+    // restarting it, so a changing control-rate value doesn't click.
+    // Touches no RNG.
+    void setCutoffAndResonance (float cutoffHz, float resonanceQ)
+    {
+        currentResonance = resonanceQ;
+        updateCoefficients (cutoffHz, resonanceQ);
     }
 
     // The only per-sample call -- touches no RNG, allocates nothing.

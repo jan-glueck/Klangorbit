@@ -44,6 +44,25 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   the above: pressing it assigns a fresh, unpredictable value directly to
   `GrainCloudSettings::seed`, which `GrainCloud::update()` picks up and
   re-seeds its own RNG from on the next control-rate tick.
+- **Shared per-voice filter module** (`Source/VoiceFilter.h`,
+  `feature/per-voice-filter`, Branch 1 of the same generative sound
+  design effort) -- a standalone, cheap-enough-for-hundreds-of-instances
+  multi-mode resonant filter (LowPass/HighPass/BandPass/Notch, a
+  zero-delay-feedback/"TPT" state-variable topology, numerically stable
+  under continuous coefficient changes) meant to be given to EVERY
+  simultaneously active voice, not shared across them. Not yet wired
+  into anything audible on its own -- `feature/grain-filter-integration`
+  (Branch 2) connects it to `GrainCloud`'s grains, a later branch to
+  `DelayInstance`'s taps. Its cutoff/resonance are `RandomizedParam`
+  (`RandomEngine.h`), each voice sampling its own value once at spawn
+  (`VoiceFilter::start()`), with an optional continuous drift on top
+  (`VoiceFilter::advanceDrift()`, the same Ornstein-Uhlenbeck process as
+  orbit-radius mean-reversion) that lets a voice's cutoff keep wandering
+  around its own sampled value for as long as it lives -- disabled
+  (`VoiceFilterSettings::driftAmplitude == 0`) by default. Verified
+  standalone against DC/frequency response per mode, resonance peaking,
+  per-voice reproducibility, drift behavior, and a wide finite/bounded-
+  output stability sweep (`Tools/verify_voice_filter.cpp`).
 
 ## [0.2.0] - 2026-09-17
 ### Added

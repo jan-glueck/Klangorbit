@@ -345,6 +345,29 @@ target_link_libraries(verify_randomization
         juce::juce_recommended_warning_flags
 )
 
+# --- Per-voice filter verification -----------------------------------------
+# Runs VoiceFilter (DC/frequency response per mode, resonance peaking,
+# RandomizedParam-driven per-voice cutoff/resonance sampling, optional
+# drift, and a wide finite/bounded-output stability sweep). VoiceFilter.h
+# is header-only/pure-math (no juce_audio dependency), so this stays a
+# lightweight juce_core-only console app like verify_randomization.
+juce_add_console_app(verify_voice_filter
+    PRODUCT_NAME "verify_voice_filter"
+)
+
+target_sources(verify_voice_filter
+    PRIVATE
+        Tools/verify_voice_filter.cpp
+)
+
+target_link_libraries(verify_voice_filter
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- Grain cloud DSP verification -----------------------------------------
 # Runs GrainCloud (spawn timing, all 5 movement modes, global/per-cloud
 # caps, lifetime expiry) and renderGrainBlock (the exact function

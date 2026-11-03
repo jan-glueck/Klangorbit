@@ -58,7 +58,14 @@ namespace
         pitch.pitchSemitones.quantizeToSet = true;
         pitch.pitchSemitones.quantizeValues = { -12.0f, 0.0f, 12.0f };
 
-        return { gain, timeOffset, filter, pitch }; // order matters -- checked below
+        Modifier movement;
+        movement.enabled = true;
+        movement.type = ModifierType::Movement;
+        movement.movementShape = MovementModifierShape::Rotating;
+        movement.movementSpeed = { 0.5f, 0.2f };
+        movement.movementAcceleration = { 0.1f, 0.0f };
+
+        return { gain, timeOffset, filter, pitch, movement }; // order matters -- checked below
     }
 
     void checkStackRoundTrips (const std::vector<Modifier>& original, const std::vector<Modifier>& reloaded, const char* label)

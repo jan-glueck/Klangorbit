@@ -221,22 +221,28 @@ defaults for everything new.
         // An ORDERED, stackable list (Source/Modifier.h) applied ON TOP
         // OF everything above -- coexists with, doesn't replace, the
         // dedicated "filter" block above. Each entry's "type" selects
-        // which of gain/timeOffset/filter/pitchSemitones is actually
-        // read; the other three are still present (same "struct holds
-        // every variant's fields" convention as elsewhere) but ignored.
-        // "filter" here is the exact same shape as the dedicated
-        // "filter" block above; "gain"/"timeOffset"/"pitchSemitones" are
+        // which of gain/timeOffset/filter/pitchSemitones/movement* is
+        // actually read; the others are still present (same "struct
+        // holds every variant's fields" convention as elsewhere) but
+        // ignored. "filter" here is the exact same shape as the
+        // dedicated "filter" block above; "gain"/"timeOffset"/
+        // "pitchSemitones"/"movementSpeed"/"movementAcceleration" are
         // each a RandomizedParam, same shape as "filter.cutoffHz" above
         // (base/spread/distribution/...). Order only matters between
-        // multiple "filter"-type entries (see Modifier.h's own comment).
+        // multiple "filter"-type entries, and between/among "rotating"
+        // "movement"-type entries or one mixed with anything else that
+        // moves the voice (see Modifier.h's own comment).
         "modifiers": [
           {
             "enabled": true,
-            "type": "gain",            // gain | timeOffset | filter | pitch ("pitch" not offered for delayInstance, see below)
+            "type": "gain",            // gain | timeOffset | filter | pitch | movement ("pitch" not offered for delayInstance, see below)
             "gain": { "base": 1.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
             "timeOffset": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
             "filter": { "enabled": false, "type": "lowPass", "cutoffHz": { "base": 2000.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }, "resonance": { "base": 0.707, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }, "driftReversionRate": 1.0, "driftAmplitude": 0.0, "driftSmoothing": 0.2 },
-            "pitchSemitones": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }
+            "pitchSemitones": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
+            "movementShape": "linear",   // linear | rotating -- linear: movementSpeed/-Acceleration are m/s, m/s^2 along a random direction picked once per voice; rotating: rad/s, rad/s^2 around a random axis picked once per voice
+            "movementSpeed": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
+            "movementAcceleration": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }
           }
         ]
       },

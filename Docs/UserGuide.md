@@ -424,7 +424,7 @@ trajectory. Turn it on with **Enabled**.
   modifiers underneath everything above, empty by default. Each slot
   has an **Enabled** checkbox, a **Type** chooser, and **Up/Down/
   Remove** buttons; **Add Modifier** appends a new one (up to 8 per
-  stack). Four types:
+  stack). Five types:
   - *Gain* -- a volume multiplier for this one grain. Several Gain
     slots multiply together.
   - *Time Offset* -- shifts how far back into the recording this grain
@@ -438,6 +438,15 @@ trajectory. Turn it on with **Enabled**.
     Gain/Time Offset/Pitch, order never matters.
   - *Pitch* -- an extra pitch shift in semitones, on top of Pitch
     Jitter above. Several Pitch slots add together.
+  - *Movement* -- an extra bit of drift on top of whatever Movement
+    Mode (above) is already doing, in one of two **Shapes**: *Linear*
+    (a constant **Speed**, in a random direction picked once per
+    grain) or *Rotating* (a constant angular **Speed** around a random
+    axis, also picked once per grain). **Acceleration** optionally
+    grows that speed over the grain's life. Order matters between
+    several Rotating slots (or one mixed with anything else that moves
+    the grain) -- several Linear-only slots stay order-independent,
+    same as Gain/Time Offset/Pitch.
   Every slot's own value can have a **Spread** too (most slots show a
   second slider for it) -- 0 keeps it exact, higher values add some
   random per-grain variation around the base value, picked once when
@@ -473,10 +482,10 @@ over time, like a real analog/tape delay.
   spaced around a circle of this radius, centered on the object's
   current position. Angular Speed (0 by default = static) optionally
   spins the whole ring of taps slowly around the object.
-- **Modifiers** -- the same stackable Gain/Time Offset/Filter list as
-  Grains above (section 11), applied per tap instead of per grain; no
-  Pitch option here (a tap can't be pitch-shifted the way a grain can,
-  see its own note there).
+- **Modifiers** -- the same stackable Gain/Time Offset/Filter/Movement
+  list as Grains above (section 11), applied per tap instead of per
+  grain; no Pitch option here (a tap can't be pitch-shifted the way a
+  grain can, see its own note there).
 
 ## 13. Output format (toolbar -> Output...)
 

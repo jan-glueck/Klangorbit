@@ -72,6 +72,10 @@ private:
     std::unique_ptr<ComboRowComponent> filterTypeRow;
     std::unique_ptr<FloatRowComponent> filterCutoffRow, filterResonanceRow, filterCutoffJitterRow;
     std::unique_ptr<FloatRowComponent> pitchRow, pitchSpreadRow;
+
+    std::unique_ptr<ComboRowComponent> movementShapeRow;
+    std::unique_ptr<FloatRowComponent> movementSpeedRow, movementSpeedSpreadRow;
+    std::unique_ptr<FloatRowComponent> movementAccelerationRow, movementAccelerationSpreadRow;
 };
 
 class ModifierStackEditor : public juce::Component

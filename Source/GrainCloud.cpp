@@ -2,14 +2,6 @@
 
 namespace
 {
-    Vec3 randomUnitVector (SeededRandom& rng)
-    {
-        const float z = rng.nextBipolar();
-        const float azimuth = rng.nextFloat01() * juce::MathConstants<float>::twoPi;
-        const float r = std::sqrt (juce::jmax (0.0f, 1.0f - z * z));
-        return { r * std::cos (azimuth), r * std::sin (azimuth), z };
-    }
-
     // +/- range fractional deviation, e.g. applyJitter (1.0f, 0.2f, rng) is
     // in [0.8, 1.2]. Deliberately kept as this exact multiplicative shape
     // (not routed through RandomizedParam's additive sample()) -- this is
@@ -411,6 +403,7 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
 
     g.modifierGainMultiplier = modOutcome.gainMultiplier;
     g.modifierFilters = modOutcome.filters;
+    g.modifierMovement = modOutcome.movement;
 
     g.grainLengthSamples = juce::jmax (1, (int) (g.lifetimeSeconds * sampleRate));
 
@@ -453,6 +446,13 @@ void GrainCloud::updateGrain (Grain& g, float fdt, Vec3 parentPosition, Vec3 /*p
     // same mechanism, independent of (and in addition to) the single
     // dedicated filter's drift above.
     ModifierStack::advanceFilterDrift (settings.modifiers, fdt, rng, g.modifierFilters, (float) ringBufferSampleRate);
+
+    // Modifier stack's own Movement-type slots (feature/modifier-stack,
+    // Stage 2) -- grows their persistent speed/offset/angle accumulators
+    // only; does NOT touch g.position itself (see Grain.h's own comment
+    // on why that composition happens only at Snapshot-publish time, in
+    // GrainCloud::update()).
+    ModifierStack::advanceMovement (settings.modifiers, fdt, g.modifierMovement);
 
     switch (settings.movementMode)
     {
@@ -623,7 +623,13 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
         auto& g = grains[i];
         auto& s = snapshotBuffer[i];
         s.active = g.active;
-        s.position = g.position;
+        // Modifier stack's own Movement-type slots (feature/modifier-
+        // stack, Stage 2) are composed onto g.position ONLY here, at
+        // publish time -- g.position itself stays exactly whatever this
+        // grain's own movementMode computes, see Grain.h's own comment
+        // on why (keeps the overlay purely cosmetic/rendering, never
+        // fed back into the grain's own physics).
+        s.position = ModifierStack::applyMovement (settings.modifiers, g.modifierMovement, g.position, parentPosition);
         s.velocity = g.velocity;
         s.ageFraction = g.lifetimeSeconds > 0.0f ? juce::jlimit (0.0f, 1.0f, g.age / g.lifetimeSeconds) : 1.0f;
         s.spawnGeneration = g.spawnGeneration;

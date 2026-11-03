@@ -267,6 +267,7 @@ namespace
             case ModifierType::TimeOffset: return "timeOffset";
             case ModifierType::Filter:     return "filter";
             case ModifierType::Pitch:      return "pitch";
+            case ModifierType::Movement:   return "movement";
         }
         return "gain";
     }
@@ -277,6 +278,24 @@ namespace
         if (s == "timeOffset") { out = ModifierType::TimeOffset; return true; }
         if (s == "filter")     { out = ModifierType::Filter;     return true; }
         if (s == "pitch")      { out = ModifierType::Pitch;      return true; }
+        if (s == "movement")   { out = ModifierType::Movement;   return true; }
+        return false;
+    }
+
+    juce::String movementModifierShapeToString (MovementModifierShape s)
+    {
+        switch (s)
+        {
+            case MovementModifierShape::Linear:   return "linear";
+            case MovementModifierShape::Rotating: return "rotating";
+        }
+        return "linear";
+    }
+
+    bool movementModifierShapeFromString (const juce::String& s, MovementModifierShape& out)
+    {
+        if (s == "linear")   { out = MovementModifierShape::Linear;   return true; }
+        if (s == "rotating") { out = MovementModifierShape::Rotating; return true; }
         return false;
     }
 
@@ -289,6 +308,9 @@ namespace
         obj->setProperty ("timeOffset", randomizedParamToVar (m.timeOffset));
         obj->setProperty ("filter", voiceFilterSettingsToVar (m.filter));
         obj->setProperty ("pitchSemitones", randomizedParamToVar (m.pitchSemitones));
+        obj->setProperty ("movementShape", movementModifierShapeToString (m.movementShape));
+        obj->setProperty ("movementSpeed", randomizedParamToVar (m.movementSpeed));
+        obj->setProperty ("movementAcceleration", randomizedParamToVar (m.movementAcceleration));
         return juce::var (obj);
     }
 
@@ -315,6 +337,18 @@ namespace
             result.failed())
             return result;
         if (auto result = randomizedParamFromVar (mVar.getProperty ("pitchSemitones", juce::var()), out.pitchSemitones, fieldPathForErrors + ".pitchSemitones");
+            result.failed())
+            return result;
+        if (mVar.hasProperty ("movementShape"))
+        {
+            const auto s = mVar.getProperty ("movementShape", juce::var()).toString();
+            if (! movementModifierShapeFromString (s, out.movementShape))
+                return juce::Result::fail ("'" + fieldPathForErrors + ".movementShape': unknown value '" + s + "'.");
+        }
+        if (auto result = randomizedParamFromVar (mVar.getProperty ("movementSpeed", juce::var()), out.movementSpeed, fieldPathForErrors + ".movementSpeed");
+            result.failed())
+            return result;
+        if (auto result = randomizedParamFromVar (mVar.getProperty ("movementAcceleration", juce::var()), out.movementAcceleration, fieldPathForErrors + ".movementAcceleration");
             result.failed())
             return result;
         return juce::Result::ok();

@@ -165,6 +165,60 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   case), and `Tools/verify_modifier_stack_preset.cpp` (full round-trip
   for both sources, exact stack-order preservation, backward
   compatibility).
+- **Modifier stack, Stage 2: Movement (Linear/Rotating)**
+  (`Source/Modifier.h`, `feature/modifier-stack`, Branch 4) -- a fifth
+  modifier type, additive on top of whatever a grain's/tap's own
+  primary movement already does, specifically so it integrates with
+  rather than duplicates the existing 5 `GrainMovementMode`s (per the
+  original spec's explicit request to check for that overlap).
+  **Linear**: constant speed + optional acceleration along a direction
+  picked once per voice, uniformly random on the sphere (extracted the
+  existing `randomUnitVector()` out of `GrainCloud.cpp` into
+  `RandomEngine.h` so this -- and any future caller -- shares the one
+  copy, rather than a second one). **Rotating**: constant angular
+  speed + optional angular acceleration around an axis ALSO picked
+  once per voice (uniformly random, not hard-coded to a flat Z-axis
+  orbit), applied via Rodrigues' rotation formula.
+  `ModifierStack::sample()`/`advanceMovement()`/`applyMovement()`
+  deliberately split "grow this slot's own persistent speed/offset/
+  angle accumulators by dt" from "compose the accumulated total onto
+  whatever position is handed in, fresh every call" -- a real
+  correctness fix found while building this stage: naively mutating a
+  voice's position in place only accumulates correctly for primary
+  modes that themselves persistently integrate position (`RandomWalk`/
+  `Bounce`/`RadialExplosion`/`AttractRepelSiblings`); for one that
+  recomputes its own position from scratch every tick instead
+  (`OrbitAroundParent`; `DelayInstance`'s ring arrangement is the same
+  shape), that would silently discard the modifier's own accumulated
+  effect every tick, stuck at one tick's magnitude regardless of how
+  long the voice lives. The composed position is applied only at
+  Snapshot-publish time for grains (`GrainCloud::update()`) -- `Grain::
+  position` itself stays exactly what the primary `movementMode`
+  computes, so sibling-force calculations (`AttractRepelSiblings`)
+  still react to a grain's true, un-adjusted position, not its
+  rendered one; for DelayInstance's taps, composing straight onto
+  `DelayTap::position` is safe since that's already recomputed from
+  scratch every tick regardless. Order matters between multiple
+  Rotating slots, or a Rotating mixed with anything else that moves the
+  voice (rotations don't commute in general); multiple purely-Linear
+  slots stay order-independent, same as Gain/TimeOffset/Pitch. New
+  `ModifierStackEditor` rows (Shape/Speed/Speed Spread/Acceleration/
+  Acceleration Spread) for both the Grains and Delay categories; the
+  type combo switched from index-based to explicit-ID-based selection
+  (`(int) ModifierType + 1`) so Delay's Pitch-less item list doesn't
+  shift Movement's own index out of sync with its enum value. Persisted
+  via new, fully optional `movementShape`/`movementSpeed`/
+  `movementAcceleration` fields on existing `modifiers` entries -- no
+  schemaVersion bump. Verified via new cases in
+  `Tools/verify_modifier_stack.cpp` (sampling, stack-order/indexing,
+  the exact from-scratch-recomputed-primary-position accumulation
+  fix, physical invariants of the rotation -- preserved radius and
+  axial component, lands diametrically opposite after half a turn),
+  `Tools/verify_grain_cloud.cpp` (Linear on `RandomWalk`, Rotating on
+  `OrbitAroundParent` specifically to exercise the accumulation fix for
+  real), `Tools/verify_delay_instance.cpp` (Linear on the ring
+  arrangement), and `Tools/verify_modifier_stack_preset.cpp` (round-trip
+  including the new fields).
 
 ## [0.2.0] - 2026-09-17
 ### Added

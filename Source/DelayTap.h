@@ -112,6 +112,18 @@ struct DelayTap
     float modifierGainMultiplier = 1.0f;
     ModifierStack::FilterBankState modifierFilters;
 
+    // Movement-type slots' own persistent accumulators (feature/
+    // modifier-stack, Stage 2) -- grown every control tick by
+    // ModifierStack::advanceMovement(), then composed onto `position`
+    // above via ModifierStack::applyMovement() in DelayInstance::
+    // update(), right after that tick's ring-arrangement position is
+    // computed. Safe to overwrite `position` directly with the result
+    // here (unlike Grain, see its own comment on why it keeps the two
+    // separate): a tap's ring position is ALREADY recomputed from
+    // scratch every tick, never persistently accumulated, so there is
+    // no feedback-loop risk from folding the overlay straight in.
+    ModifierStack::MovementBankState modifierMovement;
+
     // Bumped every time DelayInstance::resyncTapConfigIfChanged()
     // resamples this tap's modifier outcome above -- lets the audio
     // thread detect "this tap's filter slots were just (re)configured"

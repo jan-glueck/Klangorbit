@@ -75,6 +75,7 @@ void DelayInstance::resyncTapConfigIfChanged()
         taps[(size_t) i].modifierTimeOffsetSeconds = modOutcome.timeOffsetSeconds;
         taps[(size_t) i].modifierGainMultiplier = modOutcome.gainMultiplier;
         taps[(size_t) i].modifierFilters = modOutcome.filters;
+        taps[(size_t) i].modifierMovement = modOutcome.movement;
         ++taps[(size_t) i].modifierConfigGeneration;
     }
 
@@ -134,6 +135,15 @@ void DelayInstance::update (double dtSeconds, Vec3 parentPosition, double sample
         // equivalent, just once per tap per tick here instead of once
         // per grain.
         ModifierStack::advanceFilterDrift (settings.modifiers, fdt, rng, tap.modifierFilters, (float) sampleRate);
+
+        // Modifier stack's own Movement-type slots (feature/modifier-
+        // stack, Stage 2) -- grows the persistent accumulators, then
+        // composes them straight onto tap.position (safe here, unlike
+        // Grain -- see DelayTap.h's own comment on why: this position
+        // is already recomputed from scratch every tick above, never
+        // persistently accumulated).
+        ModifierStack::advanceMovement (settings.modifiers, fdt, tap.modifierMovement);
+        tap.position = ModifierStack::applyMovement (settings.modifiers, tap.modifierMovement, tap.position, parentPosition);
     }
 
     juce::ScopedLock lock (snapshotLock);

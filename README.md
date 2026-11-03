@@ -1344,7 +1344,7 @@ its own past output, so echoes actually decay over repeated passes.
   (spacing, orbiting vs. static, delay-time jitter, damping-cutoff
   mapping, feedback clamping) -- no GUI/audio device needed.
 
-## Modifier stack: per-voice Gain/TimeOffset/Filter/Pitch, stacked
+## Modifier stack: per-voice Gain/TimeOffset/Filter/Pitch/Movement, stacked
 
 Optional, per source (one independent stack each for GrainCloud and
 DelayInstance), empty by default. An ORDERED, reorderable list of
@@ -1355,7 +1355,7 @@ own dedicated per-grain filter (`feature/grain-filter-integration`) --
 both can be configured on the same cloud simultaneously, applied one
 after the other.
 
-- **Four modifier types.** **Gain** (a linear multiplier) and **Time
+- **Five modifier types.** **Gain** (a linear multiplier) and **Time
   Offset** (seconds, shifts a grain's read-start position or a tap's own
   delay) are commutative scalar accumulations -- multiple enabled Gain
   slots multiply together, multiple Time Offset slots sum, regardless of
@@ -1369,7 +1369,38 @@ after the other.
   stack order** -- the one case where reordering the stack is actually
   audible. **Pitch** (semitones, also commutative/summing) is only
   offered for GrainCloud; see below for why DelayInstance doesn't get
-  it.
+  it. **Movement** adds an extra *Linear* (constant speed/acceleration
+  along a random direction) or *Rotating* (constant angular speed/
+  acceleration around a random axis, via Rodrigues' rotation formula)
+  drift on top of whatever the voice's own primary movement already
+  does -- deliberately additive, not a second movement engine (see
+  below for how it avoids duplicating the existing 5 grain movement
+  modes). Multiple Movement slots, or one mixed with a Rotating slot,
+  compose in stack order too (rotations don't commute in general);
+  multiple purely-Linear ones stay order-independent, same as Gain/
+  TimeOffset/Pitch.
+- **Movement integrates with, rather than duplicates, the existing
+  5 grain movement modes.** `RadialExplosion` already has its own
+  linear speed+acceleration (fixed outward from the parent);
+  `OrbitAroundParent`/DelayInstance's own ring already rotate. Rather
+  than building a parallel, redundant movement engine, the Movement
+  modifier's own contribution (`ModifierStack::advanceMovement()`'s
+  persistent per-slot accumulators) is tracked completely independently
+  of the primary mode's own position, and composed onto it only at
+  the point of rendering/publishing (`ModifierStack::applyMovement()`)
+  -- never fed back into the voice's own physics state. This was a
+  genuine, non-obvious correctness fix during this stage: naively
+  mutating the voice's position in place (`position += thisTicksDelta`)
+  only accumulates correctly for primary modes that themselves
+  persistently integrate position (`RandomWalk`/`Bounce`/
+  `RadialExplosion`/`AttractRepelSiblings`) -- for one that recomputes
+  its own position from scratch every tick instead (`OrbitAroundParent`;
+  DelayInstance's ring is the same shape), that approach would silently
+  discard the modifier's own accumulated effect every single tick,
+  leaving it stuck at one tick's magnitude no matter how long the voice
+  lives. Splitting "grow the accumulators" from "compose them onto
+  whatever position is given, fresh each time" fixes this for every
+  movement mode uniformly.
 - **Every value is a `RandomizedParam`** (`Source/RandomEngine.h`) --
   base/spread/distribution, including `Discrete`/`quantizeToSet` for
   snapping onto fixed value sets (covers "pitch with discrete value
@@ -1408,13 +1439,17 @@ after the other.
   that panel's own layout system specifically for this one dynamically-
   sized component.
 - **Verification:** `Tools/verify_modifier_stack.cpp` exercises
-  `ModifierStack::sample()`/`advanceFilterDrift()` directly (Gain/
-  TimeOffset/Pitch aggregation, Filter-slot stack-order/indexing/
-  overflow, reproducibility, drift); `Tools/verify_grain_cloud.cpp` and
-  `Tools/verify_delay_instance.cpp` each add their own integration
-  tests (including the live-in-place-edit case above for DelayInstance);
-  `Tools/verify_modifier_stack_preset.cpp` round-trips a multi-slot,
-  multi-type stack through the real preset path for both sources.
+  `ModifierStack::sample()`/`advanceFilterDrift()`/`advanceMovement()`/
+  `applyMovement()` directly (Gain/TimeOffset/Pitch aggregation,
+  Filter/Movement-slot stack-order/indexing/overflow, reproducibility,
+  filter drift, Linear/Rotating movement including the exact
+  from-scratch-recomputed-primary-position accumulation case above);
+  `Tools/verify_grain_cloud.cpp` and `Tools/verify_delay_instance.cpp`
+  each add their own integration tests (including the live-in-place-edit
+  case for DelayInstance, and the Rotating-on-OrbitAroundParent
+  accumulation case for GrainCloud); `Tools/verify_modifier_stack_preset.cpp`
+  round-trips a multi-slot, multi-type (including Movement) stack
+  through the real preset path for both sources.
 
 ## GUI design
 

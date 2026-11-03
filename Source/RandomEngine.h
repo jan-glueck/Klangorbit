@@ -2,6 +2,7 @@
 #include <juce_core/juce_core.h>
 #include <cmath>
 #include <vector>
+#include "Vec3.h"
 
 /**
     Shared randomization infrastructure -- the common foundation
@@ -349,4 +350,25 @@ namespace MeanReverting
         const float noise = noiseAmplitude * std::sqrt (juce::jmax (0.0f, dt)) * smoothedNoise;
         return current + reversion + noise;
     }
+}
+
+// ============================================================================
+// randomUnitVector
+// ============================================================================
+
+// Uniformly distributed random direction on the unit sphere (Archimedes'
+// cylindrical-projection construction: z uniform in [-1,1], azimuth
+// uniform in [0, 2pi), radius at that z chosen so the projection onto
+// the sphere stays area-uniform). Extracted, unchanged, from what was
+// GrainCloud.cpp's own local copy (used for RandomWalk/Bounce's initial
+// velocity, RadialExplosion's direction, OrbitAroundParent's sphere-
+// spread axis) -- now also the basis for the per-voice Movement
+// modifier's own random direction (feature/modifier-stack,
+// Source/Modifier.h), instead of a second copy of the same formula.
+inline Vec3 randomUnitVector (SeededRandom& rng)
+{
+    const float z = rng.nextBipolar();
+    const float azimuth = rng.nextFloat01() * juce::MathConstants<float>::twoPi;
+    const float r = std::sqrt (juce::jmax (0.0f, 1.0f - z * z));
+    return { r * std::cos (azimuth), r * std::sin (azimuth), z };
 }

@@ -16,15 +16,21 @@ ModifierRowComponent::ModifierRowComponent (std::function<std::vector<Modifier>*
     enabledToggle.onClick = [this] { if (auto* m = current()) m->enabled = enabledToggle.getToggleState(); };
     addAndMakeVisible (enabledToggle);
 
-    typeCombo.addItem ("Gain", 1);
-    typeCombo.addItem ("Time Offset", 2);
-    typeCombo.addItem ("Filter", 3);
+    // Item IDs are (int) ModifierType + 1 (JUCE combo IDs must be >= 1),
+    // NOT the item's position in the list -- Pitch is conditionally
+    // omitted for DelayInstance's stack (allowPitch == false, see
+    // DelayTap.h's own note on why), which would otherwise shift every
+    // later enum value's combo INDEX out of sync with its own ID.
+    typeCombo.addItem ("Gain", (int) ModifierType::Gain + 1);
+    typeCombo.addItem ("Time Offset", (int) ModifierType::TimeOffset + 1);
+    typeCombo.addItem ("Filter", (int) ModifierType::Filter + 1);
     if (allowPitch)
-        typeCombo.addItem ("Pitch", 4);
+        typeCombo.addItem ("Pitch", (int) ModifierType::Pitch + 1);
+    typeCombo.addItem ("Movement", (int) ModifierType::Movement + 1);
     typeCombo.onChange = [this]
     {
         if (auto* m = current())
-            m->type = (ModifierType) typeCombo.getSelectedItemIndex();
+            m->type = (ModifierType) (typeCombo.getSelectedId() - 1);
         refreshTypeVisibility();
         if (onHeightChangedCallback)
             onHeightChangedCallback();
@@ -87,6 +93,32 @@ ModifierRowComponent::ModifierRowComponent (std::function<std::vector<Modifier>*
     pitchSpreadRow->onValueChanged = [this] (float v) { if (auto* m = current()) m->pitchSemitones.spread = v; };
     addAndMakeVisible (*pitchSpreadRow);
 
+    movementShapeRow = std::make_unique<ComboRowComponent> ("Movement Shape");
+    movementShapeRow->combo.addItem ("Linear", (int) MovementModifierShape::Linear + 1);
+    movementShapeRow->combo.addItem ("Rotating", (int) MovementModifierShape::Rotating + 1);
+    movementShapeRow->onSelected = [this] (int)
+    {
+        if (auto* m = current())
+            m->movementShape = (MovementModifierShape) (movementShapeRow->combo.getSelectedId() - 1);
+    };
+    addAndMakeVisible (*movementShapeRow);
+
+    movementSpeedRow = std::make_unique<FloatRowComponent> ("Speed (m/s, or rad/s if Rotating)", -20.0, 20.0, 0.01);
+    movementSpeedRow->onValueChanged = [this] (float v) { if (auto* m = current()) m->movementSpeed.base = v; };
+    addAndMakeVisible (*movementSpeedRow);
+
+    movementSpeedSpreadRow = std::make_unique<FloatRowComponent> ("Speed Spread", 0.0, 20.0, 0.01);
+    movementSpeedSpreadRow->onValueChanged = [this] (float v) { if (auto* m = current()) m->movementSpeed.spread = v; };
+    addAndMakeVisible (*movementSpeedSpreadRow);
+
+    movementAccelerationRow = std::make_unique<FloatRowComponent> ("Acceleration", -20.0, 20.0, 0.01);
+    movementAccelerationRow->onValueChanged = [this] (float v) { if (auto* m = current()) m->movementAcceleration.base = v; };
+    addAndMakeVisible (*movementAccelerationRow);
+
+    movementAccelerationSpreadRow = std::make_unique<FloatRowComponent> ("Acceleration Spread", 0.0, 20.0, 0.01);
+    movementAccelerationSpreadRow->onValueChanged = [this] (float v) { if (auto* m = current()) m->movementAcceleration.spread = v; };
+    addAndMakeVisible (*movementAccelerationSpreadRow);
+
     refreshFromModel();
 }
 
@@ -105,7 +137,7 @@ void ModifierRowComponent::refreshFromModel()
         return;
 
     enabledToggle.setToggleState (m->enabled, juce::dontSendNotification);
-    typeCombo.setSelectedItemIndex ((int) m->type, juce::dontSendNotification);
+    typeCombo.setSelectedId ((int) m->type + 1, juce::dontSendNotification); // see the constructor's own comment on why IDs, not indices
 
     gainRow->setValueQuiet (m->gain.base);
     gainSpreadRow->setValueQuiet (m->gain.spread);
@@ -117,6 +149,11 @@ void ModifierRowComponent::refreshFromModel()
     filterCutoffJitterRow->setValueQuiet (m->filter.cutoffHz.spread);
     pitchRow->setValueQuiet (m->pitchSemitones.base);
     pitchSpreadRow->setValueQuiet (m->pitchSemitones.spread);
+    movementShapeRow->combo.setSelectedId ((int) m->movementShape + 1, juce::dontSendNotification);
+    movementSpeedRow->setValueQuiet (m->movementSpeed.base);
+    movementSpeedSpreadRow->setValueQuiet (m->movementSpeed.spread);
+    movementAccelerationRow->setValueQuiet (m->movementAcceleration.base);
+    movementAccelerationSpreadRow->setValueQuiet (m->movementAcceleration.spread);
 
     refreshTypeVisibility();
 }
@@ -130,6 +167,7 @@ void ModifierRowComponent::refreshTypeVisibility()
     const bool isTimeOffset = type == ModifierType::TimeOffset;
     const bool isFilter = type == ModifierType::Filter;
     const bool isPitch = type == ModifierType::Pitch;
+    const bool isMovement = type == ModifierType::Movement;
 
     gainRow->setVisible (isGain);
     gainSpreadRow->setVisible (isGain);
@@ -141,6 +179,11 @@ void ModifierRowComponent::refreshTypeVisibility()
     filterCutoffJitterRow->setVisible (isFilter);
     pitchRow->setVisible (isPitch);
     pitchSpreadRow->setVisible (isPitch);
+    movementShapeRow->setVisible (isMovement);
+    movementSpeedRow->setVisible (isMovement);
+    movementSpeedSpreadRow->setVisible (isMovement);
+    movementAccelerationRow->setVisible (isMovement);
+    movementAccelerationSpreadRow->setVisible (isMovement);
 
     resized();
 }
@@ -156,6 +199,9 @@ int ModifierRowComponent::preferredHeightFor (ModifierType type)
 
         case ModifierType::Filter:
             return ComboRowComponent::preferredHeight + 3 * FloatRowComponent::preferredHeight + 3 * ModifierStackEditor::rowGap;
+
+        case ModifierType::Movement:
+            return ComboRowComponent::preferredHeight + 4 * FloatRowComponent::preferredHeight + 4 * ModifierStackEditor::rowGap;
     }
     return 0;
 }
@@ -215,6 +261,14 @@ void ModifierRowComponent::resized()
         case ModifierType::Pitch:
             layoutRow (*pitchRow, FloatRowComponent::preferredHeight);
             layoutRow (*pitchSpreadRow, FloatRowComponent::preferredHeight);
+            break;
+
+        case ModifierType::Movement:
+            layoutRow (*movementShapeRow, ComboRowComponent::preferredHeight);
+            layoutRow (*movementSpeedRow, FloatRowComponent::preferredHeight);
+            layoutRow (*movementSpeedSpreadRow, FloatRowComponent::preferredHeight);
+            layoutRow (*movementAccelerationRow, FloatRowComponent::preferredHeight);
+            layoutRow (*movementAccelerationSpreadRow, FloatRowComponent::preferredHeight);
             break;
     }
 }

@@ -448,6 +448,45 @@ static void testDelayModifierStackInPlaceEditTriggersResample()
            "DelayInstance: editing an existing modifier's value in place (Modifier::operator!=) resamples on the very next update(), with no other field needing to change");
 }
 
+static Modifier makeMovementModifier (MovementModifierShape shape, float speed, float acceleration = 0.0f)
+{
+    Modifier m;
+    m.type = ModifierType::Movement;
+    m.movementShape = shape;
+    m.movementSpeed = { speed, 0.0f };
+    m.movementAcceleration = { acceleration, 0.0f };
+    return m;
+}
+
+static void testDelayModifierStackLinearMovementAccumulatesOnTheRing()
+{
+    // A tap's ring position is recomputed from scratch every tick
+    // (phase/radius, see DelayInstance::update()) -- exactly the case
+    // Modifier.h's applyMovement()/advanceMovement() split exists for.
+    // This confirms the REAL DelayInstance integration keeps
+    // accumulating a Linear modifier's own drift over many ticks.
+    DelayInstance delay;
+    delay.getSettings().enabled = true;
+    delay.getSettings().numTaps = 1;
+    delay.getSettings().tapOrbitAngularSpeed = 0.0f; // isolate the modifier's own contribution
+    delay.getSettings().modifiers = { makeMovementModifier (MovementModifierShape::Linear, 2.0f) };
+
+    delay.update (0.01, {}, kSampleRate);
+    DelayInstance::Snapshot snapAfter1Tick;
+    delay.getSnapshot (snapAfter1Tick);
+    const Vec3 positionAfter1Tick = snapAfter1Tick.taps[0].position;
+
+    for (int i = 0; i < 99; ++i) // another ~1s total
+        delay.update (0.01, {}, kSampleRate);
+    DelayInstance::Snapshot snapAfter1Sec;
+    delay.getSnapshot (snapAfter1Sec);
+
+    const float distanceMoved = (snapAfter1Sec.taps[0].position - positionAfter1Tick).length();
+    std::printf ("       tap drift from a Linear movement modifier (speed=2) over ~1s: %.4f (expected ~2.0)\n", distanceMoved);
+    check (std::abs (distanceMoved - 2.0f) < 0.1f,
+           "DelayInstance: a Linear movement modifier keeps drifting a tap's published position at its own speed over time, even though the ring position is recomputed from scratch every tick");
+}
+
 int main()
 {
     testFeedbackSettlesToGeometricSeriesGain();
@@ -468,6 +507,7 @@ int main()
     testDelayModifierStackTimeOffsetShiftsDelaySamples();
     testDelayModifierStackFilterSlotsMatchStackOrder();
     testDelayModifierStackInPlaceEditTriggersResample();
+    testDelayModifierStackLinearMovementAccumulatesOnTheRing();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

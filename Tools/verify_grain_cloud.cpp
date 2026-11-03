@@ -1449,6 +1449,92 @@ static void testModifierStackEmptyByDefaultLeavesGrainsUnaffected()
            "GrainCloud: an empty modifier stack (the default) leaves modifierGainMultiplier at 1.0 and adds no filter slots");
 }
 
+static Modifier makeMovementModifier (MovementModifierShape shape, float speed, float acceleration = 0.0f)
+{
+    Modifier m;
+    m.type = ModifierType::Movement;
+    m.movementShape = shape;
+    m.movementSpeed = { speed, 0.0f };
+    m.movementAcceleration = { acceleration, 0.0f };
+    return m;
+}
+
+static void testModifierStackLinearMovementDriftsGrainOverTime()
+{
+    GrainCloud cloud (4);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 1.0f;
+    cloud.getSettings().grainDuration = 5.0f; // long-lived, plenty of time to observe drift
+    cloud.getSettings().maxConcurrentGrains = 4;
+    cloud.getSettings().seed = 601;
+    cloud.getSettings().movementMode = GrainMovementMode::RandomWalk;
+    cloud.getSettings().randomWalkSpeed = 0.0f; // isolate the modifier's own contribution
+    cloud.getSettings().modifiers = { makeMovementModifier (MovementModifierShape::Linear, 2.0f) };
+
+    int budget = 8;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 100; ++i) // grainRate=1 => force the spawn, same pattern as testGrainFilterCutoffIsStableWithoutDrift
+        cloud.update (0.01, {}, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int slot = -1;
+    for (size_t i = 0; i < snap.size(); ++i) if (snap[i].active) { slot = (int) i; break; }
+    check (slot >= 0, "GrainCloud: Linear movement modifier test setup actually spawned a grain");
+    const Vec3 positionRightAfterSpawn = snap[(size_t) slot].position;
+
+    for (int i = 0; i < 100; ++i) // another 1s
+        cloud.update (0.01, {}, {}, budget);
+    cloud.getSnapshot (snap);
+
+    const float distanceMoved = (snap[(size_t) slot].position - positionRightAfterSpawn).length();
+    std::printf ("       grain drift from a Linear movement modifier (speed=2, RandomWalk speed=0) over ~1s: %.4f (expected ~2.0)\n", distanceMoved);
+    check (std::abs (distanceMoved - 2.0f) < 0.1f,
+           "GrainCloud: a Linear movement modifier drifts the grain's published position at exactly its own speed, even with the primary movement mode contributing nothing");
+}
+
+static void testModifierStackRotatingMovementAccumulatesOnOrbitAroundParent()
+{
+    // OrbitAroundParent recomputes g.position from scratch every tick
+    // (phase/radius, not a persistent accumulator) -- exactly the case
+    // Modifier.h's applyMovement()/advanceMovement() split exists for
+    // (see their own comments). This test confirms the REAL GrainCloud
+    // integration keeps accumulating the Rotating modifier's own extra
+    // spin over many ticks, not just one tick's worth.
+    GrainCloud cloud (4);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 1.0f;
+    cloud.getSettings().grainDuration = 5.0f;
+    cloud.getSettings().maxConcurrentGrains = 4;
+    cloud.getSettings().seed = 602;
+    cloud.getSettings().movementMode = GrainMovementMode::OrbitAroundParent;
+    cloud.getSettings().orbitRadius = 1.0f;
+    cloud.getSettings().orbitAngularSpeed = 0.0f; // isolate the modifier's own contribution
+    cloud.getSettings().modifiers = { makeMovementModifier (MovementModifierShape::Rotating, 1.0f) }; // 1 rad/s
+
+    int budget = 8;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 100; ++i)
+        cloud.update (0.01, {}, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int slot = -1;
+    for (size_t i = 0; i < snap.size(); ++i) if (snap[i].active) { slot = (int) i; break; }
+    check (slot >= 0, "GrainCloud: Rotating movement modifier test setup actually spawned a grain");
+    const Vec3 positionAfter1s = snap[(size_t) slot].position;
+
+    for (int i = 0; i < 100; ++i) // another 1s -- if this were only applying one tick's worth, position would barely change further
+        cloud.update (0.01, {}, {}, budget);
+    cloud.getSnapshot (snap);
+    const Vec3 positionAfter2s = snap[(size_t) slot].position;
+
+    const float movedInSecondSecond = (positionAfter2s - positionAfter1s).length();
+    std::printf ("       grain moved %.4f during the SECOND second alone, from a Rotating modifier on OrbitAroundParent (orbitAngularSpeed=0)\n", movedInSecondSecond);
+    check (movedInSecondSecond > 0.3f,
+           "GrainCloud: a Rotating movement modifier keeps visibly moving the grain in the SECOND second too, confirming it accumulates rather than resetting to one tick's worth each time OrbitAroundParent recomputes position from scratch");
+}
+
 int main()
 {
     testRenderGrainBlock();
@@ -1480,6 +1566,8 @@ int main()
     testModifierStackFilterSlotsMatchStackOrder();
     testModifierStackCoexistsWithDedicatedFilter();
     testModifierStackEmptyByDefaultLeavesGrainsUnaffected();
+    testModifierStackLinearMovementDriftsGrainOverTime();
+    testModifierStackRotatingMovementAccumulatesOnOrbitAroundParent();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

@@ -416,4 +416,17 @@ struct Grain
     // GrainCloud::updateGrain()).
     float modifierGainMultiplier = 1.0f;
     ModifierStack::FilterBankState modifierFilters;
+
+    // Movement-type slots' own persistent accumulators (feature/
+    // modifier-stack, Stage 2) -- grown every control tick by
+    // ModifierStack::advanceMovement(), completely independent of
+    // `position` above (which stays exactly whatever the grain's own
+    // movementMode computes, untouched by this). The two are composed
+    // ONLY when publishing this grain's position into GrainCloud::
+    // Snapshot (see GrainCloud::update()'s own comment on why) -- never
+    // fed back into `position` itself, so this is purely a rendering/
+    // spatial-encoding overlay, not part of the grain's own physics
+    // (e.g. AttractRepelSiblings' n-body force still reacts to every
+    // grain's true, un-adjusted position).
+    ModifierStack::MovementBankState modifierMovement;
 };

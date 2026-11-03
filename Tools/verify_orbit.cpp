@@ -439,12 +439,19 @@ int main()
         // moving) even though the radius still wanders overall. Compares
         // the std-dev of per-tick deltas with smoothing off vs. a
         // substantial smoothing time constant, same noise amplitude and
-        // RNG-consuming step count for both (same seed via a fresh engine
-        // each, deterministic Box-Muller stream).
+        // RNG-consuming step count for both -- explicitly pinned to the
+        // same orbitNoiseSeed for a fair, identical-underlying-noise
+        // comparison (each object now owns its own seeded RNG, see
+        // feature/randomization-engine; activateObject() deliberately
+        // assigns a genuinely random seed by default, so this can no
+        // longer rely on "a fresh engine" alone being deterministic the
+        // way a single shared, fixed-seed-by-default juce::Random once
+        // incidentally was).
         auto deltaStdDev = [&] (float smoothing) -> float
         {
             TrajectoryEngine engine (1);
             engine.activateObject (0);
+            engine.getObject (0).orbitNoiseSeed = 4242;
             engine.startOrbit (0, center, 1.0f, 1.0f);
             engine.getObject (0).orbitRadiusNoiseAmplitude = 1.0f;
             engine.getObject (0).orbitRadiusNoiseSmoothing = smoothing;

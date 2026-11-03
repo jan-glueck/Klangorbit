@@ -2,18 +2,27 @@
 
 namespace
 {
-    Vec3 randomUnitVector (juce::Random& rng)
+    Vec3 randomUnitVector (SeededRandom& rng)
     {
-        const float z = rng.nextFloat() * 2.0f - 1.0f;
-        const float azimuth = rng.nextFloat() * juce::MathConstants<float>::twoPi;
+        const float z = rng.nextBipolar();
+        const float azimuth = rng.nextFloat01() * juce::MathConstants<float>::twoPi;
         const float r = std::sqrt (juce::jmax (0.0f, 1.0f - z * z));
         return { r * std::cos (azimuth), r * std::sin (azimuth), z };
     }
 
-    // +/- range fractional deviation, e.g. applyJitter (1.0f, 0.2f, rng) is in [0.8, 1.2].
-    float applyJitter (float baseValue, float range, juce::Random& rng)
+    // +/- range fractional deviation, e.g. applyJitter (1.0f, 0.2f, rng) is
+    // in [0.8, 1.2]. Deliberately kept as this exact multiplicative shape
+    // (not routed through RandomizedParam's additive sample()) -- this is
+    // the project's LEGACY per-field jitter convention (grainRateJitter,
+    // grainDurationJitter, boundaryRadiusJitter, initialSpeedJitter,
+    // orbitRadiusJitter), and changing its math would change every
+    // existing preset's sound. Only the RNG underneath it moves to the
+    // shared SeededRandom primitive (see RandomEngine.h) -- same numbers
+    // for the same seed, just no longer from a single scene-wide shared
+    // generator.
+    float applyJitter (float baseValue, float range, SeededRandom& rng)
     {
-        return baseValue * (1.0f + range * (rng.nextFloat() * 2.0f - 1.0f));
+        return baseValue * (1.0f + range * rng.nextBipolar());
     }
 
     // --- PitchJitterMode::Scale (see Grain.h's own comment on both enums) ---
@@ -71,7 +80,7 @@ namespace
     // pitch (offset 0, always a candidate). pitchJitter <= 0 always yields
     // exactly 0 (no deviation) -- same "no jitter" floor Random mode has
     // via its own `if (settings.pitchJitter > 0.0f)` guard in spawnGrain().
-    float pickQuantizedSemitoneOffset (PitchQuantizeScale scale, float pitchJitter, juce::Random& rng)
+    float pickQuantizedSemitoneOffset (PitchQuantizeScale scale, float pitchJitter, SeededRandom& rng)
     {
         const float reach = juce::jmax (0.0f, pitchJitter) * maxScaleReachSemitones;
         const auto& steps = scaleSemitones (scale);
@@ -89,7 +98,7 @@ namespace
         if (candidates.empty())
             return 0.0f; // reach ~0 -- only the root (offset 0) qualifies, or floating-point rounding excluded even that
 
-        return (float) candidates[(size_t) rng.nextInt ((int) candidates.size())];
+        return (float) candidates[(size_t) rng.nextInt ((int) candidates.size())]; // SeededRandom::nextInt, see RandomEngine.h
     }
 
     // Point at `radius` and angle `phase` on the circle lying in the plane
@@ -123,9 +132,9 @@ namespace
     // Maps a uniform [0,1) draw to a [0,1] fraction biased per distribution.
     // Deliberately simple power-curve shaping (not a general parametric
     // model) -- see GrainReadDepthDistribution's own comment in Grain.h.
-    float sampleDepthFraction (GrainReadDepthDistribution distribution, juce::Random& rng)
+    float sampleDepthFraction (GrainReadDepthDistribution distribution, SeededRandom& rng)
     {
-        const float u = rng.nextFloat();
+        const float u = rng.nextFloat01();
         switch (distribution)
         {
             case GrainReadDepthDistribution::WeightedTowardRecent: return u * u;                       // skewed toward 0 (shallow)
@@ -140,11 +149,23 @@ GrainCloud::GrainCloud (int poolSize)
 {
     grains.resize ((size_t) juce::jmax (0, poolSize));
     snapshotBuffer.resize (grains.size());
+
+    // `rng` (default-constructed above) already picked its own
+    // unpredictable seed (see SeededRandom's default constructor,
+    // RandomEngine.h) -- this just syncs settings.seed/lastAppliedSeed to
+    // match it, so a subsequent save captures the seed this cloud
+    // actually used, not 0.
+    settings.seed = rng.getSeed();
+    lastAppliedSeed = settings.seed;
+    seedInitialized = true;
 }
 
 void GrainCloud::reset()
 {
     settings = GrainCloudSettings {};
+    rng.reseedRandomly();
+    settings.seed = rng.getSeed();
+    lastAppliedSeed = settings.seed;
     for (auto& g : grains)
         g = Grain {};
     timeSinceLastSpawn = 0.0;
@@ -152,6 +173,23 @@ void GrainCloud::reset()
     juce::ScopedLock lock (snapshotLock);
     for (auto& s : snapshotBuffer)
         s = Snapshot {};
+}
+
+void GrainCloud::resyncSeedIfChanged()
+{
+    // Covers both directions: a preset load wrote a specific seed into
+    // settings (PresetManager.cpp's grainCloudSettingsFromVar(), called
+    // directly on the live settings struct -- see this class's own header
+    // comment on that pattern), or the UI's "New Seed" control picked a
+    // fresh one and wrote it into settings directly, same as any other
+    // parameter. Either way, rng only needs to catch up once, the first
+    // update() tick after the change -- not resampled every tick.
+    if (! seedInitialized || settings.seed != lastAppliedSeed)
+    {
+        rng.setSeed (settings.seed);
+        lastAppliedSeed = settings.seed;
+        seedInitialized = true;
+    }
 }
 
 int GrainCloud::getNumActiveGrains() const
@@ -242,7 +280,7 @@ void GrainCloud::beginVoiceSteal (Grain& g)
     // let it finish and free its slot on schedule.
 }
 
-void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, double sampleRate, juce::Random& rng)
+void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, double sampleRate)
 {
     auto& g = grains[(size_t) slot];
 
@@ -288,7 +326,7 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
 
         case GrainMovementMode::OrbitAroundParent:
         {
-            g.orbitPhase = rng.nextFloat() * juce::MathConstants<float>::twoPi;
+            g.orbitPhase = rng.nextFloat01() * juce::MathConstants<float>::twoPi;
             float radius = settings.orbitRadius;
             if (settings.orbitRadiusJitter > 0.0f)
                 radius = applyJitter (radius, settings.orbitRadiusJitter, rng);
@@ -321,7 +359,7 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
     }
 
     // Audio trigger parameters, fixed for this grain's whole life.
-    const int jitterSamples = (int) (settings.positionJitterInBuffer * sampleRate * rng.nextFloat());
+    const int jitterSamples = (int) (settings.positionJitterInBuffer * sampleRate * rng.nextFloat01());
 
     // Independent, additive reach further back into history -- see
     // grainReadDepthRangeMin/Max's comment in Grain.h. min > max (e.g. a
@@ -354,7 +392,7 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
         }
         else
         {
-            rate = 1.0f + settings.pitchJitter * (rng.nextFloat() * 2.0f - 1.0f);
+            rate = 1.0f + settings.pitchJitter * rng.nextBipolar();
         }
     }
     g.playbackRate = juce::jmax (0.1f, rate);
@@ -429,8 +467,10 @@ void GrainCloud::updateGrain (Grain& g, float fdt, Vec3 parentPosition, Vec3 /*p
 }
 
 void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVelocity,
-                          int& spawnBudget, juce::Random& rng)
+                          int& spawnBudget)
 {
+    resyncSeedIfChanged();
+
     const float fdt = (float) dtSeconds;
 
     for (auto& g : grains)
@@ -458,7 +498,7 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
         // each time below so grainRateJitter (if any) gives each spawn
         // its own randomized interval, not one fixed jittered value
         // reused for the whole cloud.
-        auto nextSpawnInterval = [this, &rng]
+        auto nextSpawnInterval = [this]
         {
             double interval = 1.0 / (double) settings.grainRate;
             if (settings.grainRateJitter > 0.0f)
@@ -514,7 +554,7 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
                 break;
             }
 
-            spawnGrain (slot, parentPosition, ringBufferWriteHeadSample, ringBufferSampleRate, rng);
+            spawnGrain (slot, parentPosition, ringBufferWriteHeadSample, ringBufferSampleRate);
             --spawnBudget;
             timeSinceLastSpawn -= spawnInterval;
             spawnInterval = nextSpawnInterval();

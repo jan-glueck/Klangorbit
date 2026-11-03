@@ -205,6 +205,14 @@ struct SoundObject
     // Runtime state for the filter above (not a starting parameter --
     // reset on preset load like orbitPhase/attractionPulsePhase).
     float orbitRadiusNoiseSmoothed = 0.0f;
+    // Seed for this object's own orbit-radius noise source (one per
+    // object, see TrajectoryEngine::orbitNoiseRandoms) -- saved with the
+    // preset so this specific "breathing" pattern is exactly reproducible
+    // on reload, same reasoning as GrainCloudSettings::seed in Grain.h.
+    // Assigned a genuinely random value whenever this object slot is
+    // (re)activated or reset (see TrajectoryEngine::reseedOrbitNoise()),
+    // never left at this struct default in practice.
+    juce::int64 orbitNoiseSeed = 0;
     // -1 = orbitCenter is a fixed point (previous behavior). Otherwise the
     // id of another SoundObject to orbit around (e.g. moon-around-planet
     // hierarchies).

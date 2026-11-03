@@ -46,7 +46,7 @@ public:
     // way it once was). Decremented as this cloud spawns, so the caller
     // can see how much of its own allotment actually got used.
     void update (double dtSeconds, Vec3 parentPosition, Vec3 parentVelocity,
-                 int& spawnBudget, juce::Random& rng);
+                 int& spawnBudget);
 
     int getPoolSize() const { return (int) grains.size(); }
     int getNumActiveGrains() const;
@@ -65,7 +65,16 @@ public:
     void getSnapshot (std::vector<Snapshot>& out) const;
 
 private:
-    void spawnGrain (int slot, Vec3 parentPosition, int ringBufferWriteHead, double sampleRate, juce::Random& rng);
+    void spawnGrain (int slot, Vec3 parentPosition, int ringBufferWriteHead, double sampleRate);
+
+    // Re-seeds `rng` from settings.seed whenever that field has changed
+    // since the last check (preset just loaded, or user hit "New Seed") --
+    // called once at the top of update() rather than scattered at every
+    // settings-mutation call site, since GrainCloudSettings is a plain
+    // struct PresetManager/ParameterPanel write into directly (see
+    // PresetManager.cpp's grainCloudSettingsFromVar()), with no setter
+    // hook to piggyback on.
+    void resyncSeedIfChanged();
     void updateGrain (Grain& g, float fdt, Vec3 parentPosition, Vec3 parentVelocity);
     Vec3 computeSiblingForce (const Grain& g) const;
 
@@ -83,6 +92,15 @@ private:
     GrainCloudSettings settings;
     std::vector<Grain> grains;
     double timeSinceLastSpawn = 0.0;
+
+    // This cloud's own randomization source (grain spawn timing, pitch/
+    // position jitter, movement-mode randomization -- everything that
+    // used to draw from PluginProcessor's single shared, unseeded
+    // juce::Random). lastAppliedSeed tracks which settings.seed value
+    // rng was last re-seeded from, see resyncSeedIfChanged().
+    SeededRandom rng;
+    juce::int64 lastAppliedSeed = 0;
+    bool seedInitialized = false;
 
     mutable juce::CriticalSection snapshotLock;
     std::vector<Snapshot> snapshotBuffer;

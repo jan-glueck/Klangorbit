@@ -6,6 +6,39 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 (see Presets/schema/), patch versions (0.X.Y) may not.
 
 ## [Unreleased]
+### Added
+- **Shared randomization foundation** (`Source/RandomEngine.h`,
+  `feature/randomization-engine`) -- the first of a series of branches
+  toward Sound-Particles-/GRM-Tools-style generative sound design
+  (randomization, per-voice filtering, a spatial delay instance, a
+  modifier stack, Agitation/Snapshots). Adds `SeededRandom` (a `juce::
+  Random` wrapper with an explicit, persistable seed), `RandomizedParam`
+  (base/spread/distribution -- Uniform, Normal, Ramp, LogUniform,
+  PowerLaw, Discrete, with optional quantization to a value set, for
+  future branches to build on), and `MeanReverting::step()` (the
+  Ornstein-Uhlenbeck process extracted, unchanged, from what used to be
+  `TrajectoryEngine`'s own orbit-radius-only inline math, now a shared
+  primitive).
+- **Every `GrainCloud` and every object's orbit-radius mean-reversion now
+  owns its own seeded, preset-reproducible RNG**, replacing the single
+  scene-wide shared `juce::Random` each used before (`PluginProcessor::
+  grainRandom` for grains; one `TrajectoryEngine`-level `orbitNoiseRandom`
+  shared by every object for orbit noise). A specific grain pattern or
+  orbit "breathing" found by ear (see `Docs/experiments/`) now reloads
+  EXACTLY, not just approximately, and two objects with identical settings
+  no longer wander in lockstep from sharing one stream. New
+  `GrainCloudSettings::seed` / `SoundObject::orbitNoiseSeed` fields are
+  saved with the preset (`Presets/schema/README.md`) as decimal strings
+  (not JSON numbers, to round-trip the full 64-bit value exactly) --
+  optional, sensible-default fields, so this does NOT bump
+  `schemaVersion`; a preset saved before these fields existed just gets a
+  freshly, genuinely randomized seed on load, same as before. A fresh/
+  (re)activated object or grain cloud always gets a distinct random seed
+  by default (`GrainCloud::reset()`, `TrajectoryEngine::
+  reseedOrbitNoise()`) -- existing per-field jitter (`grainRateJitter`,
+  `pitchJitter`, etc.) and the Ornstein-Uhlenbeck orbit-radius formula
+  itself are UNCHANGED, only the RNG underneath them moved to this shared,
+  seeded primitive, so no existing preset's sound changes.
 
 ## [0.2.0] - 2026-09-17
 ### Added

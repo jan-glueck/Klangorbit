@@ -2,28 +2,50 @@
 #include "OrbitMath.h"
 #include <cmath>
 
-namespace
+void TrajectoryEngine::resyncOrbitSeedIfChanged (int objectIndex)
 {
-    constexpr float kMinGaussianInput = 1.0e-6f; // avoids log(0) in the Box-Muller transform below
+    auto& obj = objects[(size_t) objectIndex];
+    auto& lastSeed = lastAppliedOrbitSeed[(size_t) objectIndex];
+    if (! orbitSeedInitialized[(size_t) objectIndex] || obj.orbitNoiseSeed != lastSeed)
+    {
+        orbitNoiseRandoms[(size_t) objectIndex].setSeed (obj.orbitNoiseSeed);
+        lastSeed = obj.orbitNoiseSeed;
+        orbitSeedInitialized[(size_t) objectIndex] = true;
+    }
 }
 
-float TrajectoryEngine::nextGaussian()
+float TrajectoryEngine::nextGaussian (int objectIndex)
 {
-    // Box-Muller transform: two independent uniform(0,1) samples ->
-    // one standard-normal sample. Only one of the two values the
-    // transform produces is used per call -- simple over maximally
-    // efficient, and this is control-rate (~90 Hz per object), not an
-    // audio-rate hot path.
-    const float u1 = juce::jmax (kMinGaussianInput, orbitNoiseRandom.nextFloat());
-    const float u2 = orbitNoiseRandom.nextFloat();
-    return std::sqrt (-2.0f * std::log (u1)) * std::cos (juce::MathConstants<float>::twoPi * u2);
+    resyncOrbitSeedIfChanged (objectIndex);
+    return orbitNoiseRandoms[(size_t) objectIndex].nextGaussian();
+}
+
+void TrajectoryEngine::reseedOrbitNoise (int objectIndex)
+{
+    jassert (juce::isPositiveAndBelow (objectIndex, (int) objects.size()));
+    orbitNoiseRandoms[(size_t) objectIndex].reseedRandomly();
+    objects[(size_t) objectIndex].orbitNoiseSeed = orbitNoiseRandoms[(size_t) objectIndex].getSeed();
+    lastAppliedOrbitSeed[(size_t) objectIndex] = objects[(size_t) objectIndex].orbitNoiseSeed;
+    orbitSeedInitialized[(size_t) objectIndex] = true;
 }
 
 TrajectoryEngine::TrajectoryEngine (int maxObjects, int grainPoolSizePerCloud)
 {
     objects.resize ((size_t) maxObjects);
+    orbitNoiseRandoms.resize ((size_t) maxObjects);
+    lastAppliedOrbitSeed.resize ((size_t) maxObjects, 0);
+    orbitSeedInitialized.resize ((size_t) maxObjects, false);
     for (int i = 0; i < maxObjects; ++i)
+    {
         objects[(size_t) i].id = i;
+        // orbitNoiseRandoms[i] (just resized above) already default-
+        // constructed its own distinct random seed (SeededRandom's
+        // default ctor, see RandomEngine.h) -- this call's real job here
+        // is syncing objects[i].orbitNoiseSeed/lastAppliedOrbitSeed[i] to
+        // match it, so a save before any activation still captures a
+        // real seed, not the SoundObject struct default (0).
+        reseedOrbitNoise (i);
+    }
 
     snapshotBuffer.resize ((size_t) maxObjects);
 
@@ -52,6 +74,7 @@ bool TrajectoryEngine::activateObject (int index)
     // land on top of each other at the origin.
     const float angle = juce::MathConstants<float>::twoPi * (float) index / (float) objects.size();
     obj.position = { std::cos (angle), std::sin (angle), 0.0f };
+    reseedOrbitNoise (index); // fresh seed per (re)activation, see this method's own comment
     return true;
 }
 
@@ -68,6 +91,7 @@ bool TrajectoryEngine::deactivateObject (int index)
     obj = SoundObject {};
     obj.id = id;
     grainClouds[(size_t) index]->reset(); // don't let a later reactivation resume with stale settings/grains
+    reseedOrbitNoise (index);
     return true;
 }
 
@@ -250,7 +274,7 @@ void TrajectoryEngine::applyBoundary (SoundObject& obj)
     }
 }
 
-void TrajectoryEngine::integrate (SoundObject& obj, double dt)
+void TrajectoryEngine::integrate (SoundObject& obj, int objectIndex, double dt)
 {
     const float fdt = (float) dt;
 
@@ -295,21 +319,18 @@ void TrajectoryEngine::integrate (SoundObject& obj, double dt)
             // the field docs and the exact update formula.
             if (obj.orbitRadiusReversionRate != 0.0f || obj.orbitRadiusNoiseAmplitude != 0.0f)
             {
-                const float reversion = obj.orbitRadiusReversionRate * (obj.orbitRadiusBaseline - obj.orbitRadius) * fdt;
-
-                // Low-pass the raw Gaussian sample itself (one-pole,
-                // exp(-dt/tau)) before scaling it into the radius update --
-                // see SoundObject::orbitRadiusNoiseSmoothing's own comment.
-                // smoothing<=0 => coeff 0 => smoothed == raw every tick,
-                // exactly reproducing the pre-existing unsmoothed behavior.
-                const float rawNoise = nextGaussian();
-                const float smoothingCoeff = obj.orbitRadiusNoiseSmoothing > 0.0f
-                    ? std::exp (-fdt / obj.orbitRadiusNoiseSmoothing) : 0.0f;
-                obj.orbitRadiusNoiseSmoothed = smoothingCoeff * obj.orbitRadiusNoiseSmoothed
-                                                + (1.0f - smoothingCoeff) * rawNoise;
-
-                const float noise = obj.orbitRadiusNoiseAmplitude * std::sqrt (fdt) * obj.orbitRadiusNoiseSmoothed;
-                obj.orbitRadius = juce::jlimit (0.05f, 1000.0f, obj.orbitRadius + reversion + noise);
+                // Shared Ornstein-Uhlenbeck step (RandomEngine.h's
+                // MeanReverting::step(), extracted unchanged from what
+                // used to be this block's own inline formula -- same
+                // smoothing/reversion/noise math, see its own comment for
+                // why this is now a reusable primitive). This object's own
+                // seeded RNG (see nextGaussian()) replaces the single
+                // generator every object used to share.
+                obj.orbitRadius = juce::jlimit (0.05f, 1000.0f,
+                    MeanReverting::step (obj.orbitRadius, obj.orbitRadiusBaseline,
+                                          obj.orbitRadiusReversionRate, obj.orbitRadiusNoiseAmplitude,
+                                          obj.orbitRadiusNoiseSmoothing, fdt, nextGaussian (objectIndex),
+                                          obj.orbitRadiusNoiseSmoothed));
             }
 
             Vec3 center = obj.orbitCenter;
@@ -376,8 +397,8 @@ void TrajectoryEngine::update (double dtSeconds)
         if (obj.attractionPulseRate != 0.0f)
             obj.attractionPulsePhase += juce::MathConstants<float>::twoPi * obj.attractionPulseRate * (float) scaledDt;
 
-    for (auto& obj : objects)
-        integrate (obj, scaledDt);
+    for (int i = 0; i < (int) objects.size(); ++i)
+        integrate (objects[(size_t) i], i, scaledDt);
 
     // Update the snapshot for the audio thread
     juce::ScopedLock lock (snapshotLock);

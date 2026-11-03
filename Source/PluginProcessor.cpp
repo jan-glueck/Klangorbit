@@ -234,7 +234,7 @@ KlangorbitProcessor::~KlangorbitProcessor()
     // established for its (now editor-only) timer. juce::Timer's own
     // destructor would stop it safely too, but stopping it first here
     // means timerCallback() can never fire mid-teardown of this class's
-    // own members (trajectoryEngine, grainRandom, etc.).
+    // own members (trajectoryEngine, etc.).
     stopTimer();
 
     // Explicit, before mappingEngine itself is destroyed below (member
@@ -330,7 +330,7 @@ void KlangorbitProcessor::timerCallback()
                                         / juce::jmax (1, sumOfEnabledSettings));
 
         cloud.setRingBufferContext (getGrainRingBufferWriteHead (i), getSampleRate());
-        cloud.update (dt, obj.position, obj.velocity, cloudBudget, grainRandom);
+        cloud.update (dt, obj.position, obj.velocity, cloudBudget);
     }
 }
 

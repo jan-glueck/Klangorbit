@@ -101,6 +101,7 @@ defaults for everything new.
       "orbitRadiusReversionRate": 0.0,        // 0 = disabled; how strongly the radius is pulled back toward the baseline
       "orbitRadiusNoiseAmplitude": 0.0,       // 0 = disabled; random perturbation strength (Ornstein-Uhlenbeck process, m/sqrt(s))
       "orbitRadiusNoiseSmoothing": 0.0,       // seconds, 0 = disabled (raw per-tick noise, unchanged behavior); low-pass-filters the noise source itself for a smoother "breathing" wander instead of a jagged one
+      "orbitNoiseSeed": "123456789",  // string (not a JSON number, to round-trip a 64-bit value exactly) -- seeds this object's own orbit-radius noise source (see Source/RandomEngine.h), so a specific "breathing" pattern reloads exactly, not just approximately. Optional -- if missing, the object keeps whichever seed it was already assigned on (re)activation (see TrajectoryEngine::reseedOrbitNoise())
       "orbitReferenceObjectId": -1,   // -1 = orbitCenter (fixed point), otherwise the id of another object
 
       // Acoustic propagation (Doppler, directivity -- see PropagationProcessor)
@@ -163,7 +164,16 @@ defaults for everything new.
         // (10s), which is also what the ring buffer is sized to hold.
         "grainReadDepthRangeMin": 0.0,
         "grainReadDepthRangeMax": 0.0,
-        "grainReadDepthDistribution": "uniform" // uniform | weightedTowardRecent | weightedTowardOld -- how the depth is sampled within the range
+        "grainReadDepthDistribution": "uniform", // uniform | weightedTowardRecent | weightedTowardOld -- how the depth is sampled within the range
+
+        // String (not a JSON number, to round-trip a 64-bit value exactly) --
+        // seeds this cloud's own randomization source (spawn timing, pitch/
+        // position jitter, movement-mode randomization; see Source/
+        // RandomEngine.h). Optional -- if missing, the cloud keeps whichever
+        // seed it was already assigned on construction/reset (see
+        // GrainCloud::reset()). Saved so a specific grain pattern reloads
+        // exactly, not just approximately.
+        "seed": "987654321"
       }
     }
   ]

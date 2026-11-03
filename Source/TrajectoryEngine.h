@@ -5,6 +5,7 @@
 #include "SoundObject.h"
 #include "SceneSettings.h"
 #include "GrainCloud.h"
+#include "RandomEngine.h"
 
 /**
     Updates positions of all SoundObjects. Runs at control rate
@@ -74,6 +75,15 @@ public:
     GrainCloud& getGrainCloud (int objectIndex) { return *grainClouds[(size_t) objectIndex]; }
     int getNumGrainClouds() const { return (int) grainClouds.size(); }
 
+    // Gives objectIndex's orbit-radius noise source (see SoundObject::
+    // orbitNoiseSeed) a fresh, genuinely random seed and syncs it onto
+    // the object -- called on (re)activation and on a full reset (preset
+    // load, deactivation), mirroring GrainCloud::reset()'s equivalent
+    // reseed. Public so PresetManager's per-object reset loop can call it
+    // alongside getGrainCloud(i).reset(), the same spot that loop already
+    // resets everything else to a clean starting state.
+    void reseedOrbitNoise (int objectIndex);
+
     // Manual interaction (mouse/MIDI)
     void beginDrag (int objectIndex);
     void dragTo (int objectIndex, Vec3 newPosition);
@@ -118,19 +128,30 @@ public:
     static constexpr float gravityLikeConstant = 1.0f;
 
 private:
-    void integrate (SoundObject& obj, double dt);
+    void integrate (SoundObject& obj, int objectIndex, double dt);
     void applyBoundary (SoundObject& obj);
     Vec3 computeAttractionForce (const SoundObject& obj) const;
     // Box-Muller standard-normal sample, for the Ornstein-Uhlenbeck
-    // orbit-radius noise term (see integrate()'s Orbit case). Self-owned
-    // (not passed in like GrainCloud's rng) -- nothing else needs to
-    // coordinate a shared budget/seed with this one, unlike the grain
-    // spawn-budget sharing in PluginEditor.
-    float nextGaussian();
+    // orbit-radius noise term (see integrate()'s Orbit case). Each object
+    // draws from its OWN seeded source (orbitNoiseRandoms[objectIndex],
+    // see RandomEngine.h's SeededRandom) rather than one shared generator
+    // across every object -- otherwise two objects with identical orbit
+    // settings but different saved seeds would still wander identically,
+    // since they'd be drawing from the very same stream. Resyncs that
+    // slot's RNG from SoundObject::orbitNoiseSeed first (lazy, same
+    // pattern as GrainCloud::resyncSeedIfChanged()) in case a preset load
+    // just wrote a different seed directly into the object.
+    float nextGaussian (int objectIndex);
+    void resyncOrbitSeedIfChanged (int objectIndex);
 
     std::vector<SoundObject> objects;
     SceneSettings sceneSettings;
-    juce::Random orbitNoiseRandom;
+
+    // One per object slot, parallel to `objects` -- see nextGaussian()'s
+    // own comment for why this replaced a single shared orbitNoiseRandom.
+    std::vector<SeededRandom> orbitNoiseRandoms;
+    std::vector<juce::int64> lastAppliedOrbitSeed;
+    std::vector<bool> orbitSeedInitialized;
 
     // unique_ptr, not a plain vector<GrainCloud>: GrainCloud holds a
     // juce::CriticalSection (for its own audio-thread snapshot), which is

@@ -230,14 +230,14 @@ static void testSpawnRateAndCaps()
     cloud.getSettings().grainDuration = 5.0f; // long-lived, so grains accumulate instead of dying quickly
     cloud.getSettings().maxConcurrentGrains = 10;
 
-    juce::Random rng (1234);
+    cloud.getSettings().seed = 1234; // seeds GrainCloud's own internal RNG, see RandomEngine.h
     int globalBudget = 16; // smaller than both the pool and the per-cloud cap
 
     int maxSeen = 0;
     for (int tick = 0; tick < 200; ++tick)
     {
         cloud.setRingBufferContext (0, kSampleRate);
-        cloud.update (1.0 / 90.0, { 0.0f, 0.0f, 0.0f }, {}, globalBudget, rng);
+        cloud.update (1.0 / 90.0, { 0.0f, 0.0f, 0.0f }, {}, globalBudget);
         maxSeen = juce::jmax (maxSeen, cloud.getNumActiveGrains());
     }
 
@@ -270,7 +270,7 @@ static void testSpawnRateIndependentOfDuration()
     cloud.getSettings().grainDuration = 4.0f;  // each lives 4x longer than the spawn interval
     cloud.getSettings().maxConcurrentGrains = 4;
 
-    juce::Random rng (2024);
+    cloud.getSettings().seed = 2024; // seeds GrainCloud's own internal RNG, see RandomEngine.h
     int budget = 16;
     cloud.setRingBufferContext (0, kSampleRate);
 
@@ -279,7 +279,7 @@ static void testSpawnRateIndependentOfDuration()
     const int numTicks = (int) (4.5 * 90.0); // 4.5s: past the point steady-state overlap should be reached
     for (int tick = 0; tick < numTicks; ++tick)
     {
-        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget);
         maxActive = juce::jmax (maxActive, cloud.getNumActiveGrains());
     }
 
@@ -292,7 +292,7 @@ static void testSpawnRateIndependentOfDuration()
     // not just achieved once during the initial fill.
     const int moreTicks = (int) (4.0 * 90.0);
     for (int tick = 0; tick < moreTicks; ++tick)
-        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget);
 
     std::vector<GrainCloud::Snapshot> snap;
     cloud.getSnapshot (snap);
@@ -319,7 +319,7 @@ static void testVoiceStealingKeepsSpawningContinuous()
     cloud.getSettings().grainDuration = 2.0f;
     cloud.getSettings().maxConcurrentGrains = 4;
 
-    juce::Random rng (77);
+    cloud.getSettings().seed = 77; // seeds GrainCloud's own internal RNG, see RandomEngine.h
     int budget = 128;
     cloud.setRingBufferContext (0, kSampleRate);
 
@@ -330,7 +330,7 @@ static void testVoiceStealingKeepsSpawningContinuous()
     const int numTicks = (int) (4.0 * 90.0); // 4s -> ~20 spawns expected at rate=5
     for (int tick = 0; tick < numTicks; ++tick)
     {
-        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget);
 
         std::vector<GrainCloud::Snapshot> snap;
         cloud.getSnapshot (snap);
@@ -364,7 +364,7 @@ static void testVoiceStealingShortensNotCorrupts()
     cloud.getSettings().grainDuration = 5.0f; // very long relative to the 2-slot cap
     cloud.getSettings().maxConcurrentGrains = 2;
 
-    juce::Random rng (13);
+    cloud.getSettings().seed = 13; // seeds GrainCloud's own internal RNG, see RandomEngine.h
     int budget = 128;
     cloud.setRingBufferContext (0, kSampleRate);
 
@@ -374,7 +374,7 @@ static void testVoiceStealingShortensNotCorrupts()
     const double dt = 1.0 / 90.0;
     for (int tick = 0; tick < (int) (2.0 * 90.0); ++tick)
     {
-        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+        cloud.update (dt, { 0.0f, 0.0f, 0.0f }, {}, budget);
 
         std::vector<GrainCloud::Snapshot> snap;
         cloud.getSnapshot (snap);
@@ -403,7 +403,7 @@ static void testGrainRateJitterVariesInterval()
         cloud.getSettings().maxConcurrentGrains = 32;
         cloud.getSettings().grainRateJitter = rateJitter;
 
-        juce::Random rng (seed);
+        cloud.getSettings().seed = seed; // seeds GrainCloud's own internal RNG, see RandomEngine.h
         int budget = 128;
         cloud.setRingBufferContext (0, kSampleRate);
 
@@ -412,7 +412,7 @@ static void testGrainRateJitterVariesInterval()
         const double dt = 1.0 / 500.0; // fine-grained, to resolve individual spawn timing precisely
         for (int tick = 0; tick < 2500; ++tick) // 5s
         {
-            cloud.update (dt, {}, {}, budget, rng);
+            cloud.update (dt, {}, {}, budget);
             std::vector<GrainCloud::Snapshot> snap;
             cloud.getSnapshot (snap);
             for (size_t i = 0; i < snap.size(); ++i)
@@ -462,7 +462,7 @@ static void testGrainDurationJitterVariesLifetime()
     cloud.getSettings().grainDurationJitter = 0.5f;
     cloud.getSettings().maxConcurrentGrains = 64;
 
-    juce::Random rng (901);
+    cloud.getSettings().seed = 901; // seeds GrainCloud's own internal RNG, see RandomEngine.h
     int budget = 128;
     cloud.setRingBufferContext (0, kSampleRate);
 
@@ -471,7 +471,7 @@ static void testGrainDurationJitterVariesLifetime()
     const double dt = 1.0 / 90.0;
     for (int tick = 0; tick < 90; ++tick) // ~1s, plenty of spawns at rate=200
     {
-        cloud.update (dt, {}, {}, budget, rng);
+        cloud.update (dt, {}, {}, budget);
         std::vector<GrainCloud::Snapshot> snap;
         cloud.getSnapshot (snap);
         for (size_t i = 0; i < snap.size(); ++i)
@@ -502,15 +502,16 @@ static void testGlobalBudgetSharedAcrossClouds()
         c->getSettings().maxConcurrentGrains = 32; // no local limit, only the shared budget should matter
     }
 
-    juce::Random rng (99);
+    cloudA.getSettings().seed = 99;  // each cloud now owns its own internal RNG, see RandomEngine.h
+    cloudB.getSettings().seed = 100;
     int globalBudget = 20;
 
     for (int tick = 0; tick < 200; ++tick)
     {
         cloudA.setRingBufferContext (0, kSampleRate);
-        cloudA.update (1.0 / 90.0, {}, {}, globalBudget, rng);
+        cloudA.update (1.0 / 90.0, {}, {}, globalBudget);
         cloudB.setRingBufferContext (0, kSampleRate);
-        cloudB.update (1.0 / 90.0, {}, {}, globalBudget, rng);
+        cloudB.update (1.0 / 90.0, {}, {}, globalBudget);
     }
 
     const int total = cloudA.getNumActiveGrains() + cloudB.getNumActiveGrains();
@@ -526,14 +527,14 @@ static void testLifetimeExpiry()
     cloud.getSettings().grainDuration = 0.2f;
     cloud.getSettings().maxConcurrentGrains = 8;
 
-    juce::Random rng (7);
+    cloud.getSettings().seed = 7; // seeds GrainCloud's own internal RNG, see RandomEngine.h
     int budget = 8;
 
     cloud.setRingBufferContext (0, kSampleRate);
-    cloud.update (0.01, {}, {}, budget, rng); // spawns one grain almost immediately (rate=1 => interval=1s... )
+    cloud.update (0.01, {}, {}, budget); // spawns one grain almost immediately (rate=1 => interval=1s... )
     // Force an immediate spawn regardless of rate/interval timing by ticking a full second's worth:
     for (int i = 0; i < 100; ++i)
-        cloud.update (0.01, {}, {}, budget, rng);
+        cloud.update (0.01, {}, {}, budget);
 
     const int activeAfterSpawn = cloud.getNumActiveGrains();
     std::printf ("       active after spawn window: %d\n", activeAfterSpawn);
@@ -541,7 +542,7 @@ static void testLifetimeExpiry()
 
     // Advance well past grainDuration -- all spawned grains must have expired.
     for (int i = 0; i < 100; ++i)
-        cloud.update (0.01, {}, {}, budget, rng); // another full second, >> grainDuration of 0.2s
+        cloud.update (0.01, {}, {}, budget); // another full second, >> grainDuration of 0.2s
 
     std::vector<GrainCloud::Snapshot> snap;
     cloud.getSnapshot (snap);
@@ -569,7 +570,7 @@ static void testBounceStaysWithinBoundary()
     cloud.getSettings().restitution = 0.8f;
     cloud.getSettings().randomWalkSpeed = 5.0f; // fast, to actually reach the boundary repeatedly
 
-    juce::Random rng (42);
+    cloud.getSettings().seed = 42; // seeds GrainCloud's own internal RNG, see RandomEngine.h
     int budget = 32;
     const Vec3 parentPos { 1.0f, 2.0f, 0.0f };
 
@@ -577,7 +578,7 @@ static void testBounceStaysWithinBoundary()
     for (int tick = 0; tick < 900; ++tick) // ~10 seconds at 90Hz
     {
         cloud.setRingBufferContext (0, kSampleRate);
-        cloud.update (1.0 / 90.0, parentPos, {}, budget, rng);
+        cloud.update (1.0 / 90.0, parentPos, {}, budget);
 
         std::vector<GrainCloud::Snapshot> snap;
         cloud.getSnapshot (snap);
@@ -613,12 +614,12 @@ static void testRadialExplosionMovesOutward()
     cloud.getSettings().acceleration = 0.0f;
     cloud.getSettings().maxConcurrentGrains = 1; // exactly one grain, so "early"/"later" track the same instance
 
-    juce::Random rng (5);
+    cloud.getSettings().seed = 5; // seeds GrainCloud's own internal RNG, see RandomEngine.h
     int budget = 32;
     const Vec3 parentPos { 0.0f, 0.0f, 0.0f };
 
     cloud.setRingBufferContext (0, kSampleRate);
-    cloud.update (0.02, parentPos, {}, budget, rng); // spawns the one grain, no leftover backlog to steal it
+    cloud.update (0.02, parentPos, {}, budget); // spawns the one grain, no leftover backlog to steal it
     cloud.getSettings().enabled = false; // stop further spawning so no replacement grain confuses the reading
 
     std::vector<GrainCloud::Snapshot> snapEarly;
@@ -628,7 +629,7 @@ static void testRadialExplosionMovesOutward()
     check (earlyDist >= 0.0f, "GrainCloud: RadialExplosion test setup actually spawned a grain");
 
     for (int i = 0; i < 20; ++i)
-        cloud.update (0.02, parentPos, {}, budget, rng); // advance ~0.4s, well within the 1s lifetime
+        cloud.update (0.02, parentPos, {}, budget); // advance ~0.4s, well within the 1s lifetime
 
     std::vector<GrainCloud::Snapshot> snapLate;
     cloud.getSnapshot (snapLate);
@@ -649,17 +650,17 @@ static void testOrbitTracksMovingParent()
     cloud.getSettings().orbitRadius = 0.75f;
     cloud.getSettings().orbitAngularSpeed = 1.0f;
 
-    juce::Random rng (3);
+    cloud.getSettings().seed = 3; // seeds GrainCloud's own internal RNG, see RandomEngine.h
     int budget = 32;
 
     cloud.setRingBufferContext (0, kSampleRate);
-    cloud.update (0.02, { 0.0f, 0.0f, 0.0f }, {}, budget, rng); // spawn near origin
+    cloud.update (0.02, { 0.0f, 0.0f, 0.0f }, {}, budget); // spawn near origin
 
     // Move the "parent" a long way away and keep updating -- the grain
     // must follow, staying at ~orbitRadius from the NEW parent position.
     const Vec3 movedParent { 5.0f, -3.0f, 0.0f };
     for (int i = 0; i < 50; ++i)
-        cloud.update (0.02, movedParent, {}, budget, rng);
+        cloud.update (0.02, movedParent, {}, budget);
 
     std::vector<GrainCloud::Snapshot> snap;
     cloud.getSnapshot (snap);
@@ -686,14 +687,14 @@ static void testOrbitSphereSpread()
         cloud.getSettings().orbitSphereSpread = 0.0f;
         cloud.getSettings().maxConcurrentGrains = 8;
 
-        juce::Random rng (55);
+        cloud.getSettings().seed = 55; // seeds GrainCloud's own internal RNG, see RandomEngine.h
         int budget = 64;
         cloud.setRingBufferContext (0, kSampleRate);
 
         bool allFlat = true;
         for (int tick = 0; tick < 90; ++tick)
         {
-            cloud.update (1.0 / 90.0, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+            cloud.update (1.0 / 90.0, { 0.0f, 0.0f, 0.0f }, {}, budget);
             std::vector<GrainCloud::Snapshot> snap;
             cloud.getSnapshot (snap);
             for (auto& s : snap)
@@ -717,14 +718,14 @@ static void testOrbitSphereSpread()
         cloud.getSettings().orbitSphereSpread = 1.0f;
         cloud.getSettings().maxConcurrentGrains = 16;
 
-        juce::Random rng (56);
+        cloud.getSettings().seed = 56; // seeds GrainCloud's own internal RNG, see RandomEngine.h
         int budget = 128;
         cloud.setRingBufferContext (0, kSampleRate);
 
         float maxAbsZ = 0.0f;
         for (int tick = 0; tick < 90; ++tick)
         {
-            cloud.update (1.0 / 90.0, { 0.0f, 0.0f, 0.0f }, {}, budget, rng);
+            cloud.update (1.0 / 90.0, { 0.0f, 0.0f, 0.0f }, {}, budget);
             std::vector<GrainCloud::Snapshot> snap;
             cloud.getSnapshot (snap);
             for (auto& s : snap)
@@ -756,12 +757,12 @@ static void testAttractRepelSiblings()
         cloud.getSettings().grainRate = 1000.0f;
         cloud.getSettings().maxConcurrentGrains = 6;
 
-        juce::Random rng (11);
+        cloud.getSettings().seed = 11; // seeds GrainCloud's own internal RNG, see RandomEngine.h
         int budget = 32;
         cloud.setRingBufferContext (0, kSampleRate);
         cloud.getSettings().enabled = true;
         for (int i = 0; i < 5; ++i) // spawn a small burst
-            cloud.update (0.02, {}, {}, budget, rng);
+            cloud.update (0.02, {}, {}, budget);
         cloud.getSettings().enabled = false; // stop spawning, isolate the force effect
 
         auto averagePairDistance = [] (GrainCloud& c) -> float
@@ -785,7 +786,7 @@ static void testAttractRepelSiblings()
 
         const float before = averagePairDistance (cloud);
         for (int i = 0; i < 60; ++i)
-            cloud.update (0.02, {}, {}, budget, rng);
+            cloud.update (0.02, {}, {}, budget);
         const float after = averagePairDistance (cloud);
 
         std::printf ("       attractionStrength=%.1f: avg pair distance %.3f -> %.3f\n", strength, before, after);
@@ -880,13 +881,13 @@ namespace
         cloud.getSettings().grainDuration = 5.0f; // long-lived, don't expire mid-burst
         cloud.getSettings().maxConcurrentGrains = numGrains;
 
-        juce::Random rng (rngSeed);
+        cloud.getSettings().seed = rngSeed; // seeds GrainCloud's own internal RNG, see RandomEngine.h
         int budget = numGrains;
         constexpr int writeHead = 500000; // arbitrary, comfortably larger than any tested depth in samples
 
         cloud.setRingBufferContext (writeHead, kSampleRate);
         for (int i = 0; i < numGrains; ++i)
-            cloud.update (0.001, {}, {}, budget, rng); // one small tick per spawn, avoids exhausting the interval in one call
+            cloud.update (0.001, {}, {}, budget); // one small tick per spawn, avoids exhausting the interval in one call
 
         std::vector<GrainCloud::Snapshot> snap;
         cloud.getSnapshot (snap);
@@ -980,7 +981,7 @@ static void testPitchJitterScaleQuantizes()
         cloud.getSettings().pitchJitterMode = PitchJitterMode::Scale;
         cloud.getSettings().pitchQuantizeScale = scale;
 
-        juce::Random rng (seed);
+        cloud.getSettings().seed = seed; // seeds GrainCloud's own internal RNG, see RandomEngine.h
         int budget = 256;
         cloud.setRingBufferContext (0, kSampleRate);
 
@@ -989,7 +990,7 @@ static void testPitchJitterScaleQuantizes()
         const double dt = 1.0 / 200.0;
         for (int tick = 0; tick < 2000; ++tick) // 10s
         {
-            cloud.update (dt, {}, {}, budget, rng);
+            cloud.update (dt, {}, {}, budget);
             std::vector<GrainCloud::Snapshot> snap;
             cloud.getSnapshot (snap);
             for (size_t i = 0; i < snap.size(); ++i)

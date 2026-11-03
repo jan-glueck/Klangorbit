@@ -313,6 +313,13 @@ namespace
         obj->setProperty ("grainReadDepthRangeMin", (double) s.grainReadDepthRangeMin);
         obj->setProperty ("grainReadDepthRangeMax", (double) s.grainReadDepthRangeMax);
         obj->setProperty ("grainReadDepthDistribution", readDepthDistributionToString (s.grainReadDepthDistribution));
+        // Stored as a decimal STRING, not a JSON number -- juce::var's
+        // numeric storage is a double, whose 53-bit mantissa can't
+        // represent every int64 exactly, and this seed's whole purpose
+        // (see Grain.h's own comment) is to make a specific random
+        // sequence exactly reproducible on reload, not just approximately
+        // close. A string round-trips through JSON exactly.
+        obj->setProperty ("seed", juce::String (s.seed));
         return juce::var (obj);
     }
 
@@ -414,6 +421,14 @@ namespace
                 return juce::Result::fail ("'grainCloud.grainReadDepthDistribution': unknown value '" + s + "'.");
         }
 
+        // Missing entirely (preset saved before this field existed, or
+        // schemaVersion-1 content) -- out.seed simply keeps whatever the
+        // GrainCloud that owns it already assigned itself (a fresh random
+        // seed, see GrainCloud's constructor/reset()), same as every other
+        // optional field's "no value saved yet" default here.
+        if (gcVar.hasProperty ("seed"))
+            out.seed = gcVar.getProperty ("seed", juce::var()).toString().getLargeIntValue();
+
         return juce::Result::ok();
     }
 }
@@ -484,6 +499,9 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         objVar->setProperty ("orbitRadiusReversionRate", (double) obj.orbitRadiusReversionRate);
         objVar->setProperty ("orbitRadiusNoiseAmplitude", (double) obj.orbitRadiusNoiseAmplitude);
         objVar->setProperty ("orbitRadiusNoiseSmoothing", (double) obj.orbitRadiusNoiseSmoothing);
+        // String, not a JSON number -- same exact-round-trip reasoning as
+        // grainCloudSettingsToVar()'s "seed" field above.
+        objVar->setProperty ("orbitNoiseSeed", juce::String (obj.orbitNoiseSeed));
         objVar->setProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
         // Acoustic propagation (optional, see SoundObject.h)
@@ -536,6 +554,7 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         const int id = engine.getObject (i).id;
         engine.getObject (i) = SoundObject { id };
         engine.getGrainCloud (i).reset();
+        engine.reseedOrbitNoise (i);
     }
 
     // Scene-wide parameters -- if the block is missing, the SceneSettings
@@ -607,6 +626,13 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         obj.orbitRadiusReversionRate    = (float) element.getProperty ("orbitRadiusReversionRate", (double) obj.orbitRadiusReversionRate);
         obj.orbitRadiusNoiseAmplitude   = (float) element.getProperty ("orbitRadiusNoiseAmplitude", (double) obj.orbitRadiusNoiseAmplitude);
         obj.orbitRadiusNoiseSmoothing   = (float) element.getProperty ("orbitRadiusNoiseSmoothing", (double) obj.orbitRadiusNoiseSmoothing);
+        // Missing entirely (preset saved before this field existed) --
+        // obj.orbitNoiseSeed keeps whatever TrajectoryEngine already
+        // assigned it (a fresh random seed, see activateObject()/the
+        // constructor), same "no value saved yet" default as grainCloud's
+        // own seed field above.
+        if (element.hasProperty ("orbitNoiseSeed"))
+            obj.orbitNoiseSeed = element.getProperty ("orbitNoiseSeed", juce::var()).toString().getLargeIntValue();
         obj.orbitReferenceObjectId = (int) element.getProperty ("orbitReferenceObjectId", obj.orbitReferenceObjectId);
 
         // Acoustic propagation (optional, default from SoundObject{})

@@ -485,13 +485,14 @@ private:
     MappingEngine mappingEngine { parameterRegistry };
 
     // Control-rate timer state -- see timerCallback(). Moved here from
-    // what used to be KlangorbitEditor::lastTimerMs/grainRandom (same
-    // purpose, same values, just owned by whichever object now drives the
-    // loop). grainRandom is message-thread-only (like its editor-owned
-    // predecessor), used only inside timerCallback()'s GrainCloud::update()
-    // calls.
+    // what used to be KlangorbitEditor::lastTimerMs (same purpose, same
+    // values, just owned by whichever object now drives the loop).
+    // Grain spawn/movement randomization no longer draws from a single
+    // shared generator here (see feature/randomization-engine) -- each
+    // GrainCloud now owns its own seeded, preset-reproducible RNG
+    // (RandomEngine.h's SeededRandom), so there's nothing left for this
+    // class to own for that purpose.
     juce::uint32 lastControlRateTimerMs = 0;
-    juce::Random grainRandom;
 
     // Encode target for every non-raw-passthrough decoder mode -- always
     // exactly 16 channels (order-3 Ambisonics, the fixed internal encode

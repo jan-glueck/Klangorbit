@@ -1,5 +1,6 @@
 #pragma once
 #include "Vec3.h"
+#include "RandomEngine.h"
 
 /**
     How a grain moves for the duration of its (short) life. See
@@ -200,6 +201,22 @@ namespace GrainLimits
 struct GrainCloudSettings
 {
     bool enabled = false;
+
+    // Seed for this cloud's own randomization source (GrainCloud's
+    // internally-owned SeededRandom, see RandomEngine.h) -- saved with
+    // the preset so a specific run's grain pattern (spawn timing, pitch/
+    // position jitter, movement-mode randomization) is EXACTLY
+    // reproducible on reload, not just "roughly similar" (see
+    // Docs/experiments/ convention: a sound found by ear should stay
+    // findable). Does NOT bump schemaVersion -- PresetManager.cpp reads/
+    // writes this via the existing hasProperty/getProperty(key, default)
+    // guard pattern, so a preset saved before this field existed simply
+    // gets a freshly-randomized seed on load (see GrainCloud's
+    // constructor/reset(), both call SeededRandom::reseedRandomly()),
+    // identical in spirit to its previous un-seeded behavior -- just now
+    // that fresh choice is itself pinned down once made, instead of
+    // reshuffling on every reload.
+    juce::int64 seed = 0;
 
     // Mutes the parent SoundObject's own dry/unGranulated audio while
     // leaving its grains completely unaffected -- lets the grains be

@@ -322,6 +322,29 @@ target_link_libraries(verify_propagation
         juce::juce_recommended_warning_flags
 )
 
+# --- Shared randomization engine verification ------------------------------
+# Runs RandomEngine.h's SeededRandom (reproducibility, range guarantees),
+# RandomizedParam (every distribution shape, quantizeToSet) and
+# MeanReverting::step() against known statistical/geometric properties.
+# RandomEngine.h is header-only/pure-math (no juce_audio dependency), so
+# this stays a lightweight juce_core-only console app like verify_camera.
+juce_add_console_app(verify_randomization
+    PRODUCT_NAME "verify_randomization"
+)
+
+target_sources(verify_randomization
+    PRIVATE
+        Tools/verify_randomization.cpp
+)
+
+target_link_libraries(verify_randomization
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- Grain cloud DSP verification -----------------------------------------
 # Runs GrainCloud (spawn timing, all 5 movement modes, global/per-cloud
 # caps, lifetime expiry) and renderGrainBlock (the exact function

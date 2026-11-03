@@ -96,6 +96,31 @@ public:
 };
 
 /**
+    Shows a GrainCloud's current randomization seed (read-only, see
+    GrainCloudSettings::seed) plus a "New Seed" button that assigns it a
+    fresh, genuinely random value via onNewSeed -- the UI counterpart to
+    feature/randomization-engine's seed-based reproducibility: once a
+    seed is set (by this button, or by loading a preset that saved one),
+    the cloud's exact grain pattern reloads identically every time, until
+    this button is pressed again.
+*/
+class SeedRowComponent : public juce::Component
+{
+public:
+    explicit SeedRowComponent (const juce::String& name);
+
+    void resized() override;
+    void setSeedValue (juce::int64 seed);
+
+    static constexpr int preferredHeight = 42;
+
+    juce::Label label;
+    juce::Label valueLabel;
+    juce::TextButton newSeedButton { "New Seed" };
+    std::function<void()> onNewSeed;
+};
+
+/**
     Side panel: a fixed row of category buttons at the top, grouped into
     two visually distinct sections (see resized()) -- "SCENE SETTINGS"
     (Scene, Acoustics) above "OBJECT SETTINGS" (Object, Attraction, Orbit,
@@ -305,6 +330,7 @@ private:
     std::unique_ptr<ToggleRowComponent> grainEnabledRow;
     std::unique_ptr<ToggleRowComponent> grainSourceMutedRow;
     std::unique_ptr<ToggleRowComponent> grainDopplerEnabledRow;
+    std::unique_ptr<SeedRowComponent> grainSeedRow; // GrainCloudSettings::seed, see SeedRowComponent's own comment
     std::unique_ptr<ComboRowComponent> grainWindowShapeRow;
     std::unique_ptr<ComboRowComponent> grainMovementModeRow;
     std::unique_ptr<ComboRowComponent> grainReadDepthDistributionRow;

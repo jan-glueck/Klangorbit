@@ -144,6 +144,37 @@ void ToggleRowComponent::setValueQuiet (bool v)
     toggle.setToggleState (v, juce::dontSendNotification);
 }
 
+// ============================================================== SeedRowComponent
+
+SeedRowComponent::SeedRowComponent (const juce::String& name)
+{
+    styleRowLabel (label, name, 13.0f, UiColours::textSecondary());
+    addAndMakeVisible (label);
+
+    styleRowLabel (valueLabel, "", 13.0f, UiColours::textPrimary());
+    addAndMakeVisible (valueLabel);
+
+    newSeedButton.setColour (juce::TextButton::buttonColourId, UiColours::bgRaised());
+    newSeedButton.setColour (juce::TextButton::textColourOffId, UiColours::textSecondary());
+    addAndMakeVisible (newSeedButton);
+    newSeedButton.onClick = [this] { if (onNewSeed) onNewSeed(); };
+}
+
+void SeedRowComponent::resized()
+{
+    auto b = getLocalBounds();
+    label.setBounds (b.removeFromTop (16));
+    b.removeFromTop (UiSpacing::xs);
+    newSeedButton.setBounds (b.removeFromRight (90));
+    b.removeFromRight (UiSpacing::xs);
+    valueLabel.setBounds (b);
+}
+
+void SeedRowComponent::setSeedValue (juce::int64 seed)
+{
+    valueLabel.setText (juce::String (seed), juce::dontSendNotification);
+}
+
 // ============================================================== ParameterPanel
 
 bool ParameterPanel::categoryRequiresObject (Category category)
@@ -416,6 +447,25 @@ ParameterPanel::ParameterPanel()
     grainDopplerEnabledRow->onToggled = [this] (bool v) { if (editedGrainCloud != nullptr) editedGrainCloud->dopplerEnabled = v; };
     content.addAndMakeVisible (*grainDopplerEnabledRow);
     addToLayout (*grainDopplerEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
+
+    // Seeds this cloud's own randomization (spawn timing, pitch/position
+    // jitter, movement-mode randomization -- see Source/RandomEngine.h).
+    // "New Seed" assigns a fresh, unpredictable value directly to the
+    // settings field; GrainCloud::update() picks it up and re-seeds its
+    // own RNG from it on the very next control-rate tick (see
+    // GrainCloud::resyncSeedIfChanged()), no direct access to the
+    // GrainCloud itself needed here.
+    grainSeedRow = std::make_unique<SeedRowComponent> ("Seed");
+    grainSeedRow->onNewSeed = [this]
+    {
+        if (editedGrainCloud != nullptr)
+        {
+            editedGrainCloud->seed = juce::Random::getSystemRandom().nextInt64();
+            grainSeedRow->setSeedValue (editedGrainCloud->seed);
+        }
+    };
+    content.addAndMakeVisible (*grainSeedRow);
+    addToLayout (*grainSeedRow, SeedRowComponent::preferredHeight, Category::GrainCloud);
 
     // Ranges for grainRate/grainDuration/positionJitterInBuffer are tied to
     // GrainLimits (Grain.h), the same constants the ring buffer is sized
@@ -823,6 +873,7 @@ void ParameterPanel::refreshFromModel()
     grainEnabledRow->setValueQuiet (editedGrainCloud->enabled);
     grainSourceMutedRow->setValueQuiet (editedGrainCloud->sourceMuted);
     grainDopplerEnabledRow->setValueQuiet (editedGrainCloud->dopplerEnabled);
+    grainSeedRow->setSeedValue (editedGrainCloud->seed);
     for (auto& b : grainFloatRows)
         b.row->setValueQuiet (editedGrainCloud->*b.member);
     for (auto& b : grainIntRows)

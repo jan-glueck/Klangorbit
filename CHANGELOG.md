@@ -39,6 +39,11 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   `pitchJitter`, etc.) and the Ornstein-Uhlenbeck orbit-radius formula
   itself are UNCHANGED, only the RNG underneath them moved to this shared,
   seeded primitive, so no existing preset's sound changes.
+- **`ParameterPanel`'s Grain Cloud category shows the cloud's current
+  seed and a "New Seed" button** (`SeedRowComponent`) -- the UI side of
+  the above: pressing it assigns a fresh, unpredictable value directly to
+  `GrainCloudSettings::seed`, which `GrainCloud::update()` picks up and
+  re-seeds its own RNG from on the next control-rate tick.
 
 ## [0.2.0] - 2026-09-17
 ### Added

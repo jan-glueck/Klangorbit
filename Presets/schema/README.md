@@ -214,7 +214,31 @@ defaults for everything new.
           "driftReversionRate": 1.0,   // 1/s, pull-back strength toward the grain's own sampled cutoff
           "driftAmplitude": 0.0,       // Hz, noise strength -- 0 = disabled
           "driftSmoothing": 0.2        // seconds, smooths the underlying noise
-        }
+        },
+
+        // Optional -- missing entirely (every preset saved before
+        // feature/modifier-stack existed) is the same as an empty array.
+        // An ORDERED, stackable list (Source/Modifier.h) applied ON TOP
+        // OF everything above -- coexists with, doesn't replace, the
+        // dedicated "filter" block above. Each entry's "type" selects
+        // which of gain/timeOffset/filter/pitchSemitones is actually
+        // read; the other three are still present (same "struct holds
+        // every variant's fields" convention as elsewhere) but ignored.
+        // "filter" here is the exact same shape as the dedicated
+        // "filter" block above; "gain"/"timeOffset"/"pitchSemitones" are
+        // each a RandomizedParam, same shape as "filter.cutoffHz" above
+        // (base/spread/distribution/...). Order only matters between
+        // multiple "filter"-type entries (see Modifier.h's own comment).
+        "modifiers": [
+          {
+            "enabled": true,
+            "type": "gain",            // gain | timeOffset | filter | pitch ("pitch" not offered for delayInstance, see below)
+            "gain": { "base": 1.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
+            "timeOffset": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
+            "filter": { "enabled": false, "type": "lowPass", "cutoffHz": { "base": 2000.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }, "resonance": { "base": 0.707, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }, "driftReversionRate": 1.0, "driftAmplitude": 0.0, "driftSmoothing": 0.2 },
+            "pitchSemitones": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }
+          }
+        ]
       },
 
       // Optional -- missing entirely (every preset saved before
@@ -239,7 +263,16 @@ defaults for everything new.
         // String (not a JSON number, same 64-bit-exact-round-trip reason
         // as grainCloud's own "seed") -- seeds this instance's own
         // delayTimeJitter sampling.
-        "seed": "123456789"
+        "seed": "123456789",
+
+        // Optional -- same shape and defaults as grainCloud.modifiers
+        // above, applied per tap instead of per grain. "pitch" is a
+        // valid "type" value here too (the schema doesn't forbid it)
+        // but has NO audible effect -- ParameterPanel's Delay category
+        // simply never offers it, see Source/DelayTap.h's own comment
+        // on why (a tap is a fixed-rate readback of an already-
+        // recirculating signal, not a spawn-based voice like a grain).
+        "modifiers": []
       }
     }
   ]

@@ -69,6 +69,13 @@ public:
         // setCutoffAndResonance()).
         float filterCutoffHz = 2000.0f;
         float filterResonance = 0.707f;
+        // Modifier stack outcome (feature/modifier-stack) -- see
+        // Grain::modifierGainMultiplier/modifierFilters' own comment.
+        // PluginProcessor's audio-rate GrainAudioState::stackFilters
+        // reads modifierFilters each tick (no RNG involved on that
+        // side, same split as the single dedicated filter above).
+        float modifierGainMultiplier = 1.0f;
+        ModifierStack::FilterBankState modifierFilters;
     };
     void getSnapshot (std::vector<Snapshot>& out) const;
 

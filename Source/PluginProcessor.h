@@ -593,6 +593,14 @@ private:
         // setCutoffAndResonance()), never its ic1eq/ic2eq state, so a
         // drifting cutoff doesn't click.
         VoiceFilter filter;
+
+        // Audio-rate half of the modifier stack's own Filter-type slots
+        // (feature/modifier-stack) -- one VoiceFilter per stack slot
+        // (only entries [0, GrainCloud::Snapshot::modifierFilters.
+        // numSlots) are ever used), cascaded in stack order AFTER the
+        // single dedicated filter above. Same reset-on-new-generation/
+        // nudge-coefficients-otherwise treatment as `filter`.
+        std::array<VoiceFilter, ModifierLimits::maxModifiersPerStack> stackFilters;
     };
     std::vector<std::vector<GrainAudioState>> grainAudioState; // [objectIndex][grainPoolSlot]
     // Scratch for rendering one grain's windowed, pitch-shifted mono
@@ -636,6 +644,25 @@ private:
     {
         std::vector<float> previousChannelGains;
         std::vector<float> previousSpeakerGains;
+
+        // Audio-rate half of the modifier stack's own Filter-type slots
+        // (feature/modifier-stack) -- one VoiceFilter per stack slot
+        // (only entries [0, DelayTap::modifierFilters.numSlots) are
+        // ever used), cascaded in stack order. Unlike GrainAudioState's
+        // equivalent, there's no "new generation" reset event here --
+        // see lastSeenModifiersGeneration below.
+        std::array<VoiceFilter, ModifierLimits::maxModifiersPerStack> stackFilters;
+
+        // Taps have no per-spawn "new generation" moment the way grains
+        // do (see DelayTap.h/DelayInstance::resyncTapConfigIfChanged()'s
+        // own comment) -- this audio-thread-private counter instead
+        // just tracks "have I ever initialized stackFilters for this
+        // slot", so the very first block after a tap (re)configuration
+        // still gets a proper resetWithValues() (correct type, zeroed
+        // ic1eq/ic2eq) instead of nudging coefficients on top of
+        // whatever state happened to be left over from a DIFFERENT
+        // filter type/slot count previously in this same array slot.
+        int lastSeenModifiersGeneration = -1;
     };
     std::vector<std::vector<DelayTapAudioState>> delayTapAudioState; // [objectIndex][tapIndex]
     // Scratch for rendering one tap's mono signal at a time before

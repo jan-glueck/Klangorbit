@@ -202,6 +202,20 @@ struct RandomizedParam
     std::vector<float> quantizeValues;
 
     float sample (SeededRandom& rng) const;
+
+    // Deliberate bit-exact field comparison -- used to detect "did a
+    // caller actually write a new value since I last cached this" (see
+    // DelayInstance::resyncTapConfigIfChanged()'s own comment on this
+    // same convention, applied one level up to a whole Modifier), not an
+    // approximate-equality question.
+    bool operator== (const RandomizedParam& other) const
+    {
+        return base == other.base && spread == other.spread && distribution == other.distribution
+            && rampTowardMax == other.rampTowardMax && powerExponent == other.powerExponent
+            && discreteValues == other.discreteValues
+            && quantizeToSet == other.quantizeToSet && quantizeValues == other.quantizeValues;
+    }
+    bool operator!= (const RandomizedParam& other) const { return ! (*this == other); }
 };
 
 namespace RandomEngineDetail

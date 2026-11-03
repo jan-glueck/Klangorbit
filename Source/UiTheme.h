@@ -51,3 +51,14 @@ namespace UiSpacing
     constexpr int l  = 16;
     constexpr int xl = 24;
 }
+
+// Small shared styling helper for a row's own label (ParameterPanel's
+// row-component constructors, ModifierStackEditor) -- one place for
+// "what a label looks like", not each component picking its own font/
+// colour calls.
+inline void styleRowLabel (juce::Label& l, const juce::String& text, float fontSize, juce::Colour colour)
+{
+    l.setText (text, juce::dontSendNotification);
+    l.setFont (juce::Font (juce::FontOptions (fontSize)));
+    l.setColour (juce::Label::textColourId, colour);
+}

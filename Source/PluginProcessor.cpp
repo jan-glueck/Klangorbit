@@ -1150,10 +1150,37 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                     grainOut[i] = state.filter.processSample (grainOut[i]);
             }
 
+            // Modifier stack's own Filter-type slots (feature/modifier-
+            // stack), cascaded in stack order AFTER the single dedicated
+            // filter above -- cutoff/resonance per slot were already
+            // decided/drifted at control rate (GrainCloud::spawnGrain()/
+            // updateGrain(), see Grain::modifierFilters) and published
+            // through the snapshot; this side only ever applies them.
+            const auto& grainModifiers = trajectoryEngine.getGrainCloud (objIdx).getSettings().modifiers;
+            for (int slot = 0; slot < snap.modifierFilters.numSlots; ++slot)
+            {
+                auto& stackFilter = state.stackFilters[(size_t) slot];
+                if (isNewGrain)
+                {
+                    stackFilter.prepare (currentSampleRate);
+                    stackFilter.resetWithValues (ModifierStack::filterSlotType (grainModifiers, slot),
+                                                  snap.modifierFilters.cutoffHz[(size_t) slot],
+                                                  snap.modifierFilters.resonance[(size_t) slot]);
+                }
+                else
+                {
+                    stackFilter.setCutoffAndResonance (snap.modifierFilters.cutoffHz[(size_t) slot],
+                                                         snap.modifierFilters.resonance[(size_t) slot]);
+                }
+
+                for (int i = 0; i < numSamples; ++i)
+                    grainOut[i] = stackFilter.processSample (grainOut[i]);
+            }
+
             float azimuth, elevation, distance;
             cartesianToSpherical (snap.position, azimuth, elevation, distance);
 
-            const float totalGrainGain = obj.gain * muteRamp;
+            const float totalGrainGain = obj.gain * muteRamp * snap.modifierGainMultiplier;
 
             if (directPan)
             {
@@ -1217,10 +1244,44 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
             readDelayTapBlock (lineData, lineSize, writePosAfterBlock, tap.delaySamples, delayTapOut, numSamples);
 
+            // Modifier stack's own Filter-type slots (feature/modifier-
+            // stack) -- cutoff/resonance per slot were already decided/
+            // drifted at control rate (DelayInstance::
+            // resyncTapConfigIfChanged()/update(), see DelayTap::
+            // modifierFilters) and published through the snapshot; this
+            // side only ever applies them. modifierConfigGeneration
+            // (not a per-sample concept, just a change counter) decides
+            // whether to hard-reset a slot's filter state or merely
+            // nudge its coefficients, same role as isNewGrain above.
+            const bool isNewModifierConfig = (tap.modifierConfigGeneration != state.lastSeenModifiersGeneration);
+            if (isNewModifierConfig)
+                state.lastSeenModifiersGeneration = tap.modifierConfigGeneration;
+
+            const auto& delayModifiers = trajectoryEngine.getDelayInstance (objIdx).getSettings().modifiers;
+            for (int slot = 0; slot < tap.modifierFilters.numSlots; ++slot)
+            {
+                auto& stackFilter = state.stackFilters[(size_t) slot];
+                if (isNewModifierConfig)
+                {
+                    stackFilter.prepare (currentSampleRate);
+                    stackFilter.resetWithValues (ModifierStack::filterSlotType (delayModifiers, slot),
+                                                  tap.modifierFilters.cutoffHz[(size_t) slot],
+                                                  tap.modifierFilters.resonance[(size_t) slot]);
+                }
+                else
+                {
+                    stackFilter.setCutoffAndResonance (tap.modifierFilters.cutoffHz[(size_t) slot],
+                                                         tap.modifierFilters.resonance[(size_t) slot]);
+                }
+
+                for (int i = 0; i < numSamples; ++i)
+                    delayTapOut[i] = stackFilter.processSample (delayTapOut[i]);
+            }
+
             float azimuth, elevation, distance;
             cartesianToSpherical (tap.position, azimuth, elevation, distance);
 
-            const float totalTapGain = obj.gain * muteRamp;
+            const float totalTapGain = obj.gain * muteRamp * tap.modifierGainMultiplier;
 
             if (directPan)
             {

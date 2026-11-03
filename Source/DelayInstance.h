@@ -59,6 +59,8 @@ public:
         float feedbackDelaySamples = 0.0f;
         float feedbackGain = 0.0f;
         float dampingCutoffHz = 20000.0f; // see DelayInstance::dampingCutoffHzFor()
+        // Published through each DelayTap entry's own modifierGainMultiplier/
+        // modifierFilters fields (feature/modifier-stack) -- see DelayTap.h.
     };
     void getSnapshot (Snapshot& out) const;
 
@@ -98,6 +100,13 @@ private:
     // update(), not here) -- storing the dimensionless multiple directly
     // avoids any placeholder-sample-rate roundtrip.
     std::vector<float> tapMultiples;
+    // Cached copy of settings.modifiers as of the last resample, purely
+    // so resyncTapConfigIfChanged() can detect an in-place edit to the
+    // stack itself (Modifier::operator==, see its own comment) -- taps
+    // have no per-spawn "redecide" moment the way a grain does, so this
+    // is the only way an edited Gain/TimeOffset/Filter value ever
+    // reaches an already-existing tap.
+    std::vector<Modifier> lastAppliedModifiers;
     float orbitPhase = 0.0f;
 
     mutable juce::CriticalSection snapshotLock;

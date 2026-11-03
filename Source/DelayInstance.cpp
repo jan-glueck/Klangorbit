@@ -44,10 +44,18 @@ void DelayInstance::resyncTapConfigIfChanged()
     // own fields below, never computed/rounded, so "did the UI/preset
     // actually write a new value since last tick" is exactly what this
     // checks, not an approximate-equality question.
+    // Also resample whenever the modifier stack itself was edited in
+    // place (feature/modifier-stack) -- see Modifier::operator==' own
+    // comment: taps have no per-spawn "redecide" moment the way a
+    // grain does, so this is the only way an edited Gain/TimeOffset/
+    // Filter value ever reaches an already-existing tap.
+    const bool modifiersChanged = settings.modifiers != lastAppliedModifiers;
+
     const bool changed = ! tapConfigInitialized
                           || clampedNumTaps != lastAppliedNumTaps
                           || settings.delayTime != lastAppliedDelayTime
-                          || settings.delayTimeJitter != lastAppliedDelayTimeJitter;
+                          || settings.delayTimeJitter != lastAppliedDelayTimeJitter
+                          || modifiersChanged;
     if (! changed)
         return;
 
@@ -59,11 +67,21 @@ void DelayInstance::resyncTapConfigIfChanged()
         if (settings.delayTimeJitter > 0.0f)
             multiple *= 1.0f + settings.delayTimeJitter * rng.nextBipolar();
         tapMultiples[(size_t) i] = juce::jmax (0.01f, multiple);
+
+        // Modifier stack outcome (feature/modifier-stack): sampled once
+        // here, same event as the tap's own delay-time multiple above
+        // (see Pitch's exclusion note in DelayTap.h -- not applied here).
+        const auto modOutcome = ModifierStack::sample (settings.modifiers, rng);
+        taps[(size_t) i].modifierTimeOffsetSeconds = modOutcome.timeOffsetSeconds;
+        taps[(size_t) i].modifierGainMultiplier = modOutcome.gainMultiplier;
+        taps[(size_t) i].modifierFilters = modOutcome.filters;
+        ++taps[(size_t) i].modifierConfigGeneration;
     }
 
     lastAppliedNumTaps = clampedNumTaps;
     lastAppliedDelayTime = settings.delayTime;
     lastAppliedDelayTimeJitter = settings.delayTimeJitter;
+    lastAppliedModifiers = settings.modifiers;
     tapConfigInitialized = true;
 }
 
@@ -103,7 +121,19 @@ void DelayInstance::update (double dtSeconds, Vec3 parentPosition, double sample
         // resyncTapConfigIfChanged()) converted to samples at the
         // CURRENT sample rate every tick -- cheap (one multiply), and
         // always correct even if sampleRate itself changes mid-session.
-        taps[(size_t) i].delaySamples = juce::jmax (1.0f, tapMultiples[(size_t) i] * settings.delayTime * (float) sampleRate);
+        // modifierTimeOffsetSeconds (feature/modifier-stack) adds
+        // directly on top, same "commutative, folds straight into the
+        // delay time" treatment as Modifier.h's own class comment
+        // describes for grains' bufferReadStartSample.
+        auto& tap = taps[(size_t) i];
+        tap.delaySamples = juce::jmax (1.0f, tapMultiples[(size_t) i] * settings.delayTime * (float) sampleRate
+                                                  + tap.modifierTimeOffsetSeconds * (float) sampleRate);
+
+        // Modifier stack's own Filter-slot drift (feature/modifier-
+        // stack) -- same mechanism as GrainCloud::updateGrain()'s
+        // equivalent, just once per tap per tick here instead of once
+        // per grain.
+        ModifierStack::advanceFilterDrift (settings.modifiers, fdt, rng, tap.modifierFilters, (float) sampleRate);
     }
 
     juce::ScopedLock lock (snapshotLock);

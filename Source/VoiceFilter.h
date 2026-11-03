@@ -100,6 +100,18 @@ struct VoiceFilterSettings
     float driftReversionRate = 1.0f; // 1/s, pull-back strength toward the voice's own sampled cutoff
     float driftAmplitude = 0.0f;     // Hz, noise strength -- 0 disables drift entirely
     float driftSmoothing = 0.2f;     // seconds, smooths the underlying noise (same meaning as orbit's noiseSmoothing)
+
+    // Deliberate bit-exact field comparison -- same "did a caller
+    // actually write a new value" convention as RandomizedParam's own
+    // operator== (RandomEngine.h), used by Modifier's own operator==.
+    bool operator== (const VoiceFilterSettings& other) const
+    {
+        return enabled == other.enabled && type == other.type
+            && cutoffHz == other.cutoffHz && resonance == other.resonance
+            && driftReversionRate == other.driftReversionRate
+            && driftAmplitude == other.driftAmplitude && driftSmoothing == other.driftSmoothing;
+    }
+    bool operator!= (const VoiceFilterSettings& other) const { return ! (*this == other); }
 };
 
 /**

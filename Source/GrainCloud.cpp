@@ -380,7 +380,18 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
     }
     const int depthSamples = (int) (depthSeconds * sampleRate);
 
-    g.bufferReadStartSample = writeHead - jitterSamples - depthSamples;
+    // Modifier stack (feature/modifier-stack): sampled once here, same
+    // "decided once, fixed for this grain's life" treatment as every
+    // other spawn-time field in this function. TimeOffset/Pitch fold
+    // DIRECTLY into bufferReadStartSample/playbackRate below (exactly
+    // like any other spawn-time contributor to those two values,
+    // commutative with everything else there -- see Modifier.h's own
+    // comment on why); only Gain and the Filter slots need their own
+    // storage on Grain (see its own comment).
+    const auto modOutcome = ModifierStack::sample (settings.modifiers, rng);
+    const int modifierTimeOffsetSamples = (int) (modOutcome.timeOffsetSeconds * sampleRate);
+
+    g.bufferReadStartSample = writeHead - jitterSamples - depthSamples - modifierTimeOffsetSamples;
 
     float rate = 1.0f;
     if (settings.pitchJitter > 0.0f)
@@ -395,7 +406,11 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
             rate = 1.0f + settings.pitchJitter * rng.nextBipolar();
         }
     }
+    rate *= std::pow (2.0f, modOutcome.pitchSemitones / 12.0f);
     g.playbackRate = juce::jmax (0.1f, rate);
+
+    g.modifierGainMultiplier = modOutcome.gainMultiplier;
+    g.modifierFilters = modOutcome.filters;
 
     g.grainLengthSamples = juce::jmax (1, (int) (g.lifetimeSeconds * sampleRate));
 
@@ -433,6 +448,11 @@ void GrainCloud::updateGrain (Grain& g, float fdt, Vec3 parentPosition, Vec3 /*p
                                           (float) ringBufferSampleRate * VoiceFilterLimits::maxCutoffRatioOfSampleRate,
                                           g.filterCutoffHz);
     }
+
+    // Modifier stack's own Filter-slot drift (feature/modifier-stack) --
+    // same mechanism, independent of (and in addition to) the single
+    // dedicated filter's drift above.
+    ModifierStack::advanceFilterDrift (settings.modifiers, fdt, rng, g.modifierFilters, (float) ringBufferSampleRate);
 
     switch (settings.movementMode)
     {
@@ -612,5 +632,7 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
         s.grainLengthSamples = g.grainLengthSamples;
         s.filterCutoffHz = g.filterCutoffHz;
         s.filterResonance = g.filterResonance;
+        s.modifierGainMultiplier = g.modifierGainMultiplier;
+        s.modifierFilters = g.modifierFilters;
     }
 }

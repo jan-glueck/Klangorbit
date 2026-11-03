@@ -315,6 +315,139 @@ static void testFeedbackIsClampedToSafeMaximum()
     check (snap.feedbackGain <= DelayLimits::maxFeedback, "DelayInstance: published feedbackGain is clamped to DelayLimits::maxFeedback regardless of settings.feedback");
 }
 
+// --- Modifier stack (feature/modifier-stack) --------------------------------
+
+namespace
+{
+    Modifier makeGainModifier (float base, float spread = 0.0f)
+    {
+        Modifier m;
+        m.type = ModifierType::Gain;
+        m.gain = { base, spread };
+        return m;
+    }
+
+    Modifier makeTimeOffsetModifier (float base, float spread = 0.0f)
+    {
+        Modifier m;
+        m.type = ModifierType::TimeOffset;
+        m.timeOffset = { base, spread };
+        return m;
+    }
+
+    Modifier makeFilterModifier (float cutoff, VoiceFilterType type = VoiceFilterType::LowPass)
+    {
+        Modifier m;
+        m.type = ModifierType::Filter;
+        m.filter.type = type;
+        m.filter.cutoffHz = { cutoff, 0.0f };
+        m.filter.resonance = { 0.707f, 0.0f };
+        return m;
+    }
+}
+
+static void testDelayModifierStackEmptyByDefaultLeavesTapsUnaffected()
+{
+    DelayInstance delay;
+    delay.getSettings().enabled = true;
+    delay.getSettings().numTaps = 2;
+    delay.update (0.01, {}, kSampleRate);
+
+    DelayInstance::Snapshot snap;
+    delay.getSnapshot (snap);
+    check (snap.taps.size() == 2, "DelayInstance: empty-modifier-stack test setup actually has 2 taps");
+    for (auto& tap : snap.taps)
+        check (std::abs (tap.modifierGainMultiplier - 1.0f) < 1.0e-6f && tap.modifierFilters.numSlots == 0,
+               "DelayInstance: an empty modifier stack (the default) leaves modifierGainMultiplier at 1.0 and adds no filter slots");
+}
+
+static void testDelayModifierStackGainAppliesToEveryTap()
+{
+    DelayInstance delay;
+    delay.getSettings().enabled = true;
+    delay.getSettings().numTaps = 3;
+    delay.getSettings().modifiers = { makeGainModifier (2.0f), makeGainModifier (0.5f) }; // multiply to 1.0
+    delay.update (0.01, {}, kSampleRate);
+
+    DelayInstance::Snapshot snap;
+    delay.getSnapshot (snap);
+    check (snap.taps.size() == 3, "DelayInstance: Gain-modifier test setup actually has 3 taps");
+    bool allOne = true;
+    for (auto& tap : snap.taps)
+        if (std::abs (tap.modifierGainMultiplier - 1.0f) > 1.0e-3f) allOne = false;
+    check (allOne, "DelayInstance: two Gain modifiers (2.0 and 0.5) multiply together to exactly 1.0 for every tap");
+}
+
+static void testDelayModifierStackTimeOffsetShiftsDelaySamples()
+{
+    DelayInstance delayBase, delayOffset;
+    for (auto* d : { &delayBase, &delayOffset })
+    {
+        d->getSettings().enabled = true;
+        d->getSettings().numTaps = 1;
+        d->getSettings().delayTime = 0.3f;
+    }
+    delayOffset.getSettings().modifiers = { makeTimeOffsetModifier (0.1f) };
+
+    delayBase.update (0.01, {}, kSampleRate);
+    delayOffset.update (0.01, {}, kSampleRate);
+
+    DelayInstance::Snapshot snapBase, snapOffset;
+    delayBase.getSnapshot (snapBase);
+    delayOffset.getSnapshot (snapOffset);
+
+    const float diffSamples = snapOffset.taps[0].delaySamples - snapBase.taps[0].delaySamples;
+    const float expected = 0.1f * (float) kSampleRate;
+    std::printf ("       delaySamples shift from a 0.1s TimeOffset modifier: %.1f (expected %.1f)\n", diffSamples, expected);
+    check (std::abs (diffSamples - expected) < 1.0f, "DelayInstance: a TimeOffset modifier shifts delaySamples by exactly that many seconds, converted to samples");
+}
+
+static void testDelayModifierStackFilterSlotsMatchStackOrder()
+{
+    DelayInstance delay;
+    delay.getSettings().enabled = true;
+    delay.getSettings().numTaps = 1;
+    delay.getSettings().modifiers = {
+        makeGainModifier (1.5f), // interleaved on purpose -- must not disturb filter slot indexing
+        makeFilterModifier (600.0f, VoiceFilterType::LowPass),
+        makeFilterModifier (5000.0f, VoiceFilterType::HighPass)
+    };
+    delay.update (0.01, {}, kSampleRate);
+
+    DelayInstance::Snapshot snap;
+    delay.getSnapshot (snap);
+    auto& filters = snap.taps[0].modifierFilters;
+    check (filters.numSlots == 2, "DelayInstance: exactly 2 Filter-type modifiers produce 2 FilterBankState entries (the interleaved Gain slot doesn't count)");
+    check (std::abs (filters.cutoffHz[0] - 600.0f) < 1.0f && std::abs (filters.cutoffHz[1] - 5000.0f) < 1.0f,
+           "DelayInstance: Filter-type modifiers' sampled cutoffs appear in STACK ORDER in the published snapshot");
+}
+
+static void testDelayModifierStackInPlaceEditTriggersResample()
+{
+    // Taps have no per-spawn "redecide" moment the way a grain does
+    // (see DelayTap.h/Modifier::operator==' own comments) -- editing an
+    // EXISTING modifier's value in place (not adding/removing a slot,
+    // not touching numTaps/delayTime/delayTimeJitter) must still reach
+    // already-existing taps on the very next update() call.
+    DelayInstance delay;
+    delay.getSettings().enabled = true;
+    delay.getSettings().numTaps = 1;
+    delay.getSettings().modifiers = { makeGainModifier (1.0f) };
+    delay.update (0.01, {}, kSampleRate);
+
+    DelayInstance::Snapshot before;
+    delay.getSnapshot (before);
+    check (std::abs (before.taps[0].modifierGainMultiplier - 1.0f) < 1.0e-6f, "DelayInstance: in-place-edit test setup starts at gain 1.0");
+
+    delay.getSettings().modifiers[0].gain.base = 4.0f; // in-place edit, nothing else changed
+    delay.update (0.01, {}, kSampleRate);
+
+    DelayInstance::Snapshot after;
+    delay.getSnapshot (after);
+    check (std::abs (after.taps[0].modifierGainMultiplier - 4.0f) < 1.0e-3f,
+           "DelayInstance: editing an existing modifier's value in place (Modifier::operator!=) resamples on the very next update(), with no other field needing to change");
+}
+
 int main()
 {
     testFeedbackSettlesToGeometricSeriesGain();
@@ -330,6 +463,11 @@ int main()
     testDelayTimeJitterVariesTapMultiplesButReproducibly();
     testDampingCutoffMapping();
     testFeedbackIsClampedToSafeMaximum();
+    testDelayModifierStackEmptyByDefaultLeavesTapsUnaffected();
+    testDelayModifierStackGainAppliesToEveryTap();
+    testDelayModifierStackTimeOffsetShiftsDelaySamples();
+    testDelayModifierStackFilterSlotsMatchStackOrder();
+    testDelayModifierStackInPlaceEditTriggersResample();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

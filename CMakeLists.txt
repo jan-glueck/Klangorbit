@@ -217,6 +217,7 @@ target_sources(Klangorbit
         Source/DelayInstance.cpp
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
+        Source/ModifierStackEditor.cpp
         Source/PropagationProcessor.cpp
         Source/GrainCloud.cpp
         Source/Camera3D.cpp
@@ -347,6 +348,29 @@ target_link_libraries(verify_randomization
         juce::juce_recommended_warning_flags
 )
 
+# --- Modifier stack verification --------------------------------------
+# Runs Modifier.h's ModifierStack::sample()/advanceFilterDrift() (Gain/
+# TimeOffset/Pitch aggregation, Filter-slot ordering/indexing/overflow,
+# reproducibility, drift) against known-correct behavior. Header-only/
+# pure-math (no juce_audio dependency), so this stays a lightweight
+# juce_core-only console app like verify_voice_filter.
+juce_add_console_app(verify_modifier_stack
+    PRODUCT_NAME "verify_modifier_stack"
+)
+
+target_sources(verify_modifier_stack
+    PRIVATE
+        Tools/verify_modifier_stack.cpp
+)
+
+target_link_libraries(verify_modifier_stack
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- Per-voice filter verification -----------------------------------------
 # Runs VoiceFilter (DC/frequency response per mode, resonance peaking,
 # RandomizedParam-driven per-voice cutoff/resonance sampling, optional
@@ -387,6 +411,38 @@ target_sources(verify_delay_instance
 )
 
 target_link_libraries(verify_delay_instance
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Modifier stack preset round-trip verification ---------------------
+# Round-trips a multi-slot, multi-type modifier stack through the REAL
+# PresetManager save/load path, for both GrainCloudSettings::modifiers
+# and DelayInstanceSettings::modifiers, including backward compatibility
+# with a preset that has no "modifiers" key at all. Same sources as
+# validate_presets.
+juce_add_console_app(verify_modifier_stack_preset
+    PRODUCT_NAME "verify_modifier_stack_preset"
+)
+
+target_sources(verify_modifier_stack_preset
+    PRIVATE
+        Tools/verify_modifier_stack_preset.cpp
+        Source/PresetManager.cpp
+        Source/GrainCloud.cpp
+        Source/TrajectoryEngine.cpp
+        Source/DelayInstance.cpp
+)
+
+target_compile_definitions(verify_modifier_stack_preset
+    PRIVATE
+        SAPOC_MAX_LIVE_INPUTS=${SAPOC_MAX_LIVE_INPUTS}
+)
+
+target_link_libraries(verify_modifier_stack_preset
     PRIVATE
         juce::juce_core
     PUBLIC

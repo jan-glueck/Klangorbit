@@ -420,6 +420,28 @@ trajectory. Turn it on with **Enabled**.
   sliders above); **Cutoff Drift** optionally keeps that cutoff slowly
   wandering for as long as the grain lives, instead of staying perfectly
   fixed (0, the default, keeps it static).
+- **Modifiers** -- an ordered, reorderable list of extra per-grain
+  modifiers underneath everything above, empty by default. Each slot
+  has an **Enabled** checkbox, a **Type** chooser, and **Up/Down/
+  Remove** buttons; **Add Modifier** appends a new one (up to 8 per
+  stack). Four types:
+  - *Gain* -- a volume multiplier for this one grain. Several Gain
+    slots multiply together.
+  - *Time Offset* -- shifts how far back into the recording this grain
+    reads from, in seconds (can be negative). Several Time Offset
+    slots add together.
+  - *Filter* -- a second (third, fourth, ...) filter, same Low-Pass/
+    High-Pass/Band-Pass/Notch choice as the dedicated Filter above,
+    fully independent of it. With more than one Filter slot in the
+    stack, they run one after another in the order shown -- this is the
+    one case where the slot order actually changes the sound; for
+    Gain/Time Offset/Pitch, order never matters.
+  - *Pitch* -- an extra pitch shift in semitones, on top of Pitch
+    Jitter above. Several Pitch slots add together.
+  Every slot's own value can have a **Spread** too (most slots show a
+  second slider for it) -- 0 keeps it exact, higher values add some
+  random per-grain variation around the base value, picked once when
+  that grain spawns.
 
 ## 12. Delay (parameter panel -> Delay category)
 
@@ -451,6 +473,10 @@ over time, like a real analog/tape delay.
   spaced around a circle of this radius, centered on the object's
   current position. Angular Speed (0 by default = static) optionally
   spins the whole ring of taps slowly around the object.
+- **Modifiers** -- the same stackable Gain/Time Offset/Filter list as
+  Grains above (section 11), applied per tap instead of per grain; no
+  Pitch option here (a tap can't be pitch-shifted the way a grain can,
+  see its own note there).
 
 ## 13. Output format (toolbar -> Output...)
 

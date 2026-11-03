@@ -3,16 +3,6 @@
 #include "PluginProcessor.h"
 #include <cmath>
 
-namespace
-{
-    void styleRowLabel (juce::Label& l, const juce::String& text, float fontSize, juce::Colour colour)
-    {
-        l.setText (text, juce::dontSendNotification);
-        l.setFont (juce::Font (juce::FontOptions (fontSize)));
-        l.setColour (juce::Label::textColourId, colour);
-    }
-}
-
 // ============================================================== FloatRowComponent
 
 FloatRowComponent::FloatRowComponent (const juce::String& name, double min, double max, double step)
@@ -686,6 +676,18 @@ ParameterPanel::ParameterPanel()
     content.addChildComponent (grainDisabledByDelayHintLabel); // hidden until updateGrainDelayMutualExclusion() shows it
     addToLayout (grainDisabledByDelayHintLabel, 48, Category::GrainCloud);
 
+    // Modifier stack (feature/modifier-stack) -- see this component's
+    // own class comment for why its height is updated at runtime
+    // (updateLayoutHeight()) instead of being fixed like every row above.
+    grainModifierStackEditor = std::make_unique<ModifierStackEditor> (true /* allowPitch */);
+    grainModifierStackEditor->onHeightChanged = [this]
+    {
+        updateLayoutHeight (*grainModifierStackEditor, grainModifierStackEditor->getPreferredHeight());
+        layoutContent();
+    };
+    content.addAndMakeVisible (*grainModifierStackEditor);
+    addToLayout (*grainModifierStackEditor, grainModifierStackEditor->getPreferredHeight(), Category::GrainCloud);
+
     // --- Delay (feature/delay-instance) -------------------------------------
     delayEnabledRow = std::make_unique<ToggleRowComponent> ("Enabled");
     delayEnabledRow->onToggled = [this] (bool v)
@@ -730,6 +732,17 @@ ParameterPanel::ParameterPanel()
     addDelayFloatRow ("Tap Spread Radius (m)", &DelayInstanceSettings::tapSpreadRadius, 0.0, (double) DelayLimits::maxTapSpreadRadius, 0.01, Category::Delay);
     addDelayFloatRow ("Tap Orbit Angular Speed (rad/s)", &DelayInstanceSettings::tapOrbitAngularSpeed,
                        -(double) DelayLimits::maxTapOrbitAngularSpeed, (double) DelayLimits::maxTapOrbitAngularSpeed, 0.01, Category::Delay);
+
+    // Modifier stack (feature/modifier-stack) -- Pitch not offered here,
+    // see DelayTap.h's own note on why.
+    delayModifierStackEditor = std::make_unique<ModifierStackEditor> (false /* allowPitch */);
+    delayModifierStackEditor->onHeightChanged = [this]
+    {
+        updateLayoutHeight (*delayModifierStackEditor, delayModifierStackEditor->getPreferredHeight());
+        layoutContent();
+    };
+    content.addAndMakeVisible (*delayModifierStackEditor);
+    addToLayout (*delayModifierStackEditor, delayModifierStackEditor->getPreferredHeight(), Category::Delay);
 
     updateCategoryButtonsEnabled();
     selectCategory (Category::Scene);
@@ -873,6 +886,19 @@ void ParameterPanel::addToLayout (juce::Component& c, int height, Category categ
     layoutHeights.push_back (height);
     layoutCategory.push_back (category);
     layoutRequiredMovementMode.push_back (requiredMovementMode);
+}
+
+void ParameterPanel::updateLayoutHeight (juce::Component& c, int newHeight)
+{
+    for (size_t i = 0; i < layoutOrder.size(); ++i)
+    {
+        if (layoutOrder[i] == &c)
+        {
+            layoutHeights[i] = newHeight;
+            return;
+        }
+    }
+    jassertfalse; // c was never registered via addToLayout()
 }
 
 void ParameterPanel::setSceneSettings (SceneSettings* settings)
@@ -1024,12 +1050,16 @@ void ParameterPanel::setEditedObject (SoundObject* obj, int objectIndexForHeader
 void ParameterPanel::setEditedGrainCloud (GrainCloudSettings* settings)
 {
     editedGrainCloud = settings;
+    grainModifierStackEditor->setModifiers (settings != nullptr ? &settings->modifiers : nullptr);
+    updateLayoutHeight (*grainModifierStackEditor, grainModifierStackEditor->getPreferredHeight());
     refreshFromModel();
 }
 
 void ParameterPanel::setEditedDelayInstance (DelayInstanceSettings* settings)
 {
     editedDelayInstance = settings;
+    delayModifierStackEditor->setModifiers (settings != nullptr ? &settings->modifiers : nullptr);
+    updateLayoutHeight (*delayModifierStackEditor, delayModifierStackEditor->getPreferredHeight());
     refreshFromModel();
 }
 
@@ -1092,6 +1122,12 @@ void ParameterPanel::refreshFromModel()
     updatePitchJitterModeVisibility(); // same idea, for pitchJitterMode
     updateGrainFilterVisibility(); // same idea, for filter.enabled
 
+    // The stack's own slot COUNT may have changed too (e.g. a preset
+    // load), not just field values within already-existing slots --
+    // rebuilds its rows from scratch rather than just refreshing them.
+    grainModifierStackEditor->refreshFromModel();
+    updateLayoutHeight (*grainModifierStackEditor, grainModifierStackEditor->getPreferredHeight());
+
     if (editedDelayInstance == nullptr)
         return;
 
@@ -1102,7 +1138,11 @@ void ParameterPanel::refreshFromModel()
     for (auto& b : delayIntRows)
         b.row->setValueQuiet ((float) (editedDelayInstance->*b.member));
 
+    delayModifierStackEditor->refreshFromModel();
+    updateLayoutHeight (*delayModifierStackEditor, delayModifierStackEditor->getPreferredHeight());
+
     updateGrainDelayMutualExclusion(); // either enabled flag may have changed (e.g. a preset load) without going through either toggle's own onToggled
+    layoutContent(); // either/both stack editors' heights may have just changed above
 }
 
 void ParameterPanel::layoutContent()

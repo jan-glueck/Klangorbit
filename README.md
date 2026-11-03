@@ -1344,6 +1344,78 @@ its own past output, so echoes actually decay over repeated passes.
   (spacing, orbiting vs. static, delay-time jitter, damping-cutoff
   mapping, feedback clamping) -- no GUI/audio device needed.
 
+## Modifier stack: per-voice Gain/TimeOffset/Filter/Pitch, stacked
+
+Optional, per source (one independent stack each for GrainCloud and
+DelayInstance), empty by default. An ORDERED, reorderable list of
+modifier slots (`Source/Modifier.h`) applied on top of everything
+above -- stackable, including several of the same type at once (e.g.
+two Filter slots in series). Coexists with, doesn't replace, GrainCloud's
+own dedicated per-grain filter (`feature/grain-filter-integration`) --
+both can be configured on the same cloud simultaneously, applied one
+after the other.
+
+- **Four modifier types.** **Gain** (a linear multiplier) and **Time
+  Offset** (seconds, shifts a grain's read-start position or a tap's own
+  delay) are commutative scalar accumulations -- multiple enabled Gain
+  slots multiply together, multiple Time Offset slots sum, regardless of
+  where they sit in the stack or relative to a Filter slot (scaling a
+  signal before or after a *linear* filter gives an identical result,
+  and neither "shift the playback rate" nor "shift the read start time"
+  is a per-sample operation at all -- both are spawn/config-time
+  parameter adjustments). **Filter** reuses `VoiceFilter`
+  (`feature/per-voice-filter`) wholesale -- its own cutoff/resonance/
+  optional drift, one independent instance per slot, cascaded **in
+  stack order** -- the one case where reordering the stack is actually
+  audible. **Pitch** (semitones, also commutative/summing) is only
+  offered for GrainCloud; see below for why DelayInstance doesn't get
+  it.
+- **Every value is a `RandomizedParam`** (`Source/RandomEngine.h`) --
+  base/spread/distribution, including `Discrete`/`quantizeToSet` for
+  snapping onto fixed value sets (covers "pitch with discrete value
+  sets" without a separate mechanism). Sampled once per voice: at spawn
+  for a grain (same "decided once, fixed for this voice's life"
+  treatment as `pitchJitter`), or whenever a DelayInstance's tap
+  configuration is (re)built for a tap (numTaps/delayTime/
+  delayTimeJitter changing, OR an in-place edit to the stack itself --
+  see below).
+- **Why DelayInstance doesn't get Pitch.** A tap is a continuous,
+  fixed-rate readback of an already-recirculating signal
+  (`DelayRenderer.h`) -- genuinely pitch-shifting that without either
+  drifting away from the configured delay time or needing a whole
+  granular/overlapping-window resampler (effectively a second
+  GrainCloud) is real, separate DSP work this branch doesn't take on.
+  `ParameterPanel`'s Delay category simply never offers Pitch as a
+  modifier type, so the gap is never a user-visible broken control.
+- **Taps have no "respawn" moment, unlike grains -- edits still reach
+  them live.** A grain is short-lived, so it always re-reads current
+  settings the next time one spawns; a `DelayInstance`'s taps live for
+  as long as Delay stays enabled, so `Modifier`/`RandomizedParam`/
+  `VoiceFilterSettings` all define `operator==` specifically so
+  `DelayInstance::resyncTapConfigIfChanged()` can detect "the user
+  edited an existing slot's own value in place" (not just added/
+  removed a slot, or changed numTaps/delayTime) and resample
+  immediately, rather than leaving already-existing taps stuck with a
+  stale value until some unrelated field happens to change too.
+- **UI.** `ModifierStackEditor`/`ModifierRowComponent`
+  (`Source/ModifierStackEditor.h/.cpp`) -- the one part of
+  `ParameterPanel` with a genuinely variable-length, reorderable child-
+  component list (Add/Remove/Up/Down), unlike the rest of the panel's
+  fixed-row-set-shown-by-condition convention. Reports its own total
+  height back to `ParameterPanel` whenever it changes (a slot added/
+  removed/reordered, or a slot's type switching to a different row
+  count) via `ParameterPanel::updateLayoutHeight()`, a small addition to
+  that panel's own layout system specifically for this one dynamically-
+  sized component.
+- **Verification:** `Tools/verify_modifier_stack.cpp` exercises
+  `ModifierStack::sample()`/`advanceFilterDrift()` directly (Gain/
+  TimeOffset/Pitch aggregation, Filter-slot stack-order/indexing/
+  overflow, reproducibility, drift); `Tools/verify_grain_cloud.cpp` and
+  `Tools/verify_delay_instance.cpp` each add their own integration
+  tests (including the live-in-place-edit case above for DelayInstance);
+  `Tools/verify_modifier_stack_preset.cpp` round-trips a multi-slot,
+  multi-type stack through the real preset path for both sources.
+
 ## GUI design
 
 Dark, cyan-accented, reduced "sci-fi HUD" look, applied uniformly rather

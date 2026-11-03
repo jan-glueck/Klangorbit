@@ -2,6 +2,7 @@
 #include "Vec3.h"
 #include "RandomEngine.h"
 #include "VoiceFilter.h"
+#include "Modifier.h"
 
 /**
     How a grain moves for the duration of its (short) life. See
@@ -327,6 +328,15 @@ struct GrainCloudSettings
     // wandering around that spawn-time value for the grain's whole life
     // (see GrainCloud::updateGrain(), Grain::filterCutoffHz).
     VoiceFilterSettings filter;
+
+    // --- Modifier stack (feature/modifier-stack) -------------------------
+    // Ordered, stackable list of per-grain modifiers (Gain/TimeOffset/
+    // Filter/Pitch, see Modifier.h) applied ON TOP OF everything above
+    // -- coexists with, doesn't replace, the single dedicated `filter`
+    // field above (existing presets/behavior there are unaffected).
+    // Empty by default, so a cloud with no stack configured is
+    // identical to before this field existed.
+    std::vector<Modifier> modifiers;
 };
 
 /**
@@ -393,4 +403,17 @@ struct Grain
     float filterCutoffHz = 2000.0f;
     float filterResonance = 0.707f;
     float filterDriftSmoothedNoise = 0.0f;
+
+    // Modifier stack outcome (feature/modifier-stack), sampled once at
+    // spawn via ModifierStack::sample() (Modifier.h) -- Gain/TimeOffset/
+    // Pitch are NOT stored here separately: TimeOffset folds directly
+    // into bufferReadStartSample and Pitch directly into playbackRate
+    // above, at the same spawn-time computation, exactly like every
+    // other spawn-time-decided field (see GrainCloud::spawnGrain()).
+    // Only Gain genuinely needs its own per-grain storage (applied at
+    // encode time, not at spawn-parameter time), and the Filter slots'
+    // own per-tick drift state (advanced every control tick, see
+    // GrainCloud::updateGrain()).
+    float modifierGainMultiplier = 1.0f;
+    ModifierStack::FilterBankState modifierFilters;
 };

@@ -253,6 +253,106 @@ namespace
         return juce::Result::ok();
     }
 
+    // Modifier stack (feature/modifier-stack, Source/Modifier.h) -- one
+    // generic serialization for the whole ordered list, shared by
+    // GrainCloudSettings::modifiers and DelayInstanceSettings::modifiers
+    // (both just a std::vector<Modifier>). Reuses randomizedParamToVar/
+    // FromVar and voiceFilterSettingsToVar/FromVar above rather than
+    // re-encoding RandomizedParam/VoiceFilterSettings a second way.
+    juce::String modifierTypeToString (ModifierType t)
+    {
+        switch (t)
+        {
+            case ModifierType::Gain:       return "gain";
+            case ModifierType::TimeOffset: return "timeOffset";
+            case ModifierType::Filter:     return "filter";
+            case ModifierType::Pitch:      return "pitch";
+        }
+        return "gain";
+    }
+
+    bool modifierTypeFromString (const juce::String& s, ModifierType& out)
+    {
+        if (s == "gain")       { out = ModifierType::Gain;       return true; }
+        if (s == "timeOffset") { out = ModifierType::TimeOffset; return true; }
+        if (s == "filter")     { out = ModifierType::Filter;     return true; }
+        if (s == "pitch")      { out = ModifierType::Pitch;      return true; }
+        return false;
+    }
+
+    juce::var modifierToVar (const Modifier& m)
+    {
+        auto* obj = new juce::DynamicObject();
+        obj->setProperty ("enabled", m.enabled);
+        obj->setProperty ("type", modifierTypeToString (m.type));
+        obj->setProperty ("gain", randomizedParamToVar (m.gain));
+        obj->setProperty ("timeOffset", randomizedParamToVar (m.timeOffset));
+        obj->setProperty ("filter", voiceFilterSettingsToVar (m.filter));
+        obj->setProperty ("pitchSemitones", randomizedParamToVar (m.pitchSemitones));
+        return juce::var (obj);
+    }
+
+    juce::Result modifierFromVar (const juce::var& mVar, const juce::String& fieldPathForErrors, Modifier& out)
+    {
+        if (! mVar.isObject())
+            return juce::Result::fail ("'" + fieldPathForErrors + "' is not a JSON object.");
+
+        if (mVar.hasProperty ("enabled"))
+            out.enabled = (bool) mVar.getProperty ("enabled", out.enabled);
+        if (mVar.hasProperty ("type"))
+        {
+            const auto s = mVar.getProperty ("type", juce::var()).toString();
+            if (! modifierTypeFromString (s, out.type))
+                return juce::Result::fail ("'" + fieldPathForErrors + ".type': unknown value '" + s + "'.");
+        }
+        if (auto result = randomizedParamFromVar (mVar.getProperty ("gain", juce::var()), out.gain, fieldPathForErrors + ".gain");
+            result.failed())
+            return result;
+        if (auto result = randomizedParamFromVar (mVar.getProperty ("timeOffset", juce::var()), out.timeOffset, fieldPathForErrors + ".timeOffset");
+            result.failed())
+            return result;
+        if (auto result = voiceFilterSettingsFromVar (mVar.getProperty ("filter", juce::var()), out.filter);
+            result.failed())
+            return result;
+        if (auto result = randomizedParamFromVar (mVar.getProperty ("pitchSemitones", juce::var()), out.pitchSemitones, fieldPathForErrors + ".pitchSemitones");
+            result.failed())
+            return result;
+        return juce::Result::ok();
+    }
+
+    juce::var modifiersToVar (const std::vector<Modifier>& stack)
+    {
+        juce::Array<juce::var> arr;
+        for (auto& m : stack)
+            arr.add (modifierToVar (m));
+        return arr;
+    }
+
+    // "stackVar" missing entirely -- always true for a preset saved
+    // before feature/modifier-stack existed -- leaves `out` at whatever
+    // it already was (the caller's default-constructed, empty stack),
+    // same "optional, sensible default" convention as every other field
+    // here. Does NOT bump schemaVersion for the same reason.
+    juce::Result modifiersFromVar (const juce::var& stackVar, const juce::String& fieldPathForErrors, std::vector<Modifier>& out)
+    {
+        if (stackVar.isVoid())
+            return juce::Result::ok();
+        auto* arr = stackVar.getArray();
+        if (arr == nullptr)
+            return juce::Result::fail ("'" + fieldPathForErrors + "' is not a JSON array.");
+
+        out.clear();
+        for (int i = 0; i < arr->size(); ++i)
+        {
+            Modifier m;
+            if (auto result = modifierFromVar ((*arr)[i], fieldPathForErrors + "[" + juce::String (i) + "]", m);
+                result.failed())
+                return result;
+            out.push_back (m);
+        }
+        return juce::Result::ok();
+    }
+
     juce::String movementModeToString (GrainMovementMode m)
     {
         switch (m)
@@ -472,6 +572,7 @@ namespace
         // close. A string round-trips through JSON exactly.
         obj->setProperty ("seed", juce::String (s.seed));
         obj->setProperty ("filter", voiceFilterSettingsToVar (s.filter));
+        obj->setProperty ("modifiers", modifiersToVar (s.modifiers));
         return juce::var (obj);
     }
 
@@ -585,6 +686,10 @@ namespace
             result.failed())
             return result;
 
+        if (auto result = modifiersFromVar (gcVar.getProperty ("modifiers", juce::var()), "grainCloud.modifiers", out.modifiers);
+            result.failed())
+            return result;
+
         return juce::Result::ok();
     }
 
@@ -606,6 +711,7 @@ namespace
         // String, not a JSON number -- same 64-bit-exact-round-trip reason
         // as GrainCloudSettings::seed (see its own comment).
         obj->setProperty ("seed", juce::String (s.seed));
+        obj->setProperty ("modifiers", modifiersToVar (s.modifiers));
         return juce::var (obj);
     }
 
@@ -627,6 +733,10 @@ namespace
         out.tapOrbitAngularSpeed  = (float) diVar.getProperty ("tapOrbitAngularSpeed", (double) out.tapOrbitAngularSpeed);
         if (diVar.hasProperty ("seed"))
             out.seed = diVar.getProperty ("seed", juce::var()).toString().getLargeIntValue();
+
+        if (auto result = modifiersFromVar (diVar.getProperty ("modifiers", juce::var()), "delayInstance.modifiers", out.modifiers);
+            result.failed())
+            return result;
 
         return juce::Result::ok();
     }

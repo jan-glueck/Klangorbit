@@ -121,6 +121,50 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   cutoff mapping, feedback clamping) and
   `Tools/verify_delay_instance_preset.cpp` (full save/load round-trip,
   plus the no-`delayInstance`-key backward-compatibility case).
+- **Modifier stack, Stage 1: core engine + Gain/TimeOffset/Filter/Pitch**
+  (`Source/Modifier.h`, `Source/ModifierStackEditor.h/.cpp`,
+  `feature/modifier-stack`, Branch 4) -- an ordered, stackable, per-
+  voice list of modifiers, one independent stack each for GrainCloud
+  and DelayInstance, empty by default. Coexists with, doesn't replace,
+  GrainCloud's own dedicated per-grain filter (Branch 2) -- both can be
+  configured on the same cloud at once. `ModifierStack::sample()`
+  reduces Gain/TimeOffset/Pitch to single aggregate scalars per voice
+  (commutative -- a constant multiplier, a time offset in seconds, a
+  semitone sum -- provably order-independent, including relative to any
+  Filter slot, see Modifier.h's own comment) and keeps Filter slots as
+  a stack-order-preserving list, cascaded in that order at render time
+  (the one case where reordering is audible). Every value is a
+  `RandomizedParam` (Branch 0), including `Discrete`/`quantizeToSet` --
+  covers "pitch with discrete value sets" without a separate mechanism.
+  Pitch is deliberately NOT offered for DelayInstance (a tap is a
+  fixed-rate readback, not a spawn-based voice -- see Modifier.h/
+  DelayTap.h's own notes on why genuinely pitch-shifting one is a
+  separate, larger piece of DSP work this branch doesn't take on).
+  Because DelayInstance's taps have no per-spawn "redecide" moment the
+  way a grain does, `Modifier`/`RandomizedParam`/`VoiceFilterSettings`
+  all gained `operator==` specifically so an in-place edit to an
+  existing stack slot (not just adding/removing one, or changing
+  numTaps/delayTime) still reaches already-existing taps on the very
+  next control tick. New `ModifierStackEditor`/`ModifierRowComponent`
+  UI (`Source/ModifierStackEditor.h/.cpp`) -- the one part of
+  `ParameterPanel` with a genuinely variable-length, reorderable child-
+  component list (Add/Remove/Up/Down), reporting its own height back to
+  a new `ParameterPanel::updateLayoutHeight()`. `FloatRowComponent`/
+  `ComboRowComponent`/`ToggleRowComponent`/`SeedRowComponent` extracted
+  from `ParameterPanel.h` into `Source/ParameterRowComponents.h` so the
+  new editor can reuse them without a circular include;
+  `styleRowLabel()` moved from a `ParameterPanel.cpp`-local helper into
+  `UiTheme.h` for the same reason. Persisted via a new, fully optional
+  `modifiers` array on both the `grainCloud` and `delayInstance` preset
+  blocks -- missing entirely (every existing preset) loads as an empty
+  stack, so this does NOT bump `schemaVersion`. Verified via
+  `Tools/verify_modifier_stack.cpp` (the core engine in isolation --
+  aggregation, stack-order/indexing/overflow, reproducibility, drift),
+  new integration tests in `Tools/verify_grain_cloud.cpp`/
+  `Tools/verify_delay_instance.cpp` (including the live-in-place-edit
+  case), and `Tools/verify_modifier_stack_preset.cpp` (full round-trip
+  for both sources, exact stack-order preservation, backward
+  compatibility).
 
 ## [0.2.0] - 2026-09-17
 ### Added

@@ -2,6 +2,7 @@
 #include "Vec3.h"
 #include "RandomEngine.h"
 #include "VoiceFilter.h"
+#include "Modifier.h"
 
 /**
     Settings/data for DelayInstance (feature/delay-instance, Branch 3 of
@@ -72,6 +73,24 @@ struct DelayInstanceSettings
     // -- same string-persisted-seed treatment as GrainCloudSettings::seed,
     // for exact reproducibility on reload.
     juce::int64 seed = 0;
+
+    // --- Modifier stack (feature/modifier-stack) -------------------------
+    // Ordered, stackable list of per-tap modifiers (Gain/TimeOffset/
+    // Filter -- NOT Pitch, see this file's own note below) applied ON
+    // TOP OF everything above. Empty by default, so an instance with no
+    // stack configured is identical to before this field existed.
+    //
+    // Pitch is deliberately NOT applied to delay taps (even though
+    // ModifierType::Pitch exists and can technically be added to this
+    // stack): a tap is a continuous, fixed-rate readback of an
+    // already-recirculating signal (see DelayRenderer.h) -- genuinely
+    // pitch-shifting that without either drifting away from the
+    // configured delay time or needing a whole granular/overlapping-
+    // window resampler (effectively a second GrainCloud) is real,
+    // separate DSP work this branch doesn't take on. ParameterPanel's
+    // Delay category simply doesn't offer Pitch as a modifier type to
+    // add, so the gap is never user-visible as a broken control.
+    std::vector<Modifier> modifiers;
 };
 
 /** One tap's current, control-rate-decided state -- published via DelayInstance::Snapshot. */
@@ -79,5 +98,27 @@ struct DelayTap
 {
     Vec3 position {};
     Vec3 velocity {};       // reserved for a future per-tap Doppler option, same shape as Grain::velocity
-    float delaySamples = 0.0f; // this tap's own delay (includes delayTimeJitter), in samples
+    float delaySamples = 0.0f; // this tap's own delay (includes delayTimeJitter AND modifierTimeOffsetSeconds below), in samples
+
+    // Modifier stack outcome (feature/modifier-stack), sampled once
+    // whenever DelayInstance::resyncTapConfigIfChanged() rebuilds this
+    // tap's configuration (same event as its own delay-time multiple) --
+    // see DelayInstance.cpp. modifierTimeOffsetSeconds folds directly
+    // into delaySamples above every tick (DelayInstance::update()),
+    // exactly like every other config-time-decided contributor to that
+    // value; Gain and the Filter slots need their own storage (applied
+    // at render time, not at delay-time computation time).
+    float modifierTimeOffsetSeconds = 0.0f;
+    float modifierGainMultiplier = 1.0f;
+    ModifierStack::FilterBankState modifierFilters;
+
+    // Bumped every time DelayInstance::resyncTapConfigIfChanged()
+    // resamples this tap's modifier outcome above -- lets the audio
+    // thread detect "this tap's filter slots were just (re)configured"
+    // (possibly with a different type/count than before) and do a hard
+    // VoiceFilter::resetWithValues() instead of nudging coefficients on
+    // top of stale state, same role as Grain::spawnGeneration but for
+    // config changes rather than a brand-new pool-slot occupant (taps
+    // don't rotate through a pool the way grains do).
+    int modifierConfigGeneration = 0;
 };

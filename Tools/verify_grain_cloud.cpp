@@ -1223,6 +1223,232 @@ static void testGrainFilterDriftMovesCutoffOverTime()
     check (! everOutOfRange, "GrainCloud: a drifting filterCutoffHz never leaves VoiceFilterLimits' safe range");
 }
 
+// --- Modifier stack (feature/modifier-stack) --------------------------------
+
+static Modifier makeGainModifier (float base, float spread = 0.0f)
+{
+    Modifier m;
+    m.type = ModifierType::Gain;
+    m.gain = { base, spread };
+    return m;
+}
+
+static Modifier makeTimeOffsetModifier (float base, float spread = 0.0f)
+{
+    Modifier m;
+    m.type = ModifierType::TimeOffset;
+    m.timeOffset = { base, spread };
+    return m;
+}
+
+static Modifier makePitchModifier (float base, float spread = 0.0f)
+{
+    Modifier m;
+    m.type = ModifierType::Pitch;
+    m.pitchSemitones = { base, spread };
+    return m;
+}
+
+static Modifier makeFilterModifier (float cutoff, VoiceFilterType type = VoiceFilterType::LowPass)
+{
+    Modifier m;
+    m.type = ModifierType::Filter;
+    m.filter.type = type;
+    m.filter.cutoffHz = { cutoff, 0.0f };
+    m.filter.resonance = { 0.707f, 0.0f };
+    return m;
+}
+
+static void testModifierStackGainAppliesToEveryGrain()
+{
+    GrainCloud cloud (16);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 100.0f;
+    cloud.getSettings().grainDuration = 0.2f;
+    cloud.getSettings().maxConcurrentGrains = 16;
+    cloud.getSettings().seed = 501;
+    cloud.getSettings().modifiers = { makeGainModifier (2.0f), makeGainModifier (0.5f) }; // multiply to 1.0
+
+    int budget = 32;
+    cloud.setRingBufferContext (0, kSampleRate);
+
+    std::vector<int> lastGen (16, 0);
+    std::vector<float> observedGains;
+    for (int tick = 0; tick < 60; ++tick)
+    {
+        cloud.update (1.0 / 90.0, {}, {}, budget);
+        std::vector<GrainCloud::Snapshot> snap;
+        cloud.getSnapshot (snap);
+        for (size_t i = 0; i < snap.size(); ++i)
+            if (snap[i].active && snap[i].spawnGeneration != lastGen[i])
+            {
+                lastGen[i] = snap[i].spawnGeneration;
+                observedGains.push_back (snap[i].modifierGainMultiplier);
+            }
+    }
+
+    check (observedGains.size() > 3, "GrainCloud: modifier-stack gain test setup actually spawned multiple grains");
+    bool allOne = true;
+    for (float g : observedGains)
+        if (std::abs (g - 1.0f) > 1.0e-3f) allOne = false;
+    check (allOne, "GrainCloud: two Gain modifiers (2.0 and 0.5) multiply together to exactly 1.0 for every grain");
+}
+
+static void testModifierStackTimeOffsetShiftsReadStart()
+{
+    GrainCloud cloudBase (8), cloudOffset (8);
+    for (auto* c : { &cloudBase, &cloudOffset })
+    {
+        c->getSettings().enabled = true;
+        c->getSettings().grainRate = 50.0f;
+        c->getSettings().grainDuration = 0.2f;
+        c->getSettings().maxConcurrentGrains = 8;
+        c->getSettings().seed = 502; // identical seed on both -- only the modifier stack differs
+    }
+    cloudOffset.getSettings().modifiers = { makeTimeOffsetModifier (0.5f) }; // 0.5s further into the past
+
+    int budgetA = 16, budgetB = 16;
+    cloudBase.setRingBufferContext (1000, kSampleRate);
+    cloudOffset.setRingBufferContext (1000, kSampleRate);
+    // grainRate=50 => a 0.02s spawn interval -- a few ticks safely clears it.
+    for (int i = 0; i < 5; ++i)
+    {
+        cloudBase.update (0.01, {}, {}, budgetA);
+        cloudOffset.update (0.01, {}, {}, budgetB);
+    }
+
+    std::vector<GrainCloud::Snapshot> snapBase, snapOffset;
+    cloudBase.getSnapshot (snapBase);
+    cloudOffset.getSnapshot (snapOffset);
+
+    int slotBase = -1, slotOffset = -1;
+    for (size_t i = 0; i < snapBase.size(); ++i) if (snapBase[i].active) { slotBase = (int) i; break; }
+    for (size_t i = 0; i < snapOffset.size(); ++i) if (snapOffset[i].active) { slotOffset = (int) i; break; }
+    check (slotBase >= 0 && slotOffset >= 0, "GrainCloud: TimeOffset test setup actually spawned a grain in both clouds");
+
+    const int expectedShiftSamples = (int) (0.5 * kSampleRate);
+    const int actualShift = snapBase[(size_t) slotBase].bufferReadStartSample - snapOffset[(size_t) slotOffset].bufferReadStartSample;
+    std::printf ("       bufferReadStartSample shift from a 0.5s TimeOffset modifier: %d samples (expected %d)\n", actualShift, expectedShiftSamples);
+    check (actualShift == expectedShiftSamples, "GrainCloud: a TimeOffset modifier shifts bufferReadStartSample by exactly that many seconds, converted to samples");
+}
+
+static void testModifierStackPitchAddsOntoPlaybackRate()
+{
+    GrainCloud cloud (8);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 50.0f;
+    cloud.getSettings().grainDuration = 0.2f;
+    cloud.getSettings().maxConcurrentGrains = 8;
+    cloud.getSettings().seed = 503;
+    cloud.getSettings().pitchJitter = 0.0f; // isolate the modifier's own contribution
+    cloud.getSettings().modifiers = { makePitchModifier (12.0f) }; // +1 octave
+
+    int budget = 16;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 5; ++i) // grainRate=50 => a 0.02s spawn interval -- a few ticks safely clears it
+        cloud.update (0.01, {}, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int slot = -1;
+    for (size_t i = 0; i < snap.size(); ++i) if (snap[i].active) { slot = (int) i; break; }
+    check (slot >= 0, "GrainCloud: Pitch modifier test setup actually spawned a grain");
+
+    std::printf ("       playbackRate with a +12 semitone Pitch modifier (pitchJitter=0): %.4f (expected 2.0)\n", snap[(size_t) slot].playbackRate);
+    check (std::abs (snap[(size_t) slot].playbackRate - 2.0f) < 1.0e-3f,
+           "GrainCloud: a +12 semitone Pitch modifier doubles playbackRate (one octave up), with pitchJitter contributing nothing at 0");
+}
+
+static void testModifierStackFilterSlotsMatchStackOrder()
+{
+    GrainCloud cloud (8);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 50.0f;
+    cloud.getSettings().grainDuration = 0.2f;
+    cloud.getSettings().maxConcurrentGrains = 8;
+    cloud.getSettings().seed = 504;
+    cloud.getSettings().modifiers = {
+        makeGainModifier (1.5f), // interleaved on purpose -- must not disturb filter slot indexing
+        makeFilterModifier (500.0f, VoiceFilterType::LowPass),
+        makeFilterModifier (4000.0f, VoiceFilterType::HighPass)
+    };
+
+    int budget = 16;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 5; ++i) // grainRate=50 => a 0.02s spawn interval -- a few ticks safely clears it
+        cloud.update (0.01, {}, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int slot = -1;
+    for (size_t i = 0; i < snap.size(); ++i) if (snap[i].active) { slot = (int) i; break; }
+    check (slot >= 0, "GrainCloud: Filter-modifier-stack test setup actually spawned a grain");
+
+    auto& filters = snap[(size_t) slot].modifierFilters;
+    check (filters.numSlots == 2, "GrainCloud: exactly 2 Filter-type modifiers produce 2 FilterBankState entries (the interleaved Gain slot doesn't count)");
+    check (std::abs (filters.cutoffHz[0] - 500.0f) < 1.0f && std::abs (filters.cutoffHz[1] - 4000.0f) < 1.0f,
+           "GrainCloud: Filter-type modifiers' sampled cutoffs appear in STACK ORDER in the published snapshot");
+}
+
+static void testModifierStackCoexistsWithDedicatedFilter()
+{
+    // The single dedicated filter (feature/grain-filter-integration) and
+    // the new modifier stack must be fully independent -- enabling one
+    // must not disturb the other's own fields.
+    GrainCloud cloud (8);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 50.0f;
+    cloud.getSettings().grainDuration = 0.2f;
+    cloud.getSettings().maxConcurrentGrains = 8;
+    cloud.getSettings().seed = 505;
+    cloud.getSettings().filter.enabled = true;
+    cloud.getSettings().filter.cutoffHz = { 1200.0f, 0.0f };
+    cloud.getSettings().modifiers = { makeFilterModifier (7000.0f) };
+
+    int budget = 16;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 5; ++i) // grainRate=50 => a 0.02s spawn interval -- a few ticks safely clears it
+        cloud.update (0.01, {}, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int slot = -1;
+    for (size_t i = 0; i < snap.size(); ++i) if (snap[i].active) { slot = (int) i; break; }
+    check (slot >= 0, "GrainCloud: dedicated-filter-plus-stack test setup actually spawned a grain");
+
+    check (std::abs (snap[(size_t) slot].filterCutoffHz - 1200.0f) < 1.0f,
+           "GrainCloud: the dedicated filter's own cutoff is unaffected by the modifier stack also being configured");
+    check (snap[(size_t) slot].modifierFilters.numSlots == 1
+               && std::abs (snap[(size_t) slot].modifierFilters.cutoffHz[0] - 7000.0f) < 1.0f,
+           "GrainCloud: the modifier stack's own filter slot is unaffected by the dedicated filter also being enabled");
+}
+
+static void testModifierStackEmptyByDefaultLeavesGrainsUnaffected()
+{
+    GrainCloud cloud (8);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 50.0f;
+    cloud.getSettings().grainDuration = 0.2f;
+    cloud.getSettings().maxConcurrentGrains = 8;
+    cloud.getSettings().seed = 506;
+    // modifiers left at its default (empty vector) -- this test confirms
+    // that default is genuinely inert.
+
+    int budget = 16;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 5; ++i) // grainRate=50 => a 0.02s spawn interval -- a few ticks safely clears it
+        cloud.update (0.01, {}, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int slot = -1;
+    for (size_t i = 0; i < snap.size(); ++i) if (snap[i].active) { slot = (int) i; break; }
+    check (slot >= 0, "GrainCloud: empty-modifier-stack test setup actually spawned a grain");
+    check (std::abs (snap[(size_t) slot].modifierGainMultiplier - 1.0f) < 1.0e-6f
+               && snap[(size_t) slot].modifierFilters.numSlots == 0,
+           "GrainCloud: an empty modifier stack (the default) leaves modifierGainMultiplier at 1.0 and adds no filter slots");
+}
+
 int main()
 {
     testRenderGrainBlock();
@@ -1248,6 +1474,12 @@ int main()
     testGrainFilterSamplesPerGrainCutoffAndResonance();
     testGrainFilterCutoffIsStableWithoutDrift();
     testGrainFilterDriftMovesCutoffOverTime();
+    testModifierStackGainAppliesToEveryGrain();
+    testModifierStackTimeOffsetShiftsReadStart();
+    testModifierStackPitchAddsOntoPlaybackRate();
+    testModifierStackFilterSlotsMatchStackOrder();
+    testModifierStackCoexistsWithDedicatedFilter();
+    testModifierStackEmptyByDefaultLeavesGrainsUnaffected();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

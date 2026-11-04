@@ -570,6 +570,14 @@ namespace
         obj->setProperty ("atmosphericPressure", (double) s.atmosphericPressure);
         obj->setProperty ("windVector", vecToVar (s.windVector));
 
+        // Agitation tempo-sync fallback (feature/agitation-and-snapshots,
+        // Branch 5) -- see SceneSettings::standaloneTempoBpm's own
+        // comment for why this exists.
+        obj->setProperty ("standaloneTempoBpm", (double) s.standaloneTempoBpm);
+        // String, not a JSON number -- same exact-round-trip reasoning as
+        // grainCloudSettingsToVar()'s "seed" field.
+        obj->setProperty ("agitationSeed", juce::String (s.agitationSeed));
+
         return juce::var (obj);
     }
 
@@ -615,6 +623,14 @@ namespace
             if (! varToVec (sceneVar.getProperty ("windVector", juce::var()), out.windVector))
                 return juce::Result::fail ("'scene.windVector' is not a 3-element array.");
         }
+
+        out.standaloneTempoBpm = (float) sceneVar.getProperty ("standaloneTempoBpm", (double) out.standaloneTempoBpm);
+        // Missing entirely (preset saved before this field existed) --
+        // out.agitationSeed simply keeps whatever default/already-
+        // assigned value it has, same "no value saved yet" treatment as
+        // every other seed field in this file.
+        if (sceneVar.hasProperty ("agitationSeed"))
+            out.agitationSeed = sceneVar.getProperty ("agitationSeed", juce::var()).toString().getLargeIntValue();
 
         return juce::Result::ok();
     }
@@ -841,6 +857,110 @@ namespace
 
         return juce::Result::ok();
     }
+
+    // --- AgitationEngine (feature/agitation-and-snapshots, Branch 5) -------
+    // Lives on KlangorbitProcessor, not TrajectoryEngine (see PresetManager.h's
+    // own comment on sceneToVar()'s agitationEngine parameter) -- a separate
+    // top-level "agitation" block rather than something nested under each
+    // object, since a parameter id already encodes which object (or
+    // "selectedObject"/"scene") it belongs to, see ParameterRegistry.h.
+    juce::String agitationTempoDivisionToString (Agitation::TempoDivision d)
+    {
+        switch (d)
+        {
+            case Agitation::TempoDivision::Whole:            return "whole";
+            case Agitation::TempoDivision::Half:             return "half";
+            case Agitation::TempoDivision::Quarter:          return "quarter";
+            case Agitation::TempoDivision::Eighth:           return "eighth";
+            case Agitation::TempoDivision::Sixteenth:        return "sixteenth";
+            case Agitation::TempoDivision::QuarterTriplet:   return "quarterTriplet";
+            case Agitation::TempoDivision::EighthTriplet:    return "eighthTriplet";
+            case Agitation::TempoDivision::SixteenthTriplet: return "sixteenthTriplet";
+        }
+        return "quarter";
+    }
+
+    bool agitationTempoDivisionFromString (const juce::String& s, Agitation::TempoDivision& out)
+    {
+        if (s == "whole")            { out = Agitation::TempoDivision::Whole;            return true; }
+        if (s == "half")             { out = Agitation::TempoDivision::Half;             return true; }
+        if (s == "quarter")          { out = Agitation::TempoDivision::Quarter;          return true; }
+        if (s == "eighth")           { out = Agitation::TempoDivision::Eighth;           return true; }
+        if (s == "sixteenth")        { out = Agitation::TempoDivision::Sixteenth;        return true; }
+        if (s == "quarterTriplet")   { out = Agitation::TempoDivision::QuarterTriplet;   return true; }
+        if (s == "eighthTriplet")    { out = Agitation::TempoDivision::EighthTriplet;    return true; }
+        if (s == "sixteenthTriplet") { out = Agitation::TempoDivision::SixteenthTriplet; return true; }
+        return false;
+    }
+
+    // One array entry per parameter id that has ANY Agitation entry at
+    // all (enabled or not) -- same "touching it is enough to persist it"
+    // treatment AgitationEngine::settingsFor() itself already has; a
+    // disabled-but-configured entry (e.g. user set up Amount/Rate then
+    // unticked Enabled) still round-trips its own values rather than
+    // being silently discarded.
+    juce::var agitationEngineToVar (const AgitationEngine& engine)
+    {
+        juce::Array<juce::var> array;
+        for (auto& [id, settings] : engine.all())
+        {
+            auto* obj = new juce::DynamicObject();
+            obj->setProperty ("id", id);
+            obj->setProperty ("enabled", settings.enabled);
+            obj->setProperty ("reversionRate", (double) settings.reversionRate);
+            obj->setProperty ("amount", (double) settings.amount);
+            obj->setProperty ("smoothing", (double) settings.smoothing);
+            obj->setProperty ("tempoSynced", settings.tempoSynced);
+            obj->setProperty ("tempoDivision", agitationTempoDivisionToString (settings.tempoDivision));
+            array.add (juce::var (obj));
+        }
+        return juce::var (array);
+    }
+
+    // "agitation" is optional -- missing entirely (every preset saved
+    // before this field existed, or saved with agitationEngine ==
+    // nullptr) leaves `out` untouched if `clearFirst` is false, or
+    // cleared to empty if true -- see loadFromVar()'s own call site for
+    // which one it needs and why.
+    juce::Result agitationEngineFromVar (const juce::var& agitationVar, AgitationEngine& out, bool clearFirst)
+    {
+        if (clearFirst)
+            out.clear();
+
+        if (agitationVar.isVoid())
+            return juce::Result::ok();
+
+        auto* array = agitationVar.getArray();
+        if (array == nullptr)
+            return juce::Result::fail ("'agitation' is not a JSON array.");
+
+        for (auto& element : *array)
+        {
+            if (! element.isObject())
+                return juce::Result::fail ("'agitation' contains an element that is not a JSON object.");
+            if (! element.hasProperty ("id"))
+                return juce::Result::fail ("'agitation' contains an entry without an 'id' field.");
+
+            const auto id = element.getProperty ("id", juce::var()).toString();
+            auto& settings = out.settingsFor (id);
+
+            if (element.hasProperty ("enabled"))
+                settings.enabled = (bool) element.getProperty ("enabled", settings.enabled);
+            settings.reversionRate = (float) element.getProperty ("reversionRate", (double) settings.reversionRate);
+            settings.amount        = (float) element.getProperty ("amount", (double) settings.amount);
+            settings.smoothing     = (float) element.getProperty ("smoothing", (double) settings.smoothing);
+            if (element.hasProperty ("tempoSynced"))
+                settings.tempoSynced = (bool) element.getProperty ("tempoSynced", settings.tempoSynced);
+            if (element.hasProperty ("tempoDivision"))
+            {
+                const auto s = element.getProperty ("tempoDivision", juce::var()).toString();
+                if (! agitationTempoDivisionFromString (s, settings.tempoDivision))
+                    return juce::Result::fail ("'agitation' entry '" + id + "': unknown tempoDivision '" + s + "'.");
+            }
+        }
+
+        return juce::Result::ok();
+    }
 }
 
 juce::var PresetManager::migrateSchemaV1toV2 (const juce::var& v1Root)
@@ -857,12 +977,14 @@ juce::var PresetManager::migrateSchemaV1toV2 (const juce::var& v1Root)
     return juce::var (migrated);
 }
 
-juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::String& name)
+juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::String& name, const AgitationEngine* agitationEngine)
 {
     auto* root = new juce::DynamicObject();
     root->setProperty ("schemaVersion", currentSchemaVersion);
     root->setProperty ("name", name);
     root->setProperty ("scene", sceneSettingsToVar (engine.getSceneSettings()));
+    if (agitationEngine != nullptr)
+        root->setProperty ("agitation", agitationEngineToVar (*agitationEngine));
 
     juce::Array<juce::var> objectsArray;
     for (int i = 0; i < engine.getNumObjects(); ++i)
@@ -934,7 +1056,7 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
     return juce::var (root);
 }
 
-juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, TrajectoryEngine& engine)
+juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, TrajectoryEngine& engine, AgitationEngine* agitationEngine)
 {
     if (! originalRoot.isObject())
         return juce::Result::fail ("Preset is not a valid JSON object.");
@@ -1088,10 +1210,27 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         obj.manualVelocity = {};
     }
 
+    // agitationEngine == nullptr: caller doesn't want agitation touched
+    // at all (e.g. a test that only cares about the scene) -- leave it
+    // untouched, same as any other field this function doesn't know
+    // about. Non-null: REPLACE its entire contents, same "a preset
+    // describes a complete configuration" policy as the scene objects
+    // above -- clearFirst == true even when the preset has no
+    // "agitation" block at all, so loading an older/agitation-less
+    // preset on top of a scene that currently has Agitation configured
+    // actually clears it, rather than leaving stale entries behind.
+    if (agitationEngine != nullptr)
+    {
+        if (auto result = agitationEngineFromVar (root.getProperty ("agitation", juce::var()), *agitationEngine, true);
+            result.failed())
+            return result;
+    }
+
     return juce::Result::ok();
 }
 
-juce::Result PresetManager::loadFile (const juce::File& file, TrajectoryEngine& engine, juce::String* outName)
+juce::Result PresetManager::loadFile (const juce::File& file, TrajectoryEngine& engine, juce::String* outName,
+                                        AgitationEngine* agitationEngine)
 {
     if (! file.existsAsFile())
         return juce::Result::fail ("File not found: " + file.getFullPathName());
@@ -1100,16 +1239,17 @@ juce::Result PresetManager::loadFile (const juce::File& file, TrajectoryEngine& 
     if (parsed.isVoid())
         return juce::Result::fail ("File does not contain valid JSON: " + file.getFullPathName());
 
-    auto result = loadFromVar (parsed, engine);
+    auto result = loadFromVar (parsed, engine, agitationEngine);
     if (result.wasOk() && outName != nullptr)
         *outName = parsed.getProperty ("name", file.getFileNameWithoutExtension()).toString();
 
     return result;
 }
 
-juce::Result PresetManager::saveFile (const juce::File& file, TrajectoryEngine& engine, const juce::String& name)
+juce::Result PresetManager::saveFile (const juce::File& file, TrajectoryEngine& engine, const juce::String& name,
+                                        const AgitationEngine* agitationEngine)
 {
-    auto sceneVar = sceneToVar (engine, name);
+    auto sceneVar = sceneToVar (engine, name, agitationEngine);
     auto jsonText = juce::JSON::toString (sceneVar);
 
     if (! file.getParentDirectory().createDirectory())

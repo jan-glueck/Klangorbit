@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_core/juce_core.h>
 #include "TrajectoryEngine.h"
+#include "AgitationEngine.h"
 
 /**
     Reads/writes scenes in the preset JSON format, see
@@ -28,7 +29,16 @@ namespace PresetManager
 
     // Builds a var object from the current scene state (current schemaVersion).
     // Inactive objects (inputChannel < 0) are not saved.
-    juce::var sceneToVar (TrajectoryEngine& engine, const juce::String& name);
+    //
+    // agitationEngine: optional (feature/agitation-and-snapshots, Branch 5)
+    // -- when non-null, also writes a top-level "agitation" block (one
+    // entry per ParameterRegistry parameter id that currently has any
+    // Agitation configuration, see agitationEngineToVar() in
+    // PresetManager.cpp). nullptr (the default) omits that block
+    // entirely, identical to every call site from before this parameter
+    // existed -- AgitationEngine lives on KlangorbitProcessor, not
+    // TrajectoryEngine, so it can't be reached through `engine` alone.
+    juce::var sceneToVar (TrajectoryEngine& engine, const juce::String& name, const AgitationEngine* agitationEngine = nullptr);
 
     // Returns a schemaVersion-2 var equivalent to the given schemaVersion-1
     // one. All v2 additions are optional/additive, so this only needs to
@@ -40,9 +50,21 @@ namespace PresetManager
     // Applies a parsed preset var to the engine (replaces the scene).
     // Accepts schemaVersion oldestSupportedSchemaVersion..currentSchemaVersion,
     // migrating older ones internally first.
-    juce::Result loadFromVar (const juce::var& root, TrajectoryEngine& engine);
+    //
+    // agitationEngine: optional, same reasoning as sceneToVar() above --
+    // when non-null, REPLACES its entire contents from the preset's
+    // "agitation" block (clear() first, same "a preset describes a
+    // complete configuration, not a diff" policy this whole function
+    // already applies to the scene itself), or clears it to empty if the
+    // preset has no such block at all (e.g. one saved before this field
+    // existed, or with agitationEngine passed as nullptr when it was
+    // saved). nullptr here (the default) leaves agitation untouched,
+    // same as every call site from before this parameter existed.
+    juce::Result loadFromVar (const juce::var& root, TrajectoryEngine& engine, AgitationEngine* agitationEngine = nullptr);
 
     // outName is set to the preset's "name" field on success (fallback: file name).
-    juce::Result loadFile (const juce::File& file, TrajectoryEngine& engine, juce::String* outName = nullptr);
-    juce::Result saveFile (const juce::File& file, TrajectoryEngine& engine, const juce::String& name);
+    juce::Result loadFile (const juce::File& file, TrajectoryEngine& engine, juce::String* outName = nullptr,
+                             AgitationEngine* agitationEngine = nullptr);
+    juce::Result saveFile (const juce::File& file, TrajectoryEngine& engine, const juce::String& name,
+                             const AgitationEngine* agitationEngine = nullptr);
 }

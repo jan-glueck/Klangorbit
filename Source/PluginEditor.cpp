@@ -933,7 +933,8 @@ void KlangorbitEditor::loadPresetClicked()
                 return;
 
             juce::String loadedName;
-            const auto result = PresetManager::loadFile (file, audioProcessor.getTrajectoryEngine(), &loadedName);
+            const auto result = PresetManager::loadFile (file, audioProcessor.getTrajectoryEngine(), &loadedName,
+                                                           &audioProcessor.getAgitationEngine());
 
             if (result.failed())
             {
@@ -979,7 +980,8 @@ void KlangorbitEditor::savePresetClicked()
                 file = file.withFileExtension ("json");
 
             const auto name = file.getFileNameWithoutExtension();
-            const auto result = PresetManager::saveFile (file, audioProcessor.getTrajectoryEngine(), name);
+            const auto result = PresetManager::saveFile (file, audioProcessor.getTrajectoryEngine(), name,
+                                                           &audioProcessor.getAgitationEngine());
 
             if (result.failed())
             {

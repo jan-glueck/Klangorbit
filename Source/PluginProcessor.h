@@ -11,6 +11,7 @@
 #include "PropagationProcessor.h"
 #include "GrainCloud.h"
 #include "ParameterRegistry.h"
+#include "AgitationEngine.h"
 #include "AutomationParameterBridge.h"
 #include "CanonicalInput.h"
 #include "GamepadDriver.h"
@@ -208,6 +209,16 @@ public:
     // outside this class registers into it.
     const ParameterRegistry& getParameterRegistry() const { return parameterRegistry; }
 
+    // --- Agitation (feature/agitation-and-snapshots, Branch 5) ------------
+    // Per-parameter modulation configuration, keyed by ParameterRegistry
+    // id -- see AgitationEngine.h/Agitation.h. Non-const: UI code writes
+    // directly through settingsFor()'s returned reference (same "plain
+    // struct field binding" idiom every other panel row already uses).
+    // Actually advanced once per control-rate tick in timerCallback(),
+    // same cadence as trajectoryEngine.update()/GrainCloud::update().
+    AgitationEngine& getAgitationEngine() { return agitationEngine; }
+    const AgitationEngine& getAgitationEngine() const { return agitationEngine; }
+
     // Processor-owned source of truth for "which object is currently
     // selected" -- moved here (rather than staying purely GUI/editor
     // state, which is where it lived before this registry existed) so
@@ -366,6 +377,19 @@ private:
     void registerGrainIntParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
                                  int GrainCloudSettings::* member, float minValue, float maxValue);
 
+    // Same SpecificObject+SelectedObject pair as the Grain helpers above,
+    // for DelayInstanceSettings -- registers under category "Delay",
+    // closing the gap that category never had any parameters at all
+    // before Branch 5 (needed so Agitation/Snapshots can target Delay's
+    // own fields, not just Grain Cloud's).
+    void registerDelayFloatParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                    float DelayInstanceSettings::* member, float minValue, float maxValue,
+                                    ParameterRegistry::Polarity polarity = ParameterRegistry::Polarity::Unipolar);
+    void registerDelayBoolParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                   bool DelayInstanceSettings::* member);
+    void registerDelayIntParam (const juce::String& key, const juce::String& displayName, const juce::String& category,
+                                  int DelayInstanceSettings::* member, float minValue, float maxValue);
+
     // Scene parameters are Scope::Global -- there is exactly one
     // SceneSettings, registered once, no per-object/selected-object
     // variants.
@@ -462,6 +486,24 @@ private:
     // synchronization concern as a result.
     ParameterRegistry parameterRegistry;
     int selectedObjectIndex = -1;
+
+    // See getAgitationEngine() above. agitationRng is this engine's own
+    // shared randomization source (one stream for every agitated
+    // parameter, see AgitationEngine::advanceAll()'s own comment);
+    // lastAppliedAgitationSeed/agitationSeedInitialized mirror GrainCloud
+    // ::lastAppliedSeed/seedInitialized's own resync-on-change pattern
+    // exactly (see resyncAgitationSeedIfChanged()).
+    AgitationEngine agitationEngine;
+    SeededRandom agitationRng;
+    juce::int64 lastAppliedAgitationSeed = 0;
+    bool agitationSeedInitialized = false;
+    void resyncAgitationSeedIfChanged();
+
+    // Host playhead tempo when available (juce::AudioPlayHead::
+    // PositionInfo::getBpm()), else SceneSettings::standaloneTempoBpm --
+    // see that field's own comment. Called once per timerCallback() tick,
+    // just before agitationEngine.advanceAll().
+    double resolveAgitationBpm() const;
 
     // See getCanonicalInputHub() above. CanonicalInputHub is internally
     // locked and safe to post to/listen on from any thread, so this

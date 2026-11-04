@@ -346,6 +346,13 @@ void KlangorbitProcessor::timerCallback()
 
         trajectoryEngine.getDelayInstance (i).update (dt, obj.position, getSampleRate());
     }
+
+    // Agitation: control-rate update, same loop/rate as everything above.
+    // Runs through parameterRegistry's own generic getValue()/setValue()
+    // for whichever parameters currently have it enabled -- see
+    // AgitationEngine::advanceAll()'s own comment.
+    resyncAgitationSeedIfChanged();
+    agitationEngine.advanceAll (parameterRegistry, (float) dt, resolveAgitationBpm(), agitationRng);
 }
 
 void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -1599,6 +1606,98 @@ void KlangorbitProcessor::registerGrainIntParam (const juce::String& key, const 
     });
 }
 
+void KlangorbitProcessor::registerDelayFloatParam (const juce::String& key, const juce::String& displayName,
+                                                     const juce::String& category, float DelayInstanceSettings::* member,
+                                                     float minValue, float maxValue, ParameterRegistry::Polarity polarity)
+{
+    for (int i = 0; i < trajectoryEngine.getNumDelayInstances(); ++i)
+    {
+        parameterRegistry.registerParameter ({
+            "object." + juce::String (i) + ".delay." + key, displayName, category, minValue, maxValue, polarity,
+            ParameterRegistry::Scope::SpecificObject, i,
+            [this, member, i] { return trajectoryEngine.getDelayInstance (i).getSettings().*member; },
+            [this, member, i] (float v) { trajectoryEngine.getDelayInstance (i).getSettings().*member = v; }
+        });
+    }
+
+    parameterRegistry.registerParameter ({
+        "selectedObject.delay." + key, displayName, category, minValue, maxValue, polarity,
+        ParameterRegistry::Scope::SelectedObject, -1,
+        [this, member]
+        {
+            const int idx = selectedObjectIndex;
+            return (idx >= 0 && idx < trajectoryEngine.getNumDelayInstances()) ? trajectoryEngine.getDelayInstance (idx).getSettings().*member : 0.0f;
+        },
+        [this, member] (float v)
+        {
+            const int idx = selectedObjectIndex;
+            if (idx >= 0 && idx < trajectoryEngine.getNumDelayInstances())
+                trajectoryEngine.getDelayInstance (idx).getSettings().*member = v;
+        }
+    });
+}
+
+void KlangorbitProcessor::registerDelayBoolParam (const juce::String& key, const juce::String& displayName,
+                                                    const juce::String& category, bool DelayInstanceSettings::* member)
+{
+    for (int i = 0; i < trajectoryEngine.getNumDelayInstances(); ++i)
+    {
+        parameterRegistry.registerParameter ({
+            "object." + juce::String (i) + ".delay." + key, displayName, category, 0.0f, 1.0f, ParameterRegistry::Polarity::Unipolar,
+            ParameterRegistry::Scope::SpecificObject, i,
+            [this, member, i] { return trajectoryEngine.getDelayInstance (i).getSettings().*member ? 1.0f : 0.0f; },
+            [this, member, i] (float v) { trajectoryEngine.getDelayInstance (i).getSettings().*member = (v >= 0.5f); }
+        });
+    }
+
+    parameterRegistry.registerParameter ({
+        "selectedObject.delay." + key, displayName, category, 0.0f, 1.0f, ParameterRegistry::Polarity::Unipolar,
+        ParameterRegistry::Scope::SelectedObject, -1,
+        [this, member]
+        {
+            const int idx = selectedObjectIndex;
+            return (idx >= 0 && idx < trajectoryEngine.getNumDelayInstances()) ? (trajectoryEngine.getDelayInstance (idx).getSettings().*member ? 1.0f : 0.0f) : 0.0f;
+        },
+        [this, member] (float v)
+        {
+            const int idx = selectedObjectIndex;
+            if (idx >= 0 && idx < trajectoryEngine.getNumDelayInstances())
+                trajectoryEngine.getDelayInstance (idx).getSettings().*member = (v >= 0.5f);
+        }
+    });
+}
+
+void KlangorbitProcessor::registerDelayIntParam (const juce::String& key, const juce::String& displayName,
+                                                   const juce::String& category, int DelayInstanceSettings::* member,
+                                                   float minValue, float maxValue)
+{
+    for (int i = 0; i < trajectoryEngine.getNumDelayInstances(); ++i)
+    {
+        parameterRegistry.registerParameter ({
+            "object." + juce::String (i) + ".delay." + key, displayName, category, minValue, maxValue, ParameterRegistry::Polarity::Unipolar,
+            ParameterRegistry::Scope::SpecificObject, i,
+            [this, member, i] { return (float) (trajectoryEngine.getDelayInstance (i).getSettings().*member); },
+            [this, member, i] (float v) { trajectoryEngine.getDelayInstance (i).getSettings().*member = (int) std::round (v); }
+        });
+    }
+
+    parameterRegistry.registerParameter ({
+        "selectedObject.delay." + key, displayName, category, minValue, maxValue, ParameterRegistry::Polarity::Unipolar,
+        ParameterRegistry::Scope::SelectedObject, -1,
+        [this, member]
+        {
+            const int idx = selectedObjectIndex;
+            return (idx >= 0 && idx < trajectoryEngine.getNumDelayInstances()) ? (float) (trajectoryEngine.getDelayInstance (idx).getSettings().*member) : 0.0f;
+        },
+        [this, member] (float v)
+        {
+            const int idx = selectedObjectIndex;
+            if (idx >= 0 && idx < trajectoryEngine.getNumDelayInstances())
+                trajectoryEngine.getDelayInstance (idx).getSettings().*member = (int) std::round (v);
+        }
+    });
+}
+
 void KlangorbitProcessor::registerSceneFloatParam (const juce::String& key, const juce::String& displayName,
                                                      const juce::String& category, float SceneSettings::* member,
                                                      float minValue, float maxValue, ParameterRegistry::Polarity polarity)
@@ -1737,6 +1836,21 @@ void KlangorbitProcessor::buildParameterRegistry()
     registerGrainFloatParam ("orbitAngularSpeed", "Orbit Angular Speed", "Grain Cloud", &GrainCloudSettings::orbitAngularSpeed, -10.0f, 10.0f, ParameterRegistry::Polarity::Bipolar);
     registerGrainFloatParam ("orbitSphereSpread", "Orbit Sphere Spread", "Grain Cloud", &GrainCloudSettings::orbitSphereSpread, 0.0f, 1.0f);
     registerGrainFloatParam ("attractionStrength", "Attraction Strength", "Grain Cloud", &GrainCloudSettings::attractionStrength, -10.0f, 10.0f, ParameterRegistry::Polarity::Bipolar);
+
+    // --- Delay (feature/delay-instance) ------------------------------------
+    // Previously missing entirely -- added for Branch 5 (feature/agitation-
+    // and-snapshots), whose own spec uses "only Grain Cloud, only Delay" as
+    // its example of a Snapshot scope selectable by category; that example
+    // only makes sense once Delay actually has parameters registered here.
+    registerDelayBoolParam ("enabled", "Enabled", "Delay", &DelayInstanceSettings::enabled);
+    registerDelayIntParam ("numTaps", "Number of Taps", "Delay", &DelayInstanceSettings::numTaps, 1.0f, (float) DelayLimits::maxTaps);
+    registerDelayFloatParam ("delayTime", "Delay Time", "Delay", &DelayInstanceSettings::delayTime, 0.01f, DelayLimits::maxDelayTimeSeconds);
+    registerDelayFloatParam ("delayTimeJitter", "Delay Time Jitter", "Delay", &DelayInstanceSettings::delayTimeJitter, 0.0f, 1.0f);
+    registerDelayFloatParam ("feedback", "Feedback", "Delay", &DelayInstanceSettings::feedback, 0.0f, DelayLimits::maxFeedback);
+    registerDelayFloatParam ("feedbackDamping", "Feedback Damping", "Delay", &DelayInstanceSettings::feedbackDamping, 0.0f, 1.0f);
+    registerDelayFloatParam ("tapSpreadRadius", "Tap Spread Radius", "Delay", &DelayInstanceSettings::tapSpreadRadius, 0.0f, DelayLimits::maxTapSpreadRadius);
+    registerDelayFloatParam ("tapOrbitAngularSpeed", "Tap Orbit Angular Speed", "Delay", &DelayInstanceSettings::tapOrbitAngularSpeed,
+                               -DelayLimits::maxTapOrbitAngularSpeed, DelayLimits::maxTapOrbitAngularSpeed, ParameterRegistry::Polarity::Bipolar);
 }
 
 void KlangorbitProcessor::buildAutomationParameters()
@@ -1750,6 +1864,40 @@ void KlangorbitProcessor::buildAutomationParameters()
     // AudioProcessor.
     for (auto& group : buildAutomationParameterGroups (parameterRegistry.all()))
         addParameterGroup (std::move (group));
+}
+
+// --- Agitation (feature/agitation-and-snapshots, Branch 5) -----------------
+
+void KlangorbitProcessor::resyncAgitationSeedIfChanged()
+{
+    // Same "resync once, the first tick after the change, not every
+    // tick" reasoning as GrainCloud::resyncSeedIfChanged() -- covers
+    // both a preset load writing a specific seed directly into
+    // SceneSettings and a future "New Seed" UI control doing the same.
+    const auto seed = trajectoryEngine.getSceneSettings().agitationSeed;
+    if (! agitationSeedInitialized || seed != lastAppliedAgitationSeed)
+    {
+        agitationRng.setSeed (seed);
+        lastAppliedAgitationSeed = seed;
+        agitationSeedInitialized = true;
+    }
+}
+
+double KlangorbitProcessor::resolveAgitationBpm() const
+{
+    if (auto* playHead = getPlayHead())
+    {
+        if (const auto position = playHead->getPosition())
+        {
+            if (const auto bpm = position->getBpm())
+                return *bpm;
+        }
+    }
+
+    // No host tempo available (e.g. the Standalone build, which has no
+    // host transport at all) -- fall back to the scene's own tempo
+    // reference. See SceneSettings::standaloneTempoBpm's own comment.
+    return (double) trajectoryEngine.getSceneSettings().standaloneTempoBpm;
 }
 
 juce::AudioProcessorEditor* KlangorbitProcessor::createEditor()
@@ -1778,7 +1926,7 @@ void KlangorbitProcessor::getStateInformation (juce::MemoryBlock& destData)
     // actually executes on the message thread.
     const auto json = juce::MessageManager::callSync ([this]
     {
-        return juce::JSON::toString (PresetManager::sceneToVar (trajectoryEngine, juce::String()));
+        return juce::JSON::toString (PresetManager::sceneToVar (trajectoryEngine, juce::String(), &agitationEngine));
     });
 
     if (json.has_value())
@@ -1800,7 +1948,7 @@ void KlangorbitProcessor::setStateInformation (const void* data, int sizeInBytes
     const auto parsed = juce::JSON::parse (juce::String::fromUTF8 (static_cast<const char*> (data), sizeInBytes));
     juce::MessageManager::callSync ([this, parsed]
     {
-        PresetManager::loadFromVar (parsed, trajectoryEngine);
+        PresetManager::loadFromVar (parsed, trajectoryEngine, &agitationEngine);
     });
 }
 

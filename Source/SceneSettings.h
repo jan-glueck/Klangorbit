@@ -1,4 +1,5 @@
 #pragma once
+#include <juce_core/juce_core.h>
 #include "Vec3.h"
 
 /**
@@ -63,4 +64,24 @@ struct SceneSettings
     // carried by the medium) and also a distinctly non-standard creative
     // tool -- see PropagationProcessor.
     Vec3 windVector { 0.0f, 0.0f, 0.0f };
+
+    // BPM, used ONLY as the tempo reference for Agitation's optional
+    // tempo-sync (Source/Agitation.h, feature/agitation-and-snapshots)
+    // when the host doesn't report one -- e.g. the Standalone build,
+    // which has no host transport at all. Whenever a real host DOES
+    // report a tempo (juce::AudioPlayHead::PositionInfo::getBpm()),
+    // KlangorbitProcessor uses that instead and this field is ignored;
+    // see KlangorbitProcessor::resolveAgitationBpm(). Not a transport --
+    // no play/stop state, no bar/beat position, just a bare tempo
+    // number (see Branch 5's own scoping: Agitation needs a rate
+    // reference, nothing else).
+    float standaloneTempoBpm = 120.0f;
+
+    // Seeds AgitationEngine's own shared RNG (Source/AgitationEngine.h) --
+    // same string-persisted-seed treatment as GrainCloudSettings::seed/
+    // DelayInstanceSettings::seed, for exact reproducibility on reload.
+    // One shared seed for every agitated parameter (not one per
+    // parameter) -- see AgitationEngine::advanceAll()'s own comment on
+    // why a single shared stream is the right granularity here.
+    juce::int64 agitationSeed = 0;
 };

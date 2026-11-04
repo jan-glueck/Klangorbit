@@ -329,6 +329,63 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   baseline capture, tempo-sync math including the triplet/invalid-bpm
   cases, `operator==`/`!=`). Full project rebuild + entire test suite
   green, Standalone app launches/quits cleanly.
+- **Agitation, Stage 2: `ParameterRegistry` wiring + persistence**
+  (`Source/AgitationEngine.h`, `feature/agitation-and-snapshots`,
+  Branch 5) -- closes the gap Stage 1 deliberately left open (the
+  engine on its own, not attached to anything). First, a prerequisite
+  fix: `ParameterRegistry` never had a "Delay" category at all --
+  `DelayInstanceSettings` wasn't registered anywhere, which would have
+  silently contradicted the spec's own example of a Snapshot scope
+  ("nur Grain-Cloud, nur Delay"). Added `registerDelayFloatParam`/
+  `-BoolParam`/`-IntParam` (`KlangorbitProcessor`, mirroring
+  `registerGrainFloatParam` et al. exactly) and registered every
+  `DelayInstanceSettings` field ParameterPanel already exposes.
+  `AgitationEngine` then owns one `Agitation::Settings`/`State` pair
+  per registered parameter id (lazily created, see `settingsFor()`),
+  and drives every currently-enabled one with a single `advanceAll()`
+  call per control-rate tick, reading/writing exclusively through
+  `ParameterRegistry::Descriptor`'s own generic `getValue()`/
+  `setValue()` -- the one shared call site Stage 1's design was built
+  for, so no per-parameter-type integration code was needed at all. A
+  parameter's `enabled` transitioning false -> true (UI, a preset
+  load, or later a Snapshot recall) is detected inside `advanceAll()`
+  itself, which calls `Agitation::start()` to capture a fresh baseline
+  automatically -- callers only ever flip a bool. Tempo resolution
+  (`KlangorbitProcessor::resolveAgitationBpm()`): the host's own tempo
+  via `juce::AudioPlayHead::PositionInfo::getBpm()` when available,
+  else a new `SceneSettings::standaloneTempoBpm` field (120 BPM
+  default) -- covers the Standalone build, which has no host transport
+  at all, without needing to special-case it by build type. A new
+  `SceneSettings::agitationSeed` seeds `AgitationEngine`'s own shared
+  RNG (one stream for every agitated parameter, not one per parameter
+  -- there's no natural "independent voice" unit here the way
+  GrainCloud/DelayInstance have), same string-persisted-seed treatment
+  as every other seed in this project.
+  Persistence: `PresetManager::sceneToVar()`/`loadFromVar()`/
+  `loadFile()`/`saveFile()` all gained an optional `AgitationEngine*`
+  parameter (default `nullptr`, so every pre-existing call site
+  compiles and behaves identically unchanged) writing/reading a new
+  top-level `"agitation"` array (one entry per configured parameter
+  id) -- wired for real in `KlangorbitProcessor::getStateInformation()`/
+  `setStateInformation()` and the editor's actual Save/Load Preset
+  commands. Loading REPLACES `AgitationEngine`'s entire contents (same
+  "a preset is a complete configuration, not a diff" policy the rest
+  of this function already has), including clearing it when the
+  loaded preset has no `"agitation"` block at all. No schemaVersion
+  bump (every field here is optional/additive). No UI yet for any of
+  this -- still purely backend, by design (see this stage's own
+  implementation notes: with ~90 registered parameters, how Agitation
+  should actually be exposed in `ParameterPanel` is a real design
+  question of its own, deliberately not decided silently here).
+  Verified via new `Tools/verify_agitation_engine.cpp` (13 cases:
+  lazy creation, `remove()`/`clear()`, disabled/unknown-id no-ops,
+  bounded modulation, baseline capture on the enable transition
+  including re-capture after a disable/re-enable cycle, multi-entry
+  independence) and `Tools/verify_agitation_preset.cpp` (19 cases:
+  full round-trip including a disabled-but-configured entry and
+  `tempoDivision`, both `nullptr` directions, replace-not-merge across
+  two successive loads). Full project rebuild + entire 28-binary test
+  suite green, Standalone app launches/quits cleanly.
 
 ## [0.2.0] - 2026-09-17
 ### Added

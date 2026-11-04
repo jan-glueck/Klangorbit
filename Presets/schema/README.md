@@ -58,8 +58,39 @@ defaults for everything new.
     "temperature": 20.0,              // Celsius, only feeds the air-absorption model, not speedOfSound
     "relativeHumidity": 50.0,         // percent, 0..100
     "atmosphericPressure": 101.325,   // kPa, minor effect in the simplified absorption model
-    "windVector": [0.0, 0.0, 0.0]     // m/s, shifts the effective speed of sound directionally
+    "windVector": [0.0, 0.0, 0.0],    // m/s, shifts the effective speed of sound directionally
+
+    // Agitation (feature/agitation-and-snapshots) -- tempo reference used
+    // ONLY for tempo-synced Agitation modifiers (see "agitation" below)
+    // when the host doesn't report a tempo (e.g. the Standalone build,
+    // which has no host transport at all); ignored whenever a real host
+    // tempo is available. String, not a JSON number -- same 64-bit-exact-
+    // round-trip reasoning as grainCloud's own "seed" field.
+    "standaloneTempoBpm": 120.0,
+    "agitationSeed": "0"
   },
+
+  // Optional -- missing entirely (every preset saved before
+  // feature/agitation-and-snapshots existed, or saved by a caller that
+  // passed no AgitationEngine at all) is the same as an empty array, and
+  // LOADING replaces the entire set (same "a preset is a complete
+  // configuration, not a diff" policy as "objects" below) -- an absent
+  // "agitation" key clears any previously-configured entries rather than
+  // leaving them untouched. One entry per ParameterRegistry parameter id
+  // (see Source/ParameterRegistry.h, e.g. "object.0.mass",
+  // "selectedObject.grain.grainRate", "scene.roomSize") that has ANY
+  // Agitation configuration at all, enabled or not.
+  "agitation": [
+    {
+      "id": "object.0.mass",
+      "enabled": true,
+      "reversionRate": 1.0,            // 1/s ("Rate"), ignored while tempoSynced is true
+      "amount": 0.0,                   // in the target parameter's own units ("Amount"), 0 = disabled
+      "smoothing": 0.2,                // seconds ("Glaettung")
+      "tempoSynced": false,
+      "tempoDivision": "quarter"       // whole | half | quarter | eighth | sixteenth | quarterTriplet | eighthTriplet | sixteenthTriplet
+    }
+  ],
 
   "objects": [
     {

@@ -504,6 +504,40 @@ target_link_libraries(verify_delay_instance_preset
         juce::juce_recommended_warning_flags
 )
 
+# --- Agitation preset round-trip verification (feature/agitation-and------
+# snapshots, Branch 5, Stage 2) -- round-trips AgitationEngine through the
+# REAL PresetManager save/load path (both overloads' optional
+# agitationEngine parameter), including the nullptr-on-save/nullptr-on-load
+# and replace-not-merge cases. Same sources as verify_delay_instance_preset
+# above, plus ParameterRegistry.cpp (AgitationEngine.h references
+# ParameterRegistry::Descriptor).
+juce_add_console_app(verify_agitation_preset
+    PRODUCT_NAME "verify_agitation_preset"
+)
+
+target_sources(verify_agitation_preset
+    PRIVATE
+        Tools/verify_agitation_preset.cpp
+        Source/PresetManager.cpp
+        Source/GrainCloud.cpp
+        Source/TrajectoryEngine.cpp
+        Source/DelayInstance.cpp
+        Source/ParameterRegistry.cpp
+)
+
+target_compile_definitions(verify_agitation_preset
+    PRIVATE
+        SAPOC_MAX_LIVE_INPUTS=${SAPOC_MAX_LIVE_INPUTS}
+)
+
+target_link_libraries(verify_agitation_preset
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- Grain filter preset round-trip verification ---------------------------
 # Round-trips GrainCloudSettings::filter (VoiceFilterSettings) through the
 # REAL PresetManager save/load path (sceneToVar()/loadFromVar()), including
@@ -708,6 +742,28 @@ target_sources(verify_parameter_registry
 )
 
 target_link_libraries(verify_parameter_registry
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Agitation engine wiring verification (feature/agitation-and-----------
+# snapshots, Branch 5, Stage 2) -- AgitationEngine against small, hand-built
+# ParameterRegistry descriptors, same minimal approach as
+# verify_parameter_registry above (no PluginProcessor needed).
+juce_add_console_app(verify_agitation_engine
+    PRODUCT_NAME "verify_agitation_engine"
+)
+
+target_sources(verify_agitation_engine
+    PRIVATE
+        Tools/verify_agitation_engine.cpp
+        Source/ParameterRegistry.cpp
+)
+
+target_link_libraries(verify_agitation_engine
     PRIVATE
         juce::juce_core
     PUBLIC

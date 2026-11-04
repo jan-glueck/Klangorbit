@@ -251,7 +251,9 @@ void ModifierRowComponent::resized()
     auto header = b.removeFromTop (headerHeight);
 
     indexLabel.setBounds (header.removeFromLeft (24));
-    enabledToggle.setBounds (header.removeFromLeft (28));
+    enabledToggle.setBounds (header.removeFromLeft (32));
+    header.removeFromLeft (UiSpacing::xs); // gap before typeCombo -- missing before, so the combo's
+                                             // own bounds started flush against the toggle's
     removeButton.setBounds (header.removeFromRight (64));
     header.removeFromRight (UiSpacing::xs);
     downButton.setBounds (header.removeFromRight (48));

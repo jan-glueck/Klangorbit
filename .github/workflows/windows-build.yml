@@ -72,6 +72,7 @@ jobs:
           verify_mapping_engine
           verify_axis_shaping
           verify_ambisonics_decoder
+          verify_input_routing
           verify_midi_driver
           verify_osc_driver
           verify_gamepad_driver
@@ -92,7 +93,7 @@ jobs:
           for t in verify_propagation verify_randomization verify_voice_filter verify_agitation verify_modifier_stack verify_delay_instance verify_delay_instance_preset verify_agitation_preset verify_modifier_stack_preset verify_grain_filter_preset verify_grain_generation_mode_preset verify_grain_cloud verify_orbit verify_camera \
                    verify_mute_solo verify_vbap verify_parameter_registry verify_agitation_engine verify_snapshot_manager verify_snapshot_morph_engine \
                    verify_automation_parameters verify_canonical_input \
-                   verify_mapping_engine verify_axis_shaping verify_ambisonics_decoder \
+                   verify_mapping_engine verify_axis_shaping verify_ambisonics_decoder verify_input_routing \
                    verify_midi_driver verify_osc_driver verify_gamepad_driver \
                    verify_binaural_decoder; do
             echo "--- $t ---"

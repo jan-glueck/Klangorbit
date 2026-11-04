@@ -96,6 +96,18 @@ defaults for everything new.
     {
       "id": 0,                        // required, 0-based
       "inputChannel": 0,
+
+      // Optional (feature/input-routing-matrix) -- which live input
+      // channel(s) this object's live signal actually sums, via the
+      // toolbar's Settings -> Audio Routing matrix. Missing entirely
+      // (every preset saved before this field existed, or an object
+      // whose routing was never touched) means "just inputChannel
+      // above" -- the original 1:1 default. Once present, it's
+      // authoritative and completely replaces the single-channel
+      // default (an object can move off its own identity channel
+      // entirely, or sum several channels at once).
+      "routedInputChannels": [0, 3],
+
       "position": [1.0, 0.0, 0.0],    // required, x=front, y=left, z=up, meters
       "mode": "orbit",                // required, static | manual | orbit | impulse ("attracted" still accepted on read, maps to impulse -- identical physics, merged)
       "momentumEnabled": true,        // if false, releasing a mouse drag on this object always leaves it exactly where released (no throw), regardless of release speed

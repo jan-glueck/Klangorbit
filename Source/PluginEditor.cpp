@@ -255,8 +255,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     addAndMakeVisible (savePresetButton);
     addAndMakeVisible (presetStatusLabel);
     addAndMakeVisible (cpuLoadLabel);
-    addAndMakeVisible (mappingButton);
-    addAndMakeVisible (outputButton);
+    addAndMakeVisible (settingsButton);
     addAndMakeVisible (snapshotButton);
     addAndMakeVisible (helpButton);
     addAndMakeVisible (objectListPanel);
@@ -273,10 +272,8 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     savePresetButton.onClick = [this] { savePresetClicked(); };
     helpButton.onClick = [this] { showHelpClicked(); };
     helpButton.setTooltip ("Help -- every feature and parameter explained");
-    mappingButton.onClick = [this] { showMappingClicked(); };
-    mappingButton.setTooltip ("Controller mapping -- Learn mode, current bindings, mapping profiles");
-    outputButton.onClick = [this] { showOutputClicked(); };
-    outputButton.setTooltip ("Output format, bass management, circular array speaker count");
+    settingsButton.onClick = [this] { showSettingsMenuClicked(); };
+    settingsButton.setTooltip ("Mappings, output format, and audio input routing");
     snapshotButton.onClick = [this] { showSnapshotClicked(); };
     snapshotButton.setTooltip ("Snapshots -- capture/recall a whole parameter set, scoped by category");
 
@@ -812,17 +809,17 @@ void KlangorbitEditor::resized()
     auto bounds = getLocalBounds();
     auto toolbar = bounds.removeFromTop (toolbarHeight).reduced (UiSpacing::m, 0);
 
-    // Single row: Load/Save Preset on the left; CPU meter, Mappings...,
-    // Output..., "?" on the right (right-to-left: "?" in the far corner,
-    // Output/Mappings just left of it -- all three open their own
-    // OS-level window, see the class comment -- then the CPU meter).
+    // Single row: Load/Save Preset on the left; CPU meter, Snapshots...,
+    // Settings..., "?" on the right (right-to-left: "?" in the far
+    // corner, Settings/Snapshots just left of it -- Settings opens a
+    // popup menu to Mappings/Output/Audio Routing, each its own OS-level
+    // window, see the class comment -- then the CPU meter).
     // +/- Object and the object count moved to ObjectListPanel itself
     // (see its own class comment), which is what let this collapse from
     // two rows to one.
     helpButton.setBounds (toolbar.removeFromRight (32).reduced (UiSpacing::xs));
-    outputButton.setBounds (toolbar.removeFromRight (110).reduced (UiSpacing::xs));
     snapshotButton.setBounds (toolbar.removeFromRight (120).reduced (UiSpacing::xs));
-    mappingButton.setBounds (toolbar.removeFromRight (130).reduced (UiSpacing::xs));
+    settingsButton.setBounds (toolbar.removeFromRight (110).reduced (UiSpacing::xs));
     cpuLoadLabel.setBounds (toolbar.removeFromRight (110).reduced (UiSpacing::xs));
     loadPresetButton.setBounds (toolbar.removeFromLeft (140).reduced (UiSpacing::xs));
     toolbar.removeFromLeft (UiSpacing::s);
@@ -877,6 +874,15 @@ void KlangorbitEditor::showHelpClicked()
     juce::MessageManager::callAsync ([window] { if (window != nullptr) WindowUtils::forceToFront (*window); });
 }
 
+void KlangorbitEditor::showSettingsMenuClicked()
+{
+    juce::PopupMenu menu;
+    menu.addItem ("Mappings...", [this] { showMappingClicked(); });
+    menu.addItem ("Output...", [this] { showOutputClicked(); });
+    menu.addItem ("Audio Routing...", [this] { showRoutingClicked(); });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (settingsButton));
+}
+
 void KlangorbitEditor::showMappingClicked()
 {
     if (mappingWindow == nullptr)
@@ -912,6 +918,22 @@ void KlangorbitEditor::showOutputClicked()
     // Deferred second attempt -- see showMappingClicked()'s identical
     // comment for why, and why SafePointer rather than a raw pointer.
     juce::Component::SafePointer<OutputWindow> window (outputWindow.get());
+    juce::MessageManager::callAsync ([window] { if (window != nullptr) WindowUtils::forceToFront (*window); });
+}
+
+void KlangorbitEditor::showRoutingClicked()
+{
+    if (routingWindow == nullptr)
+    {
+        routingWindow = std::make_unique<RoutingWindow> (audioProcessor.getTrajectoryEngine()); // constructor already makes it visible
+        routingWindow->onClosed = [this] { bringEditorToFront(); };
+    }
+
+    routingWindow->refreshFromModel(); // pick up any object-activation change made elsewhere since it was last shown
+    WindowUtils::forceToFront (*routingWindow);
+    // Deferred second attempt -- see showMappingClicked()'s identical
+    // comment for why, and why SafePointer rather than a raw pointer.
+    juce::Component::SafePointer<RoutingWindow> window (routingWindow.get());
     juce::MessageManager::callAsync ([window] { if (window != nullptr) WindowUtils::forceToFront (*window); });
 }
 

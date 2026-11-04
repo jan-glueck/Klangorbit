@@ -7,6 +7,19 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Input routing matrix** -- each object's live-input signal is no
+  longer a fixed 1:1 mapping to its own channel. A new "Audio
+  Routing..." window (inputs x objects grid) lets any object sum one or
+  more input channels, or move off its own channel entirely.
+  `SoundObject::routedInputChannels` is optional and empty by default,
+  so an object nobody has routed behaves exactly as before. Resolution/
+  mixing logic lives in `Source/InputRouting.h`, verified via
+  `Tools/verify_input_routing.cpp`. Persisted optionally, no
+  schemaVersion bump.
+- **Settings menu** -- the toolbar's separate Mappings.../Output...
+  buttons are now one "Settings..." button with a popup menu
+  (Mappings.../Output.../Audio Routing...), keeping the toolbar from
+  growing a fourth button. Snapshots stays its own toolbar button.
 - **Shared randomization foundation** (`Source/RandomEngine.h`) --
   `SeededRandom` (an explicit, persistable-seed RNG wrapper),
   `RandomizedParam` (base/spread/distribution: Uniform, Normal, Ramp,
@@ -93,6 +106,15 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   morphed. `randomVariant()`/`randomizeEverything()` produce a
   Strength-scaled or fully randomized variant of a snapshot. Verified
   via `Tools/verify_snapshot_manager.cpp`/`verify_snapshot_morph_engine.cpp`.
+
+### Fixed
+- **Modifier row's Enabled toggle overlapped the type dropdown** in the
+  Delay/Grain modifier stack editor -- a missing gap between the two
+  controls.
+- **Grain's Delay-mutual-exclusion hint label was easy to miss** -- it
+  was registered far down the Grain category's layout instead of
+  immediately after its own Enabled toggle, unlike Delay's equivalent
+  hint.
 
 ## [0.2.0] - 2026-09-17
 ### Added

@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_core/juce_core.h>
+#include <vector>
 #include "Vec3.h"
 
 /**
@@ -22,6 +23,17 @@ struct SoundObject
     // Which live input channel (0-based) feeds this object.
     // -1 = no input assigned (object silent / just a placeholder).
     int inputChannel = -1;
+
+    // Input routing matrix (feature/input-routing-matrix) -- which live
+    // input channel(s) this object's live signal actually sums right
+    // now. Empty (the default) means "just inputChannel above" -- the
+    // original, fixed 1:1 behavior, so an object that's never had its
+    // routing touched behaves identically to before this field existed.
+    // Once non-empty, it's authoritative and COMPLETELY REPLACES the
+    // single-channel default (the matrix is free: an object can move
+    // off its own identity channel entirely, or sum several channels at
+    // once) -- see Source/InputRouting.h::resolveChannels().
+    std::vector<int> routedInputChannels;
 
     Vec3 position   { 1.0f, 0.0f, 0.0f }; // starting position: 1m in front
     Vec3 velocity   { 0.0f, 0.0f, 0.0f };

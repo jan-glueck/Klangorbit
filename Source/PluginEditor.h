@@ -9,6 +9,7 @@
 #include "HelpWindow.h"
 #include "MappingWindow.h"
 #include "OutputWindow.h"
+#include "RoutingWindow.h"
 #include "SnapshotWindow.h"
 #include <deque>
 #include <memory>
@@ -129,12 +130,14 @@ private:
     void savePresetClicked();
     void showPresetError (const juce::String& title, const juce::String& message);
     void showHelpClicked(); // lazily creates helpWindow, or re-shows/refronts it if already open
+    void showSettingsMenuClicked(); // shows the Settings popup menu (Mappings.../Output.../Audio Routing...)
     void showMappingClicked(); // lazily creates mappingWindow, or re-shows/refronts it if already open
     void showOutputClicked(); // lazily creates outputWindow, or re-shows/refronts it if already open
+    void showRoutingClicked(); // lazily creates routingWindow, or re-shows/refronts it if already open
     void showSnapshotClicked(); // lazily creates snapshotWindow, or re-shows/refronts it if already open
 
-    // Wired to helpWindow/mappingWindow/outputWindow/snapshotWindow's own
-    // onClosed callback --
+    // Wired to helpWindow/mappingWindow/outputWindow/routingWindow/
+    // snapshotWindow's own onClosed callback --
     // brings THIS editor's own top-level window back to front once one of
     // those always-on-top auxiliary windows hides itself, see those
     // windows' own onClosed comment (HelpWindow.h) for the reported bug
@@ -300,16 +303,15 @@ private:
     juce::TextButton helpButton { "?" };
     std::unique_ptr<HelpWindow> helpWindow;
 
-    // Same lazily-created, hide-not-destroy pattern as helpWindow above.
-    juce::TextButton mappingButton { "Mappings..." };
+    // Settings menu (Mappings.../Output.../Audio Routing...) -- replaces
+    // the three as separate toolbar buttons with one popup menu (see
+    // showSettingsMenuClicked()). mappingWindow/outputWindow/routingWindow
+    // below are still each lazily-created and owned exactly as before,
+    // just now opened from a menu item instead of a dedicated button.
+    juce::TextButton settingsButton { "Settings..." };
     std::unique_ptr<MappingWindow> mappingWindow;
-
-    // Output Format/Bass Management/Circular Array speaker count -- moved
-    // out of ParameterPanel's own former "Output" category into their own
-    // window (see OutputWindow.h), same lazily-created, hide-not-destroy
-    // pattern as helpWindow/mappingWindow above.
-    juce::TextButton outputButton { "Output..." };
     std::unique_ptr<OutputWindow> outputWindow;
+    std::unique_ptr<RoutingWindow> routingWindow;
 
     // Snapshot capture/recall (feature/agitation-and-snapshots), same
     // lazily-created, hide-not-destroy pattern as helpWindow/

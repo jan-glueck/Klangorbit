@@ -996,6 +996,20 @@ juce::var PresetManager::sceneToVar (TrajectoryEngine& engine, const juce::Strin
         auto* objVar = new juce::DynamicObject();
         objVar->setProperty ("id", obj.id);
         objVar->setProperty ("inputChannel", obj.inputChannel);
+
+        // Input routing matrix (feature/input-routing-matrix) -- optional,
+        // missing entirely (every preset saved before this field existed,
+        // or an object that's never had its routing touched) means "just
+        // inputChannel above", see SoundObject::routedInputChannels's own
+        // comment. Only written at all once it's actually non-empty.
+        if (! obj.routedInputChannels.empty())
+        {
+            juce::Array<juce::var> routedChannelsArray;
+            for (int ch : obj.routedInputChannels)
+                routedChannelsArray.add (ch);
+            objVar->setProperty ("routedInputChannels", routedChannelsArray);
+        }
+
         objVar->setProperty ("position", vecToVar (obj.position));
         objVar->setProperty ("mode", modeToString (obj.mode));
         objVar->setProperty ("momentumEnabled", obj.momentumEnabled);
@@ -1117,6 +1131,15 @@ juce::Result PresetManager::loadFromVar (const juce::var& originalRoot, Trajecto
         auto& obj = engine.getObject (id);
         obj.id = id;
         obj.inputChannel = (int) element.getProperty ("inputChannel", -1);
+
+        // Missing entirely (preset saved before this field existed, or
+        // an object that's never had its routing touched) -- stays
+        // empty, i.e. "just inputChannel above", same default as a
+        // freshly activated object.
+        obj.routedInputChannels.clear();
+        if (auto* routedChannelsArray = element.getProperty ("routedInputChannels", juce::var()).getArray())
+            for (auto& v : *routedChannelsArray)
+                obj.routedInputChannels.push_back ((int) v);
 
         if (! varToVec (element.getProperty ("position", juce::var()), obj.position))
             return juce::Result::fail ("Preset object " + juce::String (id) + ": 'position' is missing or not a 3-element array.");

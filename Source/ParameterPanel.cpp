@@ -431,6 +431,22 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*grainEnabledRow);
     addToLayout (*grainEnabledRow, ToggleRowComponent::preferredHeight, Category::GrainCloud);
 
+    // Shown in the Grains category itself while this object's Delay is
+    // enabled, explaining why grainEnabledRow's toggle above is greyed
+    // out -- see updateGrainDelayMutualExclusion(). Placed immediately
+    // after Enabled (mirroring delayDisabledByGrainHintLabel's own
+    // placement right after delayEnabledRow below) -- it used to sit
+    // much further down this category's long row list, past a dozen
+    // other rows, making it easy to miss/scroll past entirely even
+    // though it WAS showing; right next to the toggle it actually
+    // explains, it can't be missed.
+    styleRowLabel (grainDisabledByDelayHintLabel,
+                    "Delay is active for this object -- Grains and Delay can't run together on the "
+                    "same object. Disable Delay first to turn Grains on.", 12.5f, UiColours::solo());
+    grainDisabledByDelayHintLabel.setJustificationType (juce::Justification::topLeft);
+    content.addChildComponent (grainDisabledByDelayHintLabel); // hidden until updateGrainDelayMutualExclusion() shows it
+    addToLayout (grainDisabledByDelayHintLabel, 48, Category::GrainCloud);
+
     // Mutes just this object's own dry audio (independent of the
     // Mute/Solo buttons in the object list, which silence both source
     // and grains together) -- lets the grains be heard on their own,
@@ -712,16 +728,6 @@ ParameterPanel::ParameterPanel()
     grainFilterDriftAmountRow->setDefaultValue (VoiceFilterSettings{}.driftAmplitude);
     content.addChildComponent (*grainFilterDriftAmountRow);
     addToLayout (*grainFilterDriftAmountRow, FloatRowComponent::preferredHeight, Category::GrainCloud);
-
-    // Shown in the Grains category itself while this object's Delay is
-    // enabled, explaining why grainEnabledRow's toggle above is greyed
-    // out -- see updateGrainDelayMutualExclusion().
-    styleRowLabel (grainDisabledByDelayHintLabel,
-                    "Delay is active for this object -- Grains and Delay can't run together on the "
-                    "same object. Disable Delay first to turn Grains on.", 12.5f, UiColours::solo());
-    grainDisabledByDelayHintLabel.setJustificationType (juce::Justification::topLeft);
-    content.addChildComponent (grainDisabledByDelayHintLabel); // hidden until updateGrainDelayMutualExclusion() shows it
-    addToLayout (grainDisabledByDelayHintLabel, 48, Category::GrainCloud);
 
     // Modifier stack (feature/modifier-stack) -- see this component's
     // own class comment for why its height is updated at runtime

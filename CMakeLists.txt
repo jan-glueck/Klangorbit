@@ -237,6 +237,8 @@ target_sources(Klangorbit
         Source/MappingWindow.cpp
         Source/OutputPanel.cpp
         Source/OutputWindow.cpp
+        Source/RoutingPanel.cpp
+        Source/RoutingWindow.cpp
 )
 
 # Platform-specific half of GamepadBridge (see its own class comment) --
@@ -971,6 +973,26 @@ target_sources(verify_ambisonics_decoder
 )
 
 target_link_libraries(verify_ambisonics_decoder
+    PRIVATE
+        juce::juce_audio_basics
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Input routing matrix verification (feature/input-routing-matrix) ----
+# Runs InputRouting.h (resolveChannels()/mixRoutedInput()) in isolation --
+# pure math over juce::AudioBuffer, no GUI/plugin/audio device needed.
+juce_add_console_app(verify_input_routing
+    PRODUCT_NAME "verify_input_routing"
+)
+
+target_sources(verify_input_routing
+    PRIVATE
+        Tools/verify_input_routing.cpp
+)
+
+target_link_libraries(verify_input_routing
     PRIVATE
         juce::juce_audio_basics
     PUBLIC

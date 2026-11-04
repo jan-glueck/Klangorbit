@@ -3,6 +3,7 @@
 #include "GrainRenderer.h"
 #include "GrainDoppler.h"
 #include "DelayRenderer.h"
+#include "InputRouting.h"
 #include "MuteSoloLogic.h"
 #include "MappingProfileManager.h"
 #include "PresetManager.h"
@@ -862,6 +863,26 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     buffer.clear();
 
+    // Input routing matrix (feature/input-routing-matrix) -- resolves
+    // each object's own effective live input (one or more summed raw
+    // channels, see SoundObject::routedInputChannels/InputRouting.h)
+    // once per block, into one mono buffer PER OBJECT SLOT (not per
+    // input channel). Every downstream consumer that used to read
+    // inputCopy.getReadPointer(obj.inputChannel) directly now reads
+    // routedInput.getReadPointer(objIdx) instead -- a drop-in swap at
+    // each of the three call sites below, since none of them restructure
+    // internally (each just takes a raw pointer + numSamples already).
+    juce::AudioBuffer<float> routedInput (trajectoryEngine.getNumObjects(), numSamples);
+    routedInput.clear();
+    for (int objIdx = 0; objIdx < trajectoryEngine.getNumObjects(); ++objIdx)
+    {
+        auto& routingObj = trajectoryEngine.getObject (objIdx);
+        if (routingObj.inputChannel < 0)
+            continue; // inactive -- stays silent, same as before this feature existed
+        InputRouting::mixRoutedInput (routedInput.getWritePointer (objIdx), inputCopy,
+                                        InputRouting::resolveChannels (routingObj), numInCh, numSamples);
+    }
+
     // Raw passthrough modes encode straight into the output buffer, exactly
     // as before this decoder feature existed (zero added overhead, see
     // AmbisonicsDecoder's class comment). usesDirectPan() modes ALSO encode
@@ -935,7 +956,7 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             if (ringSize > 0)
             {
                 int head = grainRingBufferWriteHead[(size_t) objIdx].load (std::memory_order_relaxed);
-                const float* src = inputCopy.getReadPointer (obj.inputChannel);
+                const float* src = routedInput.getReadPointer (objIdx);
                 float* dst = ring.getWritePointer (0);
 
                 for (int i = 0; i < numSamples; ++i)
@@ -964,7 +985,7 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                     auto& dampingFilter = delayDampingFilters[(size_t) objIdx];
                     dampingFilter.setCutoffAndResonance (delaySnap.dampingCutoffHz, 0.707f);
                     writeDelayLineBlock (line.getWritePointer (0), lineSize, delayLineWritePos[(size_t) objIdx],
-                                          inputCopy.getReadPointer (obj.inputChannel), numSamples,
+                                          routedInput.getReadPointer (objIdx), numSamples,
                                           delaySnap.feedbackDelaySamples, delaySnap.feedbackGain, dampingFilter);
                 }
             }
@@ -1023,7 +1044,7 @@ void KlangorbitProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         wasActiveLastBlock[(size_t) objIdx] = true;
 
         float directivityGain = 1.0f;
-        propagationPerObject[(size_t) objIdx].process (inputCopy.getReadPointer (obj.inputChannel),
+        propagationPerObject[(size_t) objIdx].process (routedInput.getReadPointer (objIdx),
                                                          propagated, numSamples,
                                                          snapshot[(size_t) objIdx].position,
                                                          obj, sceneSettings,

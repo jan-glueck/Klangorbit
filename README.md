@@ -17,8 +17,7 @@ window is open -- closing the editor never pauses anything.
 - [Signal flow](#signal-flow)
 - [Build (macOS)](#build-macos)
 - [Windows build](#windows-build)
-- [Testing with Reaper + SPARTA/IEM](#testing-with-reaper--spartaiem)
-- [Output formats: channel layouts and standards](#output-formats-channel-layouts-and-standards)
+- [Output formats](#output-formats)
 - [Binaural (HRTF) output](#binaural-hrtf-output)
 - [Objects, motion physics, and the parameter panel](#objects-motion-physics-and-the-parameter-panel)
 - [3D camera view](#3d-camera-view)
@@ -33,9 +32,7 @@ window is open -- closing the editor never pauses anything.
 - [Modifier stack](#modifier-stack)
 - [Agitation: per-parameter random modulation](#agitation-per-parameter-random-modulation)
 - [Snapshots: capture/recall a whole parameter set](#snapshots-capturerecall-a-whole-parameter-set)
-- [GUI design](#gui-design)
 - [Project structure](#project-structure)
-- [Known limitations / next steps](#known-limitations--next-steps)
 - [License](#license)
 
 For deep "why was it built this way" rationale, bug postmortems, and the
@@ -120,10 +117,9 @@ A few build facts worth knowing:
   (negotiated per track, up to 7.1 in / 7.1.4 out) than in any other
   host or in VST3/Standalone, which always expose a fixed, full-width
   36-channel bus. Only the 9 Output Formats with both a named layout and
-  <= 12 channels are selectable in Logic; the dropdown greys out the
-  rest. See [Known limitations](#known-limitations--next-steps).
-- Every format now starts up in Stereo output by default (not raw
-  Ambisonics) -- switch Output Format manually if you need B-format.
+  <= 12 channels are selectable in Logic; the dropdown greys out the rest.
+- Every format starts up in Stereo output by default -- switch Output
+  Format manually if you need raw Ambisonics B-format.
 
 ## Windows build
 
@@ -150,74 +146,34 @@ copy. Gamepad support uses XInput instead of macOS's GameController
 framework (Xbox-compatible controllers, same scope as macOS). Everything
 else is plain, portable JUCE C++ with no platform-specific code.
 
-## Testing with Reaper + SPARTA/IEM
+## Output formats
 
-1. Start the plugin/standalone app, connect a live input to Input 0.
-2. Default Output Format is Stereo (audible immediately). Switch to 3rd
-   Order Ambisonics (toolbar -> "Output...") to route to SPARTA AmbiBIN
-   or the IEM BinauralDecoder instead -- every other format sends
-   already-decoded audio straight out, no external decoder needed.
-3. Drag object 0 with the mouse -> direction changes in playback.
-4. Double-click an object to start an orbit around the origin.
-5. Drag an object quickly and release -> throw gesture; it keeps moving
-   and slows via `damping`/`dragCoefficient`, reflecting/wrapping/
-   absorbing at the room boundary (`roomSize`).
-6. Click an object (no drag) to select it -- its parameters appear in
-   the panel on the right. "+ Object"/"- Remove Object" (object list,
-   left side) activate/deactivate slots.
-7. Shift+drag an object -> sling launch gesture (see its own section
-   below for the full set of modifier keys).
-8. Drag on empty space -> orbits the camera; scroll to zoom.
-9. Click a row in the object list (left) to select that object without
-   needing to hit it with the mouse directly.
+16 formats total (toolbar -> "Output..."). Quad/Octophonic/Circular
+Array/5.1/7.1/the four Atmos-bed layouts pan each object directly to
+real speakers via VBAP; Stereo uses a simple 2-point decode; Binaural
+does its own HRTF convolution (see below); the raw Ambisonics outputs
+aren't decoded at all.
 
-## Output formats: channel layouts and standards
+- **Stereo**, **5.1**, **7.1** -- ITU-R BS.775-4.
+- **5.1.2 / 5.1.4 / 7.1.2 / 7.1.4** (Dolby Atmos beds) -- ITU-R BS.2051-2.
+- **Quad** -- conventional quadraphonic (not an ITU standard).
+- **Octophonic** -- a fixed 8-speaker circular array.
+- **Circular Array** -- a generic ring, 4-24 speakers, adjustable.
+- **Binaural (HRTF)** -- see below, not a loudspeaker layout.
+- **1st-5th Order Ambisonics** -- raw B-format, ACN channel ordering,
+  SN3D normalization (AmbiX-compatible); feed it to an external decoder
+  (SPARTA, IEM Plugin Suite) if you need one.
 
-16 formats total, in toolbar -> "Output..." dropdown order. Full speaker
-angles/channel order are verified against `Source/SpeakerLayouts.h`.
-
-**Decode method:** Quad/Octophonic/Circular Array/5.1/7.1/all four
-Atmos-bed layouts pan each object directly to real speakers via VBAP.
-Stereo uses a simple 2-point Ambisonics decode. Binaural and the raw
-Ambisonics outputs are unrelated to either (see their own sections).
-
-| Format | Layout | Standard |
-|---|---|---|
-| Stereo | L/R ±30° | ITU-R BS.775-4 |
-| Binaural (HRTF) | not a loudspeaker layout | see [Binaural](#binaural-hrtf-output) |
-| Quad | L/R ±45°, Ls/Rs ±135° | conventional, not ITU |
-| Octophonic | 8 fixed speakers, ±22.5°/±67.5°/±112.5°/±157.5° | no formal standard found; matches Blue Ripple Sound's "O3A Decoder -- Octagon" |
-| Circular Array | 4-24 speakers, evenly spaced | pure geometry, no naming convention needed |
-| 5.1 | L/R ±30°, C 0°, Ls/Rs ±110° | ITU-R BS.775-4 |
-| 7.1 | L/R ±30°, C 0°, side ±90°, rear ±135° | ITU-R BS.775-4 |
-| 5.1.2/5.1.4/7.1.2/7.1.4 | matching bed + height channels at 45° elevation | ITU-R BS.2051-2 (permitted sectors; exact angles are Dolby's commonly published guidance) |
-| 1st-5th Order Ambisonics | raw B-format, 4/9/16/25/36ch | ACN/SN3D, AmbiX-compatible |
-
-Every named layout uses JUCE's own `AudioChannelSet`s, so a host sees
-the channel stream order it already expects for that format name.
+Octophonic and Circular Array are horizontal-only (no elevation).
 
 ## Binaural (HRTF) output
 
-Decodes straight to 2-channel headphone audio inside the plugin -- a
-real HRTF convolution, not the plain 2-speaker Stereo format. The
-summed Ambisonics bus is decoded to a dense 50-point virtual speaker
-array, then each virtual speaker is convolved through its own measured
-left/right head-related impulse response and summed to the output. Loudness-calibrated against the other output formats (`BinauralDecoder::calibrateOutputGain()`) so switching into/out of Binaural doesn't jump in level. See `BinauralDecoder.h` for the full breakdown.
-
-A dataset picker appears in the Output window whenever Binaural is
-selected:
-
-- **KEMAR** (default) -- Gardner & Martin, MIT Media Lab.
-- **SADIE II -- D1 (KU100)** -- University of York.
-- **KU100 -- 2° Grid (TH Köln / Bernschütz)** -- the densest of the
-  three, full-sphere 2° grid.
-- **Custom SOFA file...** -- import any AES69/SOFA HRTF measurement.
-
-All three bundled datasets need attribution when redistributed -- see
-`THIRD_PARTY_LICENSES.md`. Switching datasets rebuilds the decode matrix
-and all 100 convolution engines immediately (expect a brief pause,
-longer for the larger SADIE II/KU100 files). The dataset choice is
-plugin-instance state, not saved in a preset.
+Decodes straight to 2-channel headphone audio inside the plugin via
+HRTF convolution -- not the same as the plain Stereo format. A dataset
+picker (Output window) offers **KEMAR** (default), **SADIE II**,
+**KU100**, or your own **custom SOFA file**. All three bundled datasets
+need attribution when redistributed -- see `THIRD_PARTY_LICENSES.md`.
+The dataset choice is plugin-instance state, not saved in a preset.
 
 ## Objects, motion physics, and the parameter panel
 
@@ -541,20 +497,6 @@ mappings, with its own file format (`Snapshots/schema/README.md`).
   Morph slider (0 = pure A, 1 = pure B) with its own Smoothing slider
   soft-crossfades every parameter common to both.
 
-## GUI design
-
-Dark, cyan-accented "sci-fi HUD" look, applied uniformly:
-
-- `Source/UiTheme.h` is the single source of truth for every colour/
-  spacing value; `SciFiLookAndFeel` applies it once at the top level so
-  every child component inherits it automatically.
-- Each panel (toolbar, object list, parameter panel) paints its own
-  background plus a hairline border, so the layout reads as distinct
-  regions.
-- Per-object colours stay within a blue -> violet -> magenta hue band,
-  so no object colour collides with the cyan selection ring or the
-  red/amber Mute/Solo indicators.
-
 ## Project structure
 
 ```
@@ -584,48 +526,6 @@ Code version (CHANGELOG/SemVer), preset schema version, mapping-profile
 schema version, and snapshot schema version are four separate,
 independently-moving version counters -- each one covers a concern that
 changes on its own timeline (see each format's own README for why).
-
-## Known limitations / next steps
-
-- **Windows build is CI-verified only** -- compiles and passes the full
-  automated test suite on a hosted runner, but hasn't been used by hand
-  on a real Windows machine or with a physical XInput controller.
-- **3D camera and gamepad direction conventions are unverified by
-  hand** -- mathematically covered by tests, but the actual drag/zoom/
-  stick feel hasn't been tried on real hardware in this environment and
-  may need a one-line sign flip if it feels inverted.
-- **Mapping-panel "profile status" is cosmetically wrong at startup** --
-  the default mapping profile loads silently before any UI exists to
-  show it, so the status line reads "(no profile loaded)" even though
-  one (currently empty) was loaded.
-- **Binding one specific object regardless of selection** needs
-  hand-editing a mapping profile's JSON -- no UI path for it.
-- **VST3/Standalone's fixed 36-channel output bus** has not yet been
-  re-confirmed by the reporting user's own Max/MSP/Reaper setup after
-  the fix (see `Tools/vst3_bus_probe.cpp` for the automated check).
-- **Circular arrays (Octophonic, Circular Array) are horizontal-only**
-  -- a property of a flat speaker ring, not a decoder limitation.
-- **Binaural CPU cost is unmeasured on real hardware**, and interaural
-  delay (ITD) is not applied yet -- only amplitude/spectral HRIR cues.
-- **The AU in Logic Pro's actual insert UI is unverified end-to-end** --
-  confirmed correct at the `auval` protocol level only.
-- **Air absorption is a simplified approximation**, not ISO 9613-1
-  accurate.
-- **n-body attraction is untested with many simultaneous attractors.**
-- **No object-object collision** (objects pass through each other).
-- **No audio-reactive coupling** (e.g. attraction/orbit speed modulated
-  by input level) -- would need a new audio-thread-to-message-thread
-  data path that doesn't exist yet.
-- **`orbitEccentricity` is a simplified approximation**, not a
-  focus-based Kepler orbit.
-- **GrainCloud grains skip acoustic propagation entirely** (no
-  per-grain Doppler/delay/air absorption/directivity) -- only the
-  parent object's own dry signal goes through `PropagationProcessor`.
-- **GrainCloud window shape is Hann only** -- no alternative envelopes
-  yet.
-- **DelayInstance's taps aren't shown in the 3D scene view**, and each
-  tap's own filter/resonance isn't individually exposed (only the
-  shared feedback-path damping filter is, by design).
 
 ## License
 

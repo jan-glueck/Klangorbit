@@ -219,6 +219,7 @@ target_sources(Klangorbit
         Source/ParameterPanel.cpp
         Source/ModifierStackEditor.cpp
         Source/AgitationEditor.cpp
+        Source/SnapshotManager.cpp
         Source/PropagationProcessor.cpp
         Source/GrainCloud.cpp
         Source/Camera3D.cpp
@@ -765,6 +766,30 @@ target_sources(verify_agitation_engine
 )
 
 target_link_libraries(verify_agitation_engine
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Snapshot manager verification (feature/agitation-and-snapshots, -----
+# Branch 5, Stage 3) -- SnapshotManager against small, hand-built
+# ParameterRegistry descriptors (capture/recall scope filtering, the real
+# JSON round-trip, and the real file save/load path against actual temp
+# files), same minimal approach as verify_agitation_engine above.
+juce_add_console_app(verify_snapshot_manager
+    PRODUCT_NAME "verify_snapshot_manager"
+)
+
+target_sources(verify_snapshot_manager
+    PRIVATE
+        Tools/verify_snapshot_manager.cpp
+        Source/SnapshotManager.cpp
+        Source/ParameterRegistry.cpp
+)
+
+target_link_libraries(verify_snapshot_manager
     PRIVATE
         juce::juce_core
     PUBLIC

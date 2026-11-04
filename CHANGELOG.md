@@ -423,6 +423,39 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   Standalone app launches/quits cleanly (build + no-crash launch only --
   no automated visual check of the new tab's actual rendering was
   possible in this environment).
+- **Snapshots, Stage 3: core capture/recall + file format**
+  (`Source/SnapshotManager.h/.cpp`, `feature/agitation-and-snapshots`,
+  Branch 5) -- "Snapshots: Parametersaetze speichern und abrufen" from
+  the original spec, the backend half (no UI yet, same staged split
+  Agitation's own Stage 2 already used). A `Snapshot` is a captured
+  {parameter id -> value} list, read live from `ParameterRegistry`'s
+  own `getValue()` and written back through its `setValue()` on
+  recall -- same generic, type-agnostic approach as `AgitationEngine`,
+  and the same `Scope::Global`/`Scope::SelectedObject`-only
+  restriction `MappingPanel`'s target-parameter picker and
+  `AgitationEditor`'s row list both already apply (never the
+  per-object `Scope::SpecificObject` variants). `capture()`'s
+  `categories` parameter is the "Geltungsbereich ueber die Kategorien
+  des Parameter-Registers" the spec asked for (e.g. "nur Grain-Cloud,
+  nur Delay") -- an empty list means no restriction (every eligible
+  parameter); the chosen categories are stored on the resulting
+  snapshot purely for display, never consulted by `recall()` itself
+  (the entries list already defines exactly what's covered).
+  Resolves the spec's own explicitly-flagged open question ("gehoeren
+  Snapshots ins Szenen-Preset-Schema oder in eine eigene Datei?"): a
+  genuinely SEPARATE file format/schema (`Snapshots/schema/README.md`),
+  own `schemaVersion` counter, mirroring `MappingProfileManager`'s own
+  "independent axis of versioning" reasoning exactly (a snapshot is
+  orthogonal to both what scene is loaded and how you're physically
+  controlling it -- recalling one shouldn't touch either). `Snapshots/
+  factory/`/`Snapshots/user/` storage convention, same as `Presets/`/
+  `MappingProfiles/`. Verified via new `Tools/verify_snapshot_manager.cpp`
+  (24 cases: category-scope filtering, `Scope::SpecificObject`
+  exclusion, live-value capture, recall's partial-write behavior and
+  unknown-id tolerance, the full JSON round-trip including schemaVersion/
+  malformed-content rejection, and a real file save/load round-trip
+  against actual temp files on disk). Full project rebuild + entire
+  29-binary test suite green, Standalone app launches/quits cleanly.
 
 ## [0.2.0] - 2026-09-17
 ### Added

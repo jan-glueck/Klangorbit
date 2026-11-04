@@ -1518,9 +1518,32 @@ schemaVersion bump. `ParameterRegistry` gained its first-ever "Delay"
 category as a prerequisite (`DelayInstanceSettings` had never been
 registered there at all).
 
-Branch 5 (`feature/agitation-and-snapshots`) is still in progress --
-Snapshots (saving/recalling whole parameter sets, morphing between two,
-randomized variants) have not been started yet.
+## Snapshots: capture/recall a whole parameter set (Branch 5, in progress)
+
+`SnapshotManager` (`Source/SnapshotManager.h/.cpp`) -- a `Snapshot` is a
+captured list of `{ParameterRegistry parameter id -> value}` pairs,
+same `Scope::Global`/`Scope::SelectedObject`-only restriction as
+`AgitationEditor`'s row list (never the per-object `Scope::
+SpecificObject` variants). `capture()` reads straight from the
+registry's own `getValue()`, optionally restricted to a chosen set of
+registry categories (e.g. "only Grain Cloud, only Delay" -- the
+original spec's own example); `recall()` writes back through
+`setValue()`, touching nothing outside whatever was actually captured.
+
+Its own, genuinely separate file format (`Snapshots/schema/README.md`,
+own `schemaVersion`) -- this was the spec's own explicitly-flagged open
+question ("do Snapshots belong in the scene preset schema or their own
+file?"), resolved the same way `MappingProfileManager` already resolved
+the identical question for controller-mapping profiles: a snapshot is
+orthogonal to both which scene is loaded and how you're physically
+controlling it, so recalling one should never touch either of those.
+`Snapshots/factory/`/`Snapshots/user/` storage, same convention as
+`Presets/`/`MappingProfiles/`.
+
+Branch 5 (`feature/agitation-and-snapshots`) is still in progress -- no
+UI for Snapshots yet (capture/recall are backend-only so far, same
+staged split Agitation's own Stage 2 used), and morphing between two
+snapshots / randomized variants have not been started at all.
 
 ## GUI design
 

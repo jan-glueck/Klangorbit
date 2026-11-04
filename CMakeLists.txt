@@ -394,6 +394,30 @@ target_link_libraries(verify_voice_filter
         juce::juce_recommended_warning_flags
 )
 
+# --- Agitation engine verification (feature/agitation-and-snapshots, --------
+# Branch 5, Stage 1) -- the generic per-parameter modulation engine on its
+# own, before it's wired into ParameterRegistry: disabled/zero-amount
+# no-ops, mean-reverting bounded wandering, start()'s baseline capture,
+# tempo-sync maths. Agitation.h is header-only/pure-math (no juce_audio
+# dependency), so this stays a lightweight juce_core-only console app like
+# verify_voice_filter above.
+juce_add_console_app(verify_agitation
+    PRODUCT_NAME "verify_agitation"
+)
+
+target_sources(verify_agitation
+    PRIVATE
+        Tools/verify_agitation.cpp
+)
+
+target_link_libraries(verify_agitation
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- DelayInstance verification ---------------------------------------
 # Runs DelayRenderer.h's write/read functions (feedback decay math,
 # fractional-delay interpolation) and DelayInstance (tap count/spacing,

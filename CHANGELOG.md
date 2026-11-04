@@ -295,6 +295,40 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   backward-compatibility case). Full project rebuild + entire test
   suite green, Standalone app launches/quits cleanly. This completes
   Branch 4 (`feature/modifier-stack`).
+- **Agitation, Stage 1: core engine** (`Source/Agitation.h`,
+  `feature/agitation-and-snapshots`, Branch 5) -- the first stage of the
+  final branch of the generative sound design effort. Per the spec
+  ("pro Parameter zuschaltbare, zufaellige Modulation um den aktuellen
+  Wert, mit Amount, Rate und Glaettung... als Mean-Reverting-Prozess"),
+  built directly on `MeanReverting::step()` (`RandomEngine.h`) --
+  reused unchanged, not reimplemented a fourth time (the first three
+  uses being orbit-radius noise, `VoiceFilter`'s cutoff drift, and the
+  Movement modifier). Deliberately generic/parameter-type-agnostic,
+  unlike every earlier per-struct `RandomizedParam` field: `Agitation::
+  Settings`/`State`/`start()`/`advance()` don't know or care which
+  struct a parameter lives on, so the later stage that wires this onto
+  `ParameterRegistry` (whose `Descriptor` is itself already generic
+  over `getValue()`/`setValue()`) can loop over every registered
+  parameter with one shared call site, instead of one hand-written
+  integration per parameter type. `advance()` is a cheap no-op whenever
+  `!enabled` or `amount <= 0`, same early-out convention as
+  `VoiceFilter::advanceDrift()` -- safe to call unconditionally for
+  every parameter every tick. Rate ("Rate") can optionally be tempo-
+  synced to a note division (`TempoDivision`, straight + triplet)
+  instead of a fixed absolute value; `tempoDivisionToReversionRate()`
+  resolves that against whatever BPM the call site passes in --
+  nothing in this stage reads an actual tempo source yet (no host-
+  playhead read, no Standalone BPM field), that's the next stage's
+  wiring work once there's something concrete to attach Agitation to.
+  No UI, no persistence, no `ParameterRegistry` integration yet --
+  purely the engine, verified in isolation first (same "validate the
+  math before attaching it to ~80 parameters at once" reasoning Branch
+  4 used for its own staged rollout). Verified via new
+  `Tools/verify_agitation.cpp` (disabled/zero-amount no-ops, mean-
+  reverting bounded wandering with no permanent drift, `start()`'s
+  baseline capture, tempo-sync math including the triplet/invalid-bpm
+  cases, `operator==`/`!=`). Full project rebuild + entire test suite
+  green, Standalone app launches/quits cleanly.
 
 ## [0.2.0] - 2026-09-17
 ### Added

@@ -251,7 +251,11 @@ void ModifierRowComponent::resized()
     auto header = b.removeFromTop (headerHeight);
 
     indexLabel.setBounds (header.removeFromLeft (24));
-    enabledToggle.setBounds (header.removeFromLeft (32));
+    // SciFiLookAndFeel::drawToggleButton() draws its switch pill at a
+    // fixed 36px width starting flush at this component's own local x=0,
+    // regardless of the bounds given here -- anything narrower clips the
+    // pill's right edge/knob. 40px gives it that 36px plus a small margin.
+    enabledToggle.setBounds (header.removeFromLeft (40));
     header.removeFromLeft (UiSpacing::xs); // gap before typeCombo -- missing before, so the combo's
                                              // own bounds started flush against the toggle's
     removeButton.setBounds (header.removeFromRight (64));

@@ -193,9 +193,11 @@ namespace
     struct DrawItem
     {
         bool isGrain = false;
-        int parentIndex = -1;      // object slot index (owner, for both kinds)
+        bool isDelayTap = false;   // mutually exclusive with isGrain
+        int parentIndex = -1;      // object slot index (owner, for all three kinds)
         Vec3 worldPos;
         float ageFraction = 0.0f;  // grains only
+        float tapGainMultiplier = 1.0f; // delay taps only -- see DelayTap::modifierGainMultiplier
         Camera3D::Projection projection;
     };
 
@@ -502,16 +504,17 @@ void KlangorbitEditor::paint (juce::Graphics& g)
         }
     }
 
-    // --- Depth-sorted objects + grains ------------------------------------
+    // --- Depth-sorted objects + grains + delay taps ------------------------
     // Fixed-bound item count (<= SAPOC_MAX_LIVE_INPUTS objects plus <=
     // maxConcurrentGrainsGlobal grains -- the latter raised well past its
     // original small default, see Grain.h's GrainLimits::
-    // maxConcurrentGrainsGlobal). Sorting this fresh every repaint stays
-    // cheap in the common case (typically far fewer grains are actually
-    // active at once); reserve() below is sized for that common case, not
-    // the theoretical worst case, so it may reallocate on an unusually
-    // grain-heavy frame -- an acceptable, rare cost rather than always
-    // over-allocating on every frame for a bound almost never reached.
+    // maxConcurrentGrainsGlobal -- plus <= DelayLimits::maxTaps taps per
+    // object). Sorting this fresh every repaint stays cheap in the common
+    // case (typically far fewer grains are actually active at once);
+    // reserve() below is sized for that common case, not the theoretical
+    // worst case, so it may reallocate on an unusually grain-heavy frame
+    // -- an acceptable, rare cost rather than always over-allocating on
+    // every frame for a bound almost never reached.
     auto& engine = audioProcessor.getTrajectoryEngine();
     std::vector<DrawItem> items;
     items.reserve (64);
@@ -546,6 +549,26 @@ void KlangorbitEditor::paint (juce::Graphics& g)
             gItem.projection = camera.project (gs.position, viewportHeight);
             items.push_back (gItem);
         }
+
+        // Delay taps -- unlike grains, these don't spawn/scatter/die; a
+        // tap's position is a fixed (or slowly orbiting) point on a ring
+        // around the parent object (see DelayTap.h), so it's drawn as a
+        // static marker rather than a fading dust particle.
+        DelayInstance::Snapshot delaySnapshot;
+        engine.getDelayInstance (i).getSnapshot (delaySnapshot);
+        if (delaySnapshot.enabled)
+        {
+            for (auto& tap : delaySnapshot.taps)
+            {
+                DrawItem tItem;
+                tItem.isDelayTap = true;
+                tItem.parentIndex = i;
+                tItem.worldPos = tap.position;
+                tItem.tapGainMultiplier = tap.modifierGainMultiplier;
+                tItem.projection = camera.project (tap.position, viewportHeight);
+                items.push_back (tItem);
+            }
+        }
     }
 
     std::sort (items.begin(), items.end(), [] (const DrawItem& a, const DrawItem& b)
@@ -567,6 +590,27 @@ void KlangorbitEditor::paint (juce::Graphics& g)
             const float alpha = juce::jlimit (0.0f, 1.0f, 1.0f - item.ageFraction) * distAlpha;
             g.setColour (paleGrainColour (objectColour (item.parentIndex)).withAlpha (alpha));
             g.fillEllipse (screenPos.x - radius, screenPos.y - radius, radius * 2.0f, radius * 2.0f);
+            continue;
+        }
+
+        if (item.isDelayTap)
+        {
+            // Drawn as a diamond outline (not a filled dot) in the
+            // parent's own full-saturation colour -- visually distinct
+            // from grains' pale, filled dust at a glance, matching that
+            // taps are fixed echo points, not scattering particles.
+            // Brightness tracks the tap's own modifier-stack gain rather
+            // than an age fraction (taps have no lifetime).
+            const float radius = juce::jmax (2.5f, camera.worldSizeToScreenSize (0.06f, depth, viewportHeight));
+            const float alpha = juce::jlimit (0.0f, 1.0f, item.tapGainMultiplier) * distAlpha;
+            juce::Path diamond;
+            diamond.startNewSubPath (screenPos.x, screenPos.y - radius);
+            diamond.lineTo (screenPos.x + radius, screenPos.y);
+            diamond.lineTo (screenPos.x, screenPos.y + radius);
+            diamond.lineTo (screenPos.x - radius, screenPos.y);
+            diamond.closeSubPath();
+            g.setColour (objectColour (item.parentIndex).withAlpha (alpha));
+            g.strokePath (diamond, juce::PathStrokeType (1.5f));
             continue;
         }
 

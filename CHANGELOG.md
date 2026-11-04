@@ -7,6 +7,12 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
 
 ## [Unreleased]
 ### Added
+- **Delay taps are now visible in the 3D view** -- drawn as small
+  diamond-outline markers at each tap's own position around the parent
+  object, distinct from GrainCloud's filled, fading dust particles:
+  taps don't spawn or die, so they're drawn as fixed (or slowly
+  orbiting) points instead, brightened by each tap's own modifier-stack
+  gain rather than an age fraction.
 - **Input routing matrix** -- each object's live-input signal is no
   longer a fixed 1:1 mapping to its own channel. A new "Audio
   Routing..." window (inputs x objects grid) lets any object sum one or
@@ -108,9 +114,11 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   via `Tools/verify_snapshot_manager.cpp`/`verify_snapshot_morph_engine.cpp`.
 
 ### Fixed
-- **Modifier row's Enabled toggle overlapped the type dropdown** in the
-  Delay/Grain modifier stack editor -- a missing gap between the two
-  controls.
+- **Modifier row's Enabled toggle was clipped/overlapped the type
+  dropdown** in the Delay/Grain modifier stack editor -- the row gave
+  the toggle only 28-32px, short of the 36px its switch-style
+  LookAndFeel actually draws at, clipping its right edge; also added
+  the missing gap before the type dropdown.
 - **Grain's Delay-mutual-exclusion hint label was easy to miss** -- it
   was registered far down the Grain category's layout instead of
   immediately after its own Enabled toggle, unlike Delay's equivalent

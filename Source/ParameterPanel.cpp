@@ -538,6 +538,46 @@ ParameterPanel::ParameterPanel()
     addGrainIntRow ("Max Concurrent Grains (this cloud)", &GrainCloudSettings::maxConcurrentGrains,
                      1.0, (double) GrainLimits::maxConcurrentGrainsGlobal, Category::GrainCloud);
 
+    // Generation mode (feature/modifier-stack, Stage 4) -- Emitter keeps
+    // the existing continuous grainRate-based spawning entirely unchanged;
+    // Group instead triggers a whole burst every time that same interval
+    // elapses, each grain in the burst getting an optional randomized
+    // start delay (groupStartDelay) so the burst can be spread out over
+    // time instead of all landing on the exact same tick. See GrainCloud::
+    // update()'s generationMode branch and pendingGroupSpawnCountdowns.
+    grainGenerationModeRow = std::make_unique<ComboRowComponent> ("Generation Mode");
+    grainGenerationModeRow->combo.addItem ("Emitter", (int) GrainGenerationMode::Emitter + 1);
+    grainGenerationModeRow->combo.addItem ("Group", (int) GrainGenerationMode::Group + 1);
+    grainGenerationModeRow->onSelected = [this] (int)
+    {
+        if (editedGrainCloud != nullptr)
+            editedGrainCloud->generationMode = (GrainGenerationMode) (grainGenerationModeRow->combo.getSelectedId() - 1);
+        updateGrainGenerationModeVisibility(); // show the Group-only rows only when it now applies
+        layoutContent(); // heights above/below the now-hidden/shown rows changed -- re-flow immediately
+    };
+    content.addAndMakeVisible (*grainGenerationModeRow);
+    addToLayout (*grainGenerationModeRow, ComboRowComponent::preferredHeight, Category::GrainCloud);
+
+    // Visible only while Generation Mode == Group, see
+    // updateGrainGenerationModeVisibility().
+    grainGroupSizeRow = std::make_unique<FloatRowComponent> ("Group Size (grains per burst)", 1.0, (double) GrainLimits::maxConcurrentGrainsGlobal, 1.0);
+    grainGroupSizeRow->onValueChanged = [this] (float v) { if (editedGrainCloud != nullptr) editedGrainCloud->groupSize = (int) std::round (v); };
+    grainGroupSizeRow->setDefaultValue ((float) GrainCloudSettings{}.groupSize);
+    content.addChildComponent (*grainGroupSizeRow);
+    addToLayout (*grainGroupSizeRow, FloatRowComponent::preferredHeight, Category::GrainCloud);
+
+    grainGroupStartDelayRow = std::make_unique<FloatRowComponent> ("Group Start Delay (s)", 0.0, 5.0, 0.01);
+    grainGroupStartDelayRow->onValueChanged = [this] (float v) { if (editedGrainCloud != nullptr) editedGrainCloud->groupStartDelay.base = v; };
+    grainGroupStartDelayRow->setDefaultValue (GrainCloudSettings{}.groupStartDelay.base);
+    content.addChildComponent (*grainGroupStartDelayRow);
+    addToLayout (*grainGroupStartDelayRow, FloatRowComponent::preferredHeight, Category::GrainCloud);
+
+    grainGroupStartDelayJitterRow = std::make_unique<FloatRowComponent> ("Group Start Delay Jitter (s)", 0.0, 5.0, 0.01);
+    grainGroupStartDelayJitterRow->onValueChanged = [this] (float v) { if (editedGrainCloud != nullptr) editedGrainCloud->groupStartDelay.spread = v; };
+    grainGroupStartDelayJitterRow->setDefaultValue (GrainCloudSettings{}.groupStartDelay.spread);
+    content.addChildComponent (*grainGroupStartDelayJitterRow);
+    addToLayout (*grainGroupStartDelayJitterRow, FloatRowComponent::preferredHeight, Category::GrainCloud);
+
     // See updateGrainBudgetHintVisibility(): warns that the scene-wide
     // budget above is currently being split between more than one
     // object's cloud, so this cloud's own setting may not be fully
@@ -947,6 +987,7 @@ void ParameterPanel::selectCategory (Category category)
     updateGrainMovementModeVisibility();
     updatePitchJitterModeVisibility();
     updateGrainFilterVisibility();
+    updateGrainGenerationModeVisibility();
     updateGrainDelayMutualExclusion();
     updateGrainBudgetHintVisibility();
 
@@ -990,6 +1031,17 @@ void ParameterPanel::updateGrainFilterVisibility()
     grainFilterResonanceRow->setVisible (on);
     grainFilterCutoffJitterRow->setVisible (on);
     grainFilterDriftAmountRow->setVisible (on);
+}
+
+void ParameterPanel::updateGrainGenerationModeVisibility()
+{
+    if (currentCategory != Category::GrainCloud || editedGrainCloud == nullptr)
+        return;
+
+    const bool group = editedGrainCloud->generationMode == GrainGenerationMode::Group;
+    grainGroupSizeRow->setVisible (group);
+    grainGroupStartDelayRow->setVisible (group);
+    grainGroupStartDelayJitterRow->setVisible (group);
 }
 
 void ParameterPanel::updateGrainDelayMutualExclusion()
@@ -1118,9 +1170,15 @@ void ParameterPanel::refreshFromModel()
     grainFilterCutoffJitterRow->setValueQuiet (editedGrainCloud->filter.cutoffHz.spread);
     grainFilterDriftAmountRow->setValueQuiet (editedGrainCloud->filter.driftAmplitude);
 
+    grainGenerationModeRow->combo.setSelectedId ((int) editedGrainCloud->generationMode + 1, juce::dontSendNotification);
+    grainGroupSizeRow->setValueQuiet ((float) editedGrainCloud->groupSize);
+    grainGroupStartDelayRow->setValueQuiet (editedGrainCloud->groupStartDelay.base);
+    grainGroupStartDelayJitterRow->setValueQuiet (editedGrainCloud->groupStartDelay.spread);
+
     updateGrainMovementModeVisibility(); // movementMode may have changed (e.g. a preset load, or switching selected object) without going through grainMovementModeRow's own onSelected
     updatePitchJitterModeVisibility(); // same idea, for pitchJitterMode
     updateGrainFilterVisibility(); // same idea, for filter.enabled
+    updateGrainGenerationModeVisibility(); // same idea, for generationMode
 
     // The stack's own slot COUNT may have changed too (e.g. a preset
     // load), not just field values within already-existing slots --

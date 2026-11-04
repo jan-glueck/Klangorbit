@@ -104,9 +104,27 @@ private:
     // audio-thread code needed, see its own comment in GrainCloud.cpp.
     void beginVoiceSteal (Grain& g);
 
+    // Shared by both GrainGenerationMode::Emitter's immediate spawn and
+    // Group's own per-grain pending-countdown resolution (see
+    // pendingGroupSpawnCountdowns below) -- finds a free pool slot (or
+    // voice-steals the oldest active one) and actually spawns into it.
+    // Returns false (does nothing else) if spawnBudget is already
+    // exhausted, or if voice-stealing was started but the stolen slot
+    // isn't free yet this tick -- the caller decides what "try again
+    // later" means for its own case (Emitter caps timeSinceLastSpawn;
+    // Group just leaves the countdown at <= 0 so it retries next tick).
+    bool trySpawnOneGrain (Vec3 parentPosition, int& spawnBudget);
+
     GrainCloudSettings settings;
     std::vector<Grain> grains;
     double timeSinceLastSpawn = 0.0;
+
+    // GrainGenerationMode::Group only -- one entry per grain still
+    // waiting to actually spawn within the current burst, counting down
+    // in seconds (see GrainCloudSettings::groupStartDelay). Resolved
+    // (decremented, then spawned once <= 0) once per update() tick,
+    // independently of the interval timer that TRIGGERS a new burst.
+    std::vector<float> pendingGroupSpawnCountdowns;
 
     // This cloud's own randomization source (grain spawn timing, pitch/
     // position jitter, movement-mode randomization -- everything that

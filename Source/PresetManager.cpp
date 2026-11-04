@@ -537,6 +537,23 @@ namespace
         return false;
     }
 
+    juce::String grainGenerationModeToString (GrainGenerationMode m)
+    {
+        switch (m)
+        {
+            case GrainGenerationMode::Emitter: return "emitter";
+            case GrainGenerationMode::Group:   return "group";
+        }
+        return "emitter";
+    }
+
+    bool grainGenerationModeFromString (const juce::String& s, GrainGenerationMode& out)
+    {
+        if (s == "emitter") { out = GrainGenerationMode::Emitter; return true; }
+        if (s == "group")   { out = GrainGenerationMode::Group;   return true; }
+        return false;
+    }
+
     juce::var sceneSettingsToVar (const SceneSettings& s)
     {
         auto* obj = new juce::DynamicObject();
@@ -643,6 +660,9 @@ namespace
         obj->setProperty ("seed", juce::String (s.seed));
         obj->setProperty ("filter", voiceFilterSettingsToVar (s.filter));
         obj->setProperty ("modifiers", modifiersToVar (s.modifiers));
+        obj->setProperty ("generationMode", grainGenerationModeToString (s.generationMode));
+        obj->setProperty ("groupSize", s.groupSize);
+        obj->setProperty ("groupStartDelay", randomizedParamToVar (s.groupStartDelay));
         return juce::var (obj);
     }
 
@@ -757,6 +777,17 @@ namespace
             return result;
 
         if (auto result = modifiersFromVar (gcVar.getProperty ("modifiers", juce::var()), "grainCloud.modifiers", out.modifiers);
+            result.failed())
+            return result;
+
+        if (gcVar.hasProperty ("generationMode"))
+        {
+            const auto s = gcVar.getProperty ("generationMode", juce::var()).toString();
+            if (! grainGenerationModeFromString (s, out.generationMode))
+                return juce::Result::fail ("'grainCloud.generationMode': unknown value '" + s + "'.");
+        }
+        out.groupSize = (int) gcVar.getProperty ("groupSize", out.groupSize);
+        if (auto result = randomizedParamFromVar (gcVar.getProperty ("groupStartDelay", juce::var()), out.groupStartDelay, "grainCloud.groupStartDelay");
             result.failed())
             return result;
 

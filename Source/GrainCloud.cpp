@@ -161,6 +161,7 @@ void GrainCloud::reset()
     for (auto& g : grains)
         g = Grain {};
     timeSinceLastSpawn = 0.0;
+    pendingGroupSpawnCountdowns.clear();
 
     juce::ScopedLock lock (snapshotLock);
     for (auto& s : snapshotBuffer)
@@ -269,7 +270,55 @@ void GrainCloud::beginVoiceSteal (Grain& g)
     }
     // else: this grain was already going to end within voiceStealReleaseSeconds
     // anyway (near its natural end) -- no need to shorten it further, just
-    // let it finish and free its slot on schedule.
+    // let it finish and let its slot free up on schedule.
+}
+
+bool GrainCloud::trySpawnOneGrain (Vec3 parentPosition, int& spawnBudget)
+{
+    if (spawnBudget <= 0)
+    {
+        // This cloud's own fair share of the scene-wide CPU ceiling for
+        // this tick (see PluginProcessor::timerCallback()) -- unlike
+        // maxConcurrentGrains below, this can't be worked around by
+        // stealing from this cloud's OWN grains, since it's derived from
+        // a limit across every object's cloud combined.
+        return false;
+    }
+
+    int slot = -1;
+    if (getNumActiveGrains() < settings.maxConcurrentGrains)
+    {
+        for (int i = 0; i < (int) grains.size(); ++i)
+        {
+            if (! grains[(size_t) i].active)
+            {
+                slot = i;
+                break;
+            }
+        }
+    }
+
+    if (slot < 0)
+    {
+        // At this cloud's own maxConcurrentGrains cap (the common case
+        // once grainRate*grainDuration exceeds it), or (defensively) no
+        // free pool slot for some other reason -- voice-steal the oldest
+        // active grain instead of permanently dropping this spawn (see
+        // GrainCloudSettings's own comment). The actual new spawn happens
+        // on a later call, once the stolen grain's short forced fade-out
+        // (beginVoiceSteal()) actually frees its slot -- the CALLER is
+        // responsible for making sure this attempt is retried then
+        // (Emitter mode caps timeSinceLastSpawn; Group mode simply leaves
+        // the pending countdown at/below zero).
+        const int stealFrom = findOldestStealableSlot();
+        if (stealFrom >= 0)
+            beginVoiceSteal (grains[(size_t) stealFrom]);
+        return false;
+    }
+
+    spawnGrain (slot, parentPosition, ringBufferWriteHeadSample, ringBufferSampleRate);
+    --spawnBudget;
+    return true;
 }
 
 void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, double sampleRate)
@@ -563,52 +612,41 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
 
         while (timeSinceLastSpawn >= spawnInterval)
         {
-            if (spawnBudget <= 0)
+            if (settings.generationMode == GrainGenerationMode::Emitter)
             {
-                // This cloud's own fair share of the scene-wide CPU
-                // ceiling for this tick (see PluginProcessor::
-                // timerCallback()) -- unlike maxConcurrentGrains below,
-                // this can't be worked around by stealing from this
-                // cloud's OWN grains, since it's derived from a limit
-                // across every object's cloud combined.
-                timeSinceLastSpawn = spawnInterval; // cap backlog, avoid a burst once capacity frees up
-                break;
-            }
-
-            int slot = -1;
-            if (getNumActiveGrains() < settings.maxConcurrentGrains)
-            {
-                for (int i = 0; i < (int) grains.size(); ++i)
+                // Today's unchanged behavior: one grain, right now. See
+                // trySpawnOneGrain()'s own comment for what "false" covers
+                // (budget exhausted, or no free/stealable slot) -- either
+                // way, cap the backlog so capacity freeing up later doesn't
+                // then unleash a burst of catch-up spawns.
+                if (! trySpawnOneGrain (parentPosition, spawnBudget))
                 {
-                    if (! grains[(size_t) i].active)
-                    {
-                        slot = i;
+                    timeSinceLastSpawn = spawnInterval;
+                    break;
+                }
+            }
+            else // GrainGenerationMode::Group
+            {
+                // Every time this SAME interval elapses, trigger a whole
+                // burst instead of a single grain -- each one gets its own
+                // optional randomized start delay (0 by default = truly
+                // simultaneous) and is resolved by the pending-countdown
+                // loop below, independently of this trigger. Deliberately
+                // NOT budget/slot-checked here -- that happens once each
+                // pending grain's own countdown actually reaches zero.
+                const int clampedGroupSize = juce::jmax (1, settings.groupSize);
+                for (int i = 0; i < clampedGroupSize; ++i)
+                {
+                    // Defensive cap against an unreasonable combination of
+                    // a huge groupSize and a short spawnInterval piling up
+                    // an unbounded queue -- same ceiling the scene-wide
+                    // grain budget itself never exceeds.
+                    if ((int) pendingGroupSpawnCountdowns.size() >= GrainLimits::maxConcurrentGrainsGlobal)
                         break;
-                    }
+                    pendingGroupSpawnCountdowns.push_back (juce::jmax (0.0f, settings.groupStartDelay.sample (rng)));
                 }
             }
 
-            if (slot < 0)
-            {
-                // At this cloud's own maxConcurrentGrains cap (the common
-                // case once grainRate*grainDuration exceeds it), or
-                // (defensively) no free pool slot for some other reason --
-                // voice-steal the oldest active grain instead of stalling
-                // the spawn schedule (see GrainCloudSettings's own
-                // comment). The actual new spawn happens on a later call
-                // to update(), once the stolen grain's short forced
-                // fade-out (beginVoiceSteal()) actually frees its slot --
-                // timeSinceLastSpawn keeps the backlog pending for that.
-                const int stealFrom = findOldestStealableSlot();
-                if (stealFrom >= 0)
-                    beginVoiceSteal (grains[(size_t) stealFrom]);
-
-                timeSinceLastSpawn = spawnInterval; // cap backlog, same reasoning as the budget case above
-                break;
-            }
-
-            spawnGrain (slot, parentPosition, ringBufferWriteHeadSample, ringBufferSampleRate);
-            --spawnBudget;
             timeSinceLastSpawn -= spawnInterval;
             spawnInterval = nextSpawnInterval();
         }
@@ -616,6 +654,28 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
     else
     {
         timeSinceLastSpawn = 0.0;
+        pendingGroupSpawnCountdowns.clear();
+    }
+
+    // GrainGenerationMode::Group's own pending-burst resolution --
+    // independent of the interval timer above (which only ever TRIGGERS a
+    // new burst, never spawns directly in Group mode). Runs every tick
+    // regardless of mode: a harmless no-op whenever nothing is pending
+    // (always true in Emitter mode, and true for an idle Group cloud).
+    for (size_t i = 0; i < pendingGroupSpawnCountdowns.size(); )
+    {
+        pendingGroupSpawnCountdowns[i] -= fdt;
+        if (pendingGroupSpawnCountdowns[i] <= 0.0f)
+        {
+            if (trySpawnOneGrain (parentPosition, spawnBudget))
+            {
+                pendingGroupSpawnCountdowns.erase (pendingGroupSpawnCountdowns.begin() + (long) i);
+                continue; // don't advance i -- the erase already shifted everything down
+            }
+            // Budget exhausted, or no free/stealable slot this tick --
+            // leave the countdown at/below zero, retry again next tick.
+        }
+        ++i;
     }
 
     juce::ScopedLock lock (snapshotLock);

@@ -1583,6 +1583,117 @@ static void testModifierStackSpatialOffsetShiftsSpawnPositionConstantly()
            "GrainCloud: a SpatialOffset modifier's contribution stays exactly constant over the grain's life (not growing, unlike a Movement modifier)");
 }
 
+// --- Generation mode: Emitter vs. Group (feature/modifier-stack, Stage 4) --
+
+static void testGenerationModeDefaultsToEmitterUnchanged()
+{
+    // GrainGenerationMode::Emitter (the default) must reproduce the
+    // EXACT pre-existing one-grain-per-interval behavior -- this is the
+    // same setup/assertions testSpawnRateAndCaps() already exercises,
+    // just phrased as an explicit regression guard for the new field's
+    // own default.
+    GrainCloud cloud (16);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 100.0f;
+    cloud.getSettings().grainDuration = 2.0f;
+    cloud.getSettings().maxConcurrentGrains = 16;
+    cloud.getSettings().seed = 701;
+    check (cloud.getSettings().generationMode == GrainGenerationMode::Emitter,
+           "GrainCloud: generationMode defaults to Emitter (existing presets, which never saved this field, are unaffected)");
+
+    int budget = 32;
+    cloud.setRingBufferContext (0, kSampleRate);
+    int totalSpawns = 0;
+    std::vector<int> lastGen (16, 0);
+    for (int tick = 0; tick < 9; ++tick) // 0.1s at grainRate=100 => ~10 spawns, one at a time
+    {
+        cloud.update (1.0 / 90.0, {}, {}, budget);
+        std::vector<GrainCloud::Snapshot> snap;
+        cloud.getSnapshot (snap);
+        for (size_t i = 0; i < snap.size(); ++i)
+            if (snap[i].active && snap[i].spawnGeneration != lastGen[i])
+            {
+                lastGen[i] = snap[i].spawnGeneration;
+                ++totalSpawns;
+            }
+    }
+    check (totalSpawns > 0 && totalSpawns < 16, "GrainCloud: Emitter mode still spawns roughly one grain per interval tick, not a burst");
+}
+
+static void testGenerationModeGroupTriggersWholeBurstAtOnce()
+{
+    GrainCloud cloud (32);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 1.0f; // one burst trigger per second
+    cloud.getSettings().grainDuration = 5.0f;
+    cloud.getSettings().maxConcurrentGrains = 32;
+    cloud.getSettings().seed = 702;
+    cloud.getSettings().generationMode = GrainGenerationMode::Group;
+    cloud.getSettings().groupSize = 10;
+    // groupStartDelay left at its default (0/0) -- every grain in the
+    // burst should be triggered in the SAME tick.
+
+    int budget = 64;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 100; ++i) // grainRate=1 => force the trigger, same pattern as other tests
+        cloud.update (0.01, {}, {}, budget);
+
+    const int activeAfterOneBurst = cloud.getNumActiveGrains();
+    std::printf ("       Group mode (groupSize=10, startDelay=0): %d grains active right after the burst triggers\n", activeAfterOneBurst);
+    check (activeAfterOneBurst == 10, "GrainCloud: Group mode triggers its whole groupSize-grain burst in one go when groupStartDelay is 0 (the default)");
+}
+
+static void testGenerationModeGroupSpreadsBurstOverTimeWithStartDelay()
+{
+    GrainCloud cloud (32);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 1.0f;
+    cloud.getSettings().grainDuration = 5.0f;
+    cloud.getSettings().maxConcurrentGrains = 32;
+    cloud.getSettings().seed = 703;
+    cloud.getSettings().generationMode = GrainGenerationMode::Group;
+    cloud.getSettings().groupSize = 10;
+    cloud.getSettings().groupStartDelay = { 0.25f, 0.25f }; // spread 0..0.5s
+
+    int budget = 64;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 100; ++i) // force the trigger (same ~1s as above)
+        cloud.update (0.01, {}, {}, budget);
+
+    const int activeRightAfterTrigger = cloud.getNumActiveGrains();
+    std::printf ("       Group mode with groupStartDelay spread: %d/10 grains active immediately after the trigger tick\n", activeRightAfterTrigger);
+    check (activeRightAfterTrigger < 10, "GrainCloud: Group mode with a nonzero groupStartDelay spread does NOT spawn the whole burst in one tick");
+
+    for (int i = 0; i < 60; ++i) // another 0.6s -- comfortably past the 0.5s max delay
+        cloud.update (0.01, {}, {}, budget);
+    check (cloud.getNumActiveGrains() == 10, "GrainCloud: every grain in the burst has spawned once enough time has passed for the longest startDelay");
+}
+
+static void testGenerationModeGroupClearsPendingBurstWhenDisabled()
+{
+    GrainCloud cloud (32);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 1.0f;
+    cloud.getSettings().grainDuration = 5.0f;
+    cloud.getSettings().maxConcurrentGrains = 32;
+    cloud.getSettings().seed = 704;
+    cloud.getSettings().generationMode = GrainGenerationMode::Group;
+    cloud.getSettings().groupSize = 10;
+    cloud.getSettings().groupStartDelay = { 2.0f, 0.0f }; // every grain waits a full 2s -- plenty of time to disable first
+
+    int budget = 64;
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 100; ++i) // trigger the burst (grains now pending, none spawned yet)
+        cloud.update (0.01, {}, {}, budget);
+    check (cloud.getNumActiveGrains() == 0, "GrainCloud: Group-mode test setup has a pending burst that hasn't resolved yet (startDelay=2s)");
+
+    cloud.getSettings().enabled = false;
+    for (int i = 0; i < 300; ++i) // 3s, well past every pending grain's own 2s delay
+        cloud.update (0.01, {}, {}, budget);
+    check (cloud.getNumActiveGrains() == 0,
+           "GrainCloud: disabling the cloud clears its pending Group burst -- already-queued grains don't spawn late after the cloud was turned off");
+}
+
 int main()
 {
     testRenderGrainBlock();
@@ -1617,6 +1728,10 @@ int main()
     testModifierStackLinearMovementDriftsGrainOverTime();
     testModifierStackRotatingMovementAccumulatesOnOrbitAroundParent();
     testModifierStackSpatialOffsetShiftsSpawnPositionConstantly();
+    testGenerationModeDefaultsToEmitterUnchanged();
+    testGenerationModeGroupTriggersWholeBurstAtOnce();
+    testGenerationModeGroupSpreadsBurstOverTimeWithStartDelay();
+    testGenerationModeGroupClearsPendingBurstWhenDisabled();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

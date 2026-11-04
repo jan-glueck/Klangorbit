@@ -188,6 +188,14 @@ private:
     // refreshFromModel(), and grainFilterEnabledRow's own onToggled.
     void updateGrainFilterVisibility();
 
+    // Shows/hides grainGroupSizeRow/-StartDelayRow/-StartDelayJitterRow:
+    // visible only while the GrainCloud category is showing AND
+    // editedGrainCloud->generationMode == Group -- same pattern as
+    // updateGrainFilterVisibility() above, on an independent axis. Same
+    // trigger points: selectCategory(), setEditedGrainCloud()/
+    // refreshFromModel(), and grainGenerationModeRow's own onSelected.
+    void updateGrainGenerationModeVisibility();
+
     // Grain Cloud and DelayInstance are mutually exclusive per object --
     // a Delay's recirculating buffer and a Grain cloud's dry ring buffer
     // are two different uses of the same object's live input, not
@@ -295,6 +303,17 @@ private:
     std::unique_ptr<FloatRowComponent> grainFilterResonanceRow;   // VoiceFilterSettings::resonance.base
     std::unique_ptr<FloatRowComponent> grainFilterCutoffJitterRow; // VoiceFilterSettings::cutoffHz.spread
     std::unique_ptr<FloatRowComponent> grainFilterDriftAmountRow;  // VoiceFilterSettings::driftAmplitude
+
+    // Generation mode (feature/modifier-stack, Stage 4) -- Emitter (the
+    // existing, always-on continuous grainRate-based spawning, unchanged)
+    // vs Group (burst every grainRate-derived interval, each grain in the
+    // burst optionally spread out via groupStartDelay). grainGroupSizeRow/
+    // -StartDelayRow/-StartDelayJitterRow are visible only while
+    // generationMode == Group, see updateGrainGenerationModeVisibility().
+    std::unique_ptr<ComboRowComponent> grainGenerationModeRow;
+    std::unique_ptr<FloatRowComponent> grainGroupSizeRow;             // GrainCloudSettings::groupSize
+    std::unique_ptr<FloatRowComponent> grainGroupStartDelayRow;       // GrainCloudSettings::groupStartDelay.base
+    std::unique_ptr<FloatRowComponent> grainGroupStartDelayJitterRow; // GrainCloudSettings::groupStartDelay.spread
 
     // Modifier stack (feature/modifier-stack) -- one editor per source,
     // each pointed at that source's own GrainCloudSettings::modifiers/

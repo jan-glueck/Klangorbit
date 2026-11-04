@@ -1443,6 +1443,21 @@ after the other.
   ones). Sampled once per voice, CONSTANT for its whole life (composed
   at the same point as Movement's own overlay, never fed back into the
   voice's own physics) -- unlike Movement, it never grows.
+- **Generation mode (GrainCloud only) -- "Erzeugungsart" from the
+  original spec.** Checked against what `GrainCloud` already does: its
+  existing continuous `grainRate`-based spawning already IS the
+  "Emitter" case, so `GrainGenerationMode::Emitter` just names it,
+  completely unchanged. `GrainGenerationMode::Group` is the new case:
+  instead of one grain per elapsed spawn interval, a whole burst of
+  `groupSize` grains is queued at once, each with its own independently
+  sampled, optional start delay (`groupStartDelay`, a `RandomizedParam`,
+  0 = the whole burst lands on the same instant) -- so a burst can be
+  simultaneous or spread out. Both modes share the same free-slot-or-
+  voice-steal policy via `GrainCloud::trySpawnOneGrain()`; Group's own
+  `pendingGroupSpawnCountdowns` queue is resolved once per tick,
+  independently of the interval timer that triggers the next burst. Not
+  offered for DelayInstance -- a tap isn't spawned at all, so "burst of
+  N grains" has no equivalent there.
 - **UI.** `ModifierStackEditor`/`ModifierRowComponent`
   (`Source/ModifierStackEditor.h/.cpp`) -- the one part of
   `ParameterPanel` with a genuinely variable-length, reorderable child-
@@ -1462,10 +1477,12 @@ after the other.
   `Tools/verify_grain_cloud.cpp` and `Tools/verify_delay_instance.cpp`
   each add their own integration tests (including the live-in-place-edit
   case for DelayInstance, and the Rotating-on-OrbitAroundParent
-  accumulation case for GrainCloud); `Tools/verify_modifier_stack_preset.cpp`
-  round-trips a multi-slot, multi-type (including Movement/
-  SpatialOffset) stack
-  through the real preset path for both sources.
+  accumulation case for GrainCloud, plus Group-mode's burst-at-once/
+  spread-over-time/cleared-on-disable cases for GrainCloud);
+  `Tools/verify_modifier_stack_preset.cpp` round-trips a multi-slot,
+  multi-type (including Movement/SpatialOffset) stack through the real
+  preset path for both sources; `Tools/verify_grain_generation_mode_preset.cpp`
+  round-trips `generationMode`/`groupSize`/`groupStartDelay` the same way.
 
 ## GUI design
 

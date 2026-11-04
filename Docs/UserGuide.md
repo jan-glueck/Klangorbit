@@ -384,6 +384,16 @@ trajectory. Turn it on with **Enabled**.
   starting exactly on schedule. The trade-off: under heavy overlap, some
   individual grains end up a bit shorter than the Duration you set,
   rather than new grains simply failing to start on time.
+- **Generation Mode** -- **Emitter** (default) is the grain cloud's
+  ordinary behavior described above: a steady stream, one new grain per
+  elapsed spawn interval. **Group** instead fires a whole burst of
+  grains every time that same interval elapses -- **Group Size** sets
+  how many grains per burst, and **Group Start Delay** (plus its own
+  **Jitter**) optionally spreads each grain in the burst out over a
+  short random window after the burst triggers, instead of all of them
+  landing on the exact same instant (Start Delay = 0, the default,
+  keeps the whole burst simultaneous). Only shown while Generation Mode
+  is set to Group.
 - **Movement Mode** -- how each grain moves during its short life. The
   panel only shows the parameters that actually do something for
   whichever mode is currently selected (switching modes swaps the

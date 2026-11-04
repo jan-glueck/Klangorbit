@@ -135,6 +135,28 @@ defaults for everything new.
         "windowShape": "hann",         // grain envelope shape; hann is currently the only option
         "movementMode": "randomWalk",  // randomWalk | bounce | radialExplosion | orbitAroundParent | attractRepelSiblings
 
+        // Optional -- missing entirely (every preset saved before
+        // feature/modifier-stack Stage 4 existed) is the same as
+        // "emitter" below, i.e. unchanged behavior: "emitter" is simply
+        // this cloud's pre-existing continuous grainRate-based spawning,
+        // now named. "group" instead queues a whole burst of groupSize
+        // grains every time that same interval elapses, each with its
+        // own independently sampled start delay (0 = whole burst at the
+        // same instant) -- see Source/GrainCloud.cpp's generationMode
+        // branch in update().
+        "generationMode": "emitter",   // emitter | group
+        "groupSize": 10,               // group only -- grains spawned per burst
+        "groupStartDelay": {           // group only -- RandomizedParam, seconds, per-grain start delay within the burst
+          "base": 0.0,
+          "spread": 0.0,
+          "distribution": "uniform",
+          "rampTowardMax": true,
+          "powerExponent": 2.0,
+          "discreteValues": [],
+          "quantizeToSet": false,
+          "quantizeValues": []
+        },
+
         "randomWalkSpeed": 1.0,        // m/s, used by randomWalk
         "boundaryRadius": 1.0,         // meters, used by bounce (elastic reflection around the spawn position)
         "boundaryRadiusJitter": 0.0,   // 0..1, random +/- variation of boundaryRadius per spawned grain (bounce)

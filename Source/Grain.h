@@ -17,6 +17,33 @@ enum class GrainMovementMode
     AttractRepelSiblings  // n-body force from other active grains in the same cloud only
 };
 
+/**
+    How new grains get triggered -- the original spec's "Erzeugungsart"
+    (generation type) request, checked against what GrainCloud already
+    does: the existing grainRate-driven continuous spawning (see
+    GrainCloudSettings's own class comment) already covers "Emitter"
+    exactly, so that's kept as the default, zero-behavior-change option;
+    "Group" (burst, all at once) is the genuinely new capability.
+
+    Emitter: today's unchanged behavior -- one grain spawns every
+    grainRate-derived interval, continuously while enabled.
+
+    Group: EVERY TIME that same interval elapses, a whole BURST of
+    groupSize grains is triggered at once instead of just one --
+    reusing the identical interval timer (grainRate/grainRateJitter)
+    rather than a second, parallel scheduling mechanism. "At once" is
+    deliberately not the same instant for every grain in the burst:
+    each one gets its own optional randomized startDelay (0 by default
+    = truly simultaneous, see GrainCloudSettings::groupStartDelay) --
+    "optional randomized start delays" is explicitly part of the
+    original request, not an afterthought.
+*/
+enum class GrainGenerationMode
+{
+    Emitter,
+    Group
+};
+
 /** Grain amplitude envelope shape. Only Hann for now, deliberately extensible. */
 enum class GrainWindowShape
 {
@@ -237,6 +264,20 @@ struct GrainCloudSettings
     // applyJitter() shape as pitchJitter below, just applied to timing
     // instead of playback rate.
     float grainRateJitter = 0.0f;
+
+    // See GrainGenerationMode's own comment. Emitter (the default)
+    // reproduces today's unchanged continuous-spawn behavior exactly,
+    // so no existing preset's sound changes. groupSize/groupStartDelay
+    // are only meaningful while generationMode == Group.
+    GrainGenerationMode generationMode = GrainGenerationMode::Emitter;
+    int groupSize = 10; // how many grains one burst triggers at once
+    // Seconds, sampled ONCE PER GRAIN within a triggered burst (not
+    // once per burst) -- 0/0 (the default) means every grain in the
+    // burst is triggered in the exact same control tick; a nonzero
+    // spread spreads them out over time instead (see GrainCloud::
+    // update()'s pending-burst countdown queue).
+    RandomizedParam groupStartDelay { 0.0f, 0.0f };
+
     float grainDuration = 0.15f;              // seconds; also the grain's movement lifetime
     // 0..1, fractional +/- randomization applied to grainDuration at
     // spawn time (this grain's own lifetime only, doesn't affect any

@@ -260,6 +260,41 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   contribution), and `Tools/verify_modifier_stack_preset.cpp`
   (round-trip including the new fields). Full project rebuild + entire
   test suite green, Standalone app launches/quits cleanly.
+- **Modifier stack, Stage 4: generation mode (Group vs Emitter)**
+  (`Source/Grain.h`, `Source/GrainCloud.cpp`, `feature/modifier-stack`,
+  Branch 4) -- the final piece of the original spec, "Erzeugungsart:
+  'Gruppe' (alle auf einmal, optional mit zufaelligen
+  Startverzoegerungen) und 'Emitter' (konstante Rate)", checked against
+  what `GrainCloud` already does: its existing continuous `grainRate`-
+  based spawning already IS the "Emitter" case, so that path is left
+  completely untouched -- new `GrainGenerationMode::Emitter` is simply
+  its name now. `GrainGenerationMode::Group` is genuinely new: instead
+  of spawning one grain whenever the spawn interval elapses, it queues
+  a whole burst of `groupSize` grains at once, each with its own
+  independently sampled, optional start delay (`groupStartDelay`, a
+  `RandomizedParam`, 0 = whole burst at the exact same instant) so a
+  burst can either land all at once or get spread out over time. Shared
+  `GrainCloud::trySpawnOneGrain()` helper (free pool slot or voice-steal
+  the oldest active grain, same policy either mode uses) now backs both
+  Emitter's immediate spawn and Group's own per-grain
+  `pendingGroupSpawnCountdowns` resolution, each decremented and
+  resolved once per tick independently of the interval timer that
+  triggers a new burst. Only on `GrainCloudSettings` (Delay has no
+  concept of a "burst" of taps), new `ParameterPanel` Generation Mode
+  combo (Grains category) with Group Size / Group Start Delay / Group
+  Start Delay Jitter rows visible only while Group is selected.
+  Persisted via new, fully optional `generationMode`/`groupSize`/
+  `groupStartDelay` fields -- no schemaVersion bump; a preset saved
+  before this field existed loads as Emitter (unchanged behavior).
+  Verified via new cases in `Tools/verify_grain_cloud.cpp` (Emitter
+  stays byte-for-byte unchanged by default, Group triggers a whole
+  burst at once, Group spreads a burst over time when start delay is
+  set, the pending queue clears when the cloud is disabled mid-burst)
+  and a new `Tools/verify_grain_generation_mode_preset.cpp` (round-trip
+  through the real preset save/load path, plus the no-key-at-all
+  backward-compatibility case). Full project rebuild + entire test
+  suite green, Standalone app launches/quits cleanly. This completes
+  Branch 4 (`feature/modifier-stack`).
 
 ## [0.2.0] - 2026-09-17
 ### Added

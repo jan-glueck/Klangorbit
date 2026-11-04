@@ -456,6 +456,27 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   malformed-content rejection, and a real file save/load round-trip
   against actual temp files on disk). Full project rebuild + entire
   29-binary test suite green, Standalone app launches/quits cleanly.
+- **Snapshots, Stage 3 (continued): UI** (`Source/SnapshotPanel.h/.cpp`,
+  `Source/SnapshotWindow.h/.cpp`, `feature/agitation-and-snapshots`,
+  Branch 5) -- a new "Snapshots..." toolbar button opens a standalone
+  window (same lazily-created, hide-not-destroy pattern as the
+  Mappings/Output/Help windows) with a category checklist (the scope
+  selector, ticked by default = no restriction) and Load/Save Snapshot
+  buttons, mirroring `MappingPanel`'s own Load/Save Profile file-chooser
+  workflow exactly -- one file per snapshot, no in-session multi-
+  snapshot list yet (deliberately deferred, see `SnapshotPanel.h`'s own
+  comment: morphing/randomized variants in Stage 4 need that anyway).
+  Recalling a snapshot writes straight into the live model through
+  `ParameterRegistry::setValue()`, so loading one now also calls
+  `ParameterPanel::refreshFromModel()` (via a callback `SnapshotPanel`
+  takes, never touching `ParameterPanel` itself directly -- same
+  separation `AgitationEditor`/`MappingPanel` already keep from each
+  other). New `SAPOC_SNAPSHOTS_USER_DIR`/`-FACTORY_DIR` build
+  convenience macros, same convention as the preset/mapping-profile
+  ones. Full project rebuild + entire 29-binary test suite green,
+  Standalone app launches/quits cleanly (build + no-crash launch only --
+  no automated visual check of the new window's actual rendering was
+  possible in this environment).
 
 ## [0.2.0] - 2026-09-17
 ### Added

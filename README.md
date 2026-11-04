@@ -1540,10 +1540,18 @@ controlling it, so recalling one should never touch either of those.
 `Snapshots/factory/`/`Snapshots/user/` storage, same convention as
 `Presets/`/`MappingProfiles/`.
 
-Branch 5 (`feature/agitation-and-snapshots`) is still in progress -- no
-UI for Snapshots yet (capture/recall are backend-only so far, same
-staged split Agitation's own Stage 2 used), and morphing between two
-snapshots / randomized variants have not been started at all.
+A new "Snapshots..." toolbar button opens a standalone window
+(`Source/SnapshotWindow.h/.cpp`/`SnapshotPanel.h/.cpp`) with a category
+checklist (the scope selector) and Load/Save Snapshot buttons --
+mirrors `MappingPanel`'s own Load/Save Profile workflow exactly, one
+file per snapshot. Recalling writes straight into the live model
+through the registry, so it also triggers `ParameterPanel::
+refreshFromModel()` via a callback (neither component references the
+other directly).
+
+Branch 5 (`feature/agitation-and-snapshots`) is still in progress --
+morphing between two snapshots and randomized variants (Stage 4) have
+not been started at all.
 
 ## GUI design
 

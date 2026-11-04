@@ -816,3 +816,23 @@ switching it on reveals:
 Turning a row off and back on again picks a fresh center point from
 wherever the parameter happens to be at that moment -- it doesn't
 remember the old one.
+
+## 22. Snapshots (toolbar -> Snapshots...)
+
+Capture the current value of (almost) every parameter in the plugin as
+a named file, and recall it later -- a quick way to save a whole
+"state" you like and get back to it, separate from both scene presets
+and your controller mappings (loading one touches neither of those).
+
+- Tick/untick the categories you want included before saving (all
+  ticked by default = everything). Delay's category only matters when
+  Delay is actually in use, and so on.
+- **Save Snapshot...** captures the current values of whatever's
+  ticked and writes them to a file you choose.
+- **Load Snapshot...** reads a previously saved file and writes those
+  values straight back into the plugin -- the parameter panel updates
+  immediately to show the recalled values.
+
+Only one snapshot is loaded/active at a time right now -- saving/
+loading two at once to blend between them, or randomizing from one,
+isn't available yet.

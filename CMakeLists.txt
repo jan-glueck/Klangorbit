@@ -190,6 +190,11 @@ target_compile_definitions(Klangorbit
         # a separate schema/directory tree from presets, see that file.
         SAPOC_MAPPING_PROFILES_USER_DIR="${CMAKE_SOURCE_DIR}/MappingProfiles/user"
         SAPOC_MAPPING_PROFILES_FACTORY_DIR="${CMAKE_SOURCE_DIR}/MappingProfiles/factory"
+        # Same local-dev-convenience-path reasoning, for Snapshots
+        # (Snapshots/schema/README.md) -- a third, independent schema/
+        # directory tree, see that file.
+        SAPOC_SNAPSHOTS_USER_DIR="${CMAKE_SOURCE_DIR}/Snapshots/user"
+        SAPOC_SNAPSHOTS_FACTORY_DIR="${CMAKE_SOURCE_DIR}/Snapshots/factory"
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
@@ -220,6 +225,8 @@ target_sources(Klangorbit
         Source/ModifierStackEditor.cpp
         Source/AgitationEditor.cpp
         Source/SnapshotManager.cpp
+        Source/SnapshotPanel.cpp
+        Source/SnapshotWindow.cpp
         Source/PropagationProcessor.cpp
         Source/GrainCloud.cpp
         Source/Camera3D.cpp

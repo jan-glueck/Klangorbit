@@ -9,6 +9,7 @@
 #include "HelpWindow.h"
 #include "MappingWindow.h"
 #include "OutputWindow.h"
+#include "SnapshotWindow.h"
 #include <deque>
 #include <memory>
 #include <vector>
@@ -130,8 +131,10 @@ private:
     void showHelpClicked(); // lazily creates helpWindow, or re-shows/refronts it if already open
     void showMappingClicked(); // lazily creates mappingWindow, or re-shows/refronts it if already open
     void showOutputClicked(); // lazily creates outputWindow, or re-shows/refronts it if already open
+    void showSnapshotClicked(); // lazily creates snapshotWindow, or re-shows/refronts it if already open
 
-    // Wired to helpWindow/mappingWindow/outputWindow's onClosed callback --
+    // Wired to helpWindow/mappingWindow/outputWindow/snapshotWindow's own
+    // onClosed callback --
     // brings THIS editor's own top-level window back to front once one of
     // those always-on-top auxiliary windows hides itself, see those
     // windows' own onClosed comment (HelpWindow.h) for the reported bug
@@ -307,6 +310,12 @@ private:
     // pattern as helpWindow/mappingWindow above.
     juce::TextButton outputButton { "Output..." };
     std::unique_ptr<OutputWindow> outputWindow;
+
+    // Snapshot capture/recall (feature/agitation-and-snapshots), same
+    // lazily-created, hide-not-destroy pattern as helpWindow/
+    // mappingWindow/outputWindow above.
+    juce::TextButton snapshotButton { "Snapshots..." };
+    std::unique_ptr<SnapshotWindow> snapshotWindow;
 
     // Read from KlangorbitProcessor::getEstimatedCpuLoad() each timer
     // tick -- see its comment for why this exists (maxConcurrentGrainsGlobal

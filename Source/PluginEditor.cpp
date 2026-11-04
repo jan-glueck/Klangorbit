@@ -257,6 +257,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     addAndMakeVisible (cpuLoadLabel);
     addAndMakeVisible (mappingButton);
     addAndMakeVisible (outputButton);
+    addAndMakeVisible (snapshotButton);
     addAndMakeVisible (helpButton);
     addAndMakeVisible (objectListPanel);
     addAndMakeVisible (parameterPanel);
@@ -276,6 +277,8 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     mappingButton.setTooltip ("Controller mapping -- Learn mode, current bindings, mapping profiles");
     outputButton.onClick = [this] { showOutputClicked(); };
     outputButton.setTooltip ("Output format, bass management, circular array speaker count");
+    snapshotButton.onClick = [this] { showSnapshotClicked(); };
+    snapshotButton.setTooltip ("Snapshots -- capture/recall a whole parameter set, scoped by category");
 
     presetStatusLabel.setText (currentPresetName, juce::dontSendNotification);
     presetStatusLabel.setColour (juce::Label::textColourId, UiColours::textSecondary());
@@ -818,6 +821,7 @@ void KlangorbitEditor::resized()
     // two rows to one.
     helpButton.setBounds (toolbar.removeFromRight (32).reduced (UiSpacing::xs));
     outputButton.setBounds (toolbar.removeFromRight (110).reduced (UiSpacing::xs));
+    snapshotButton.setBounds (toolbar.removeFromRight (120).reduced (UiSpacing::xs));
     mappingButton.setBounds (toolbar.removeFromRight (130).reduced (UiSpacing::xs));
     cpuLoadLabel.setBounds (toolbar.removeFromRight (110).reduced (UiSpacing::xs));
     loadPresetButton.setBounds (toolbar.removeFromLeft (140).reduced (UiSpacing::xs));
@@ -908,6 +912,27 @@ void KlangorbitEditor::showOutputClicked()
     // Deferred second attempt -- see showMappingClicked()'s identical
     // comment for why, and why SafePointer rather than a raw pointer.
     juce::Component::SafePointer<OutputWindow> window (outputWindow.get());
+    juce::MessageManager::callAsync ([window] { if (window != nullptr) WindowUtils::forceToFront (*window); });
+}
+
+void KlangorbitEditor::showSnapshotClicked()
+{
+    if (snapshotWindow == nullptr)
+    {
+        // recall() writes straight into the live model through
+        // ParameterRegistry's own setValue() -- parameterPanel needs to
+        // be told to re-read those values afterward, same reasoning
+        // loadPresetClicked() already has for its own refreshFromModel()
+        // call below.
+        snapshotWindow = std::make_unique<SnapshotWindow> (audioProcessor.getParameterRegistry(),
+                                                              [this] { parameterPanel.refreshFromModel(); }); // constructor already makes it visible
+        snapshotWindow->onClosed = [this] { bringEditorToFront(); };
+    }
+
+    WindowUtils::forceToFront (*snapshotWindow);
+    // Deferred second attempt -- see showMappingClicked()'s identical
+    // comment for why, and why SafePointer rather than a raw pointer.
+    juce::Component::SafePointer<SnapshotWindow> window (snapshotWindow.get());
     juce::MessageManager::callAsync ([window] { if (window != nullptr) WindowUtils::forceToFront (*window); });
 }
 

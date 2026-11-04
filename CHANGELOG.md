@@ -486,29 +486,9 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   force to spike to a near-infinite value on the first tick. Fixed with
   a small random spawn offset and a larger softening distance.
 
-### Known limitations
-- `GrainCloud` grains skip `PropagationProcessor` entirely (no
-  per-grain Doppler/delay/air absorption/directivity).
-- Grain window shape is Hann only.
-- The global grain spawn budget is first-come-first-served across
-  objects each tick, not prioritized by e.g. gain or distance.
-- `maxConcurrentGrainsGlobal` is a rough estimate, not measured on real
-  audio hardware -- watch the toolbar's CPU meter under real load.
-- Interactive/visual feel across the GUI (camera drag/zoom direction,
-  the boundary sphere's appearance, slider ranges, and the audible
-  result of every new audio feature) is largely unverified by hand.
-- Building only `Klangorbit_Standalone` does not update the installed
-  VST3 copy -- that requires building `Klangorbit_VST3` separately.
-- The sling gesture's Tab shortcut may be intercepted by some DAW hosts
-  before it ever reaches the plugin editor.
-
 ## [0.1.0] - POC skeleton
 ### Added
 - TrajectoryEngine: Static/Manual/Orbit/Impulse/Attracted modes
 - AmbisonicsEncoder: generic SH computation, order 0-7, SN3D/ACN
 - PluginProcessor: 8 mono inputs -> Ambisonics bus (order 3 = 16 ch.)
 - 2D editor: mouse drag, throw gesture, orbit via double-click
-### Known limitations
-- No Doppler effect, no frequency-dependent distance attenuation
-- No 3D interaction, no MIDI mapping
-- No preset persistence (state save is a stub)

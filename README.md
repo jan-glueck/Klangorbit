@@ -1484,6 +1484,44 @@ after the other.
   preset path for both sources; `Tools/verify_grain_generation_mode_preset.cpp`
   round-trips `generationMode`/`groupSize`/`groupStartDelay` the same way.
 
+## Agitation: per-parameter random modulation (Branch 5, in progress)
+
+Toggleable per-parameter wobble around whatever value a parameter
+currently has, built on the same Ornstein-Uhlenbeck process
+(`MeanReverting::step()`, `RandomEngine.h`) already driving orbit-radius
+noise, `VoiceFilter`'s cutoff drift, and the Movement modifier -- see
+that function's own comment. Deliberately generic over parameter TYPE:
+`Agitation.h`'s `Settings`/`State`/`start()`/`advance()` know nothing
+about which struct a parameter lives on, and `AgitationEngine` (one
+`Settings`/`State` pair per `ParameterRegistry` id, lazily created) drives
+every currently-enabled one through that registry's own generic
+`getValue()`/`setValue()` -- the one shared call site every parameter,
+regardless of type, goes through. An `enabled` false -> true transition
+is detected automatically (captures a fresh baseline); UI code only
+ever flips a bool.
+
+Rate can optionally sync to a tempo division (straight + triplet)
+instead of a fixed absolute value -- the host's own tempo
+(`juce::AudioPlayHead`) when available, else a `SceneSettings::
+standaloneTempoBpm` field for the Standalone build, which has no host
+transport at all. `ParameterPanel`'s new "Agitation" category lists
+every `Scope::Global`/`Scope::SelectedObject` registered parameter
+(grouped by its own registry category), each row collapsing to just an
+Enabled toggle until switched on (Amount/Rate/Smoothing/Tempo Synced
+then appear) -- a row never creates a persisted entry merely by being
+displayed, only an actual edit does.
+
+Persisted as a new, optional top-level `"agitation"` preset block (own
+`PresetManager::sceneToVar()`/`loadFromVar()` parameter, default
+`nullptr` so every pre-existing caller is unaffected) -- no
+schemaVersion bump. `ParameterRegistry` gained its first-ever "Delay"
+category as a prerequisite (`DelayInstanceSettings` had never been
+registered there at all).
+
+Branch 5 (`feature/agitation-and-snapshots`) is still in progress --
+Snapshots (saving/recalling whole parameter sets, morphing between two,
+randomized variants) have not been started yet.
+
 ## GUI design
 
 Dark, cyan-accented, reduced "sci-fi HUD" look, applied uniformly rather

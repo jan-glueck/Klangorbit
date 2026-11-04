@@ -762,11 +762,11 @@ Separate from -- and complementary to -- the gamepad/MIDI/OSC Learn-mode
 mapping in sections 16-18: every field exposed there is ALSO a real,
 host-automatable parameter, in AU, VST3, and Standalone alike. Draw or
 record automation for any object's Mass, Gain, Attraction, Orbit,
-Doppler, or Grain Cloud parameters, or any scene-wide parameter, directly
-in the host's own automation lanes -- 525 parameters total, grouped in
-the host's parameter picker as "Object 1".."Object 8" (each subgrouped by
-category: Object Physics/Attraction/Orbit/Doppler/Grain Cloud) plus one
-"Global" group.
+Doppler, Grain Cloud, or Delay parameters, or any scene-wide parameter,
+directly in the host's own automation lanes -- 589 parameters total,
+grouped in the host's parameter picker as "Object 1".."Object 8" (each
+subgrouped by category: Object Physics/Attraction/Orbit/Doppler/Grain
+Cloud/Delay) plus one "Global" group.
 
 - Automatable: exactly the fields the Mappings window's Learn mode
   already exposes for a SPECIFIC object slot or globally. NOT
@@ -788,3 +788,31 @@ category: Object Physics/Attraction/Orbit/Doppler/Grain Cloud) plus one
 - Session save/reload in the host now actually preserves the whole scene
   (previously it did not) -- see the CHANGELOG for the "DAW automation"
   entry and its own reasoning.
+
+## 21. Agitation (parameter panel -> Agitation category)
+
+An optional random wobble you can switch on for almost any parameter in
+the plugin -- lists every parameter from every other category (Object
+Physics, Attraction, Orbit, Doppler, Grain Cloud, Delay, plus the
+scene-wide ones) in one place, grouped under its own category, each row
+acting on whichever object is currently selected (same as every other
+per-object category).
+
+Each row starts collapsed to just its name and an **Enabled** toggle --
+switching it on reveals:
+
+- **Amount** -- how far the parameter is allowed to wander from its
+  current value (0 = no wobble at all).
+- **Rate** -- how quickly it pulls back toward that value; the wobble
+  never drifts away permanently, it wanders AROUND wherever the
+  parameter was when you turned Agitation on for it.
+- **Smoothing** -- softens the underlying randomness so the wobble
+  doesn't jump abruptly tick to tick.
+- **Tempo Synced** -- ties Rate to a musical note division (from Whole
+  down to Sixteenth, including triplets) instead of a fixed number,
+  using the host's own tempo when available, or the Standalone's own
+  tempo setting otherwise.
+
+Turning a row off and back on again picks a fresh center point from
+wherever the parameter happens to be at that moment -- it doesn't
+remember the old one.

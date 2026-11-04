@@ -386,6 +386,43 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   `tempoDivision`, both `nullptr` directions, replace-not-merge across
   two successive loads). Full project rebuild + entire 28-binary test
   suite green, Standalone app launches/quits cleanly.
+- **Agitation, Stage 2 (continued): UI** (`Source/AgitationEditor.h/.cpp`,
+  `feature/agitation-and-snapshots`, Branch 5) -- the UI design question
+  the backend above deliberately left open, resolved as a dedicated
+  "Agitation" category/tab in `ParameterPanel`: one row per
+  `ParameterRegistry` parameter with `Scope::Global` or `Scope::
+  SelectedObject` (`Scope::SpecificObject` entries -- "object.3.mass"
+  etc. -- excluded, same "this panel always edits the one currently
+  selected object" convention every other category already follows),
+  grouped under a small header per registry category in the same order
+  as this panel's own category tabs. Unlike `ModifierStackEditor`'s
+  per-source, variable-length stack, this list is FIXED and built
+  exactly ONCE (`AgitationEditor::setup()`, called from
+  `KlangorbitEditor`'s constructor, mirroring `setSceneSettings()`'s own
+  one-shot treatment) -- `ParameterRegistry`/`AgitationEngine` are both
+  single, processor-lifetime-stable instances, not rebound per selected
+  object, so a `Scope::SelectedObject` row (e.g. "Mass") simply keeps
+  acting on whichever object is currently selected underneath, exactly
+  like every other consumer of that scope already does.
+  Each row starts collapsed to just its own Enabled toggle (deliberately
+  NOT lazily creating an `AgitationEngine` entry merely by being
+  displayed or refreshed -- only an actual toggle/slider touch does,
+  via `AgitationEngine::settingsFor()`; every read-only path uses
+  `findSettings()` instead), expanding to Amount/Rate/Smoothing/Tempo
+  Synced (and, only while Tempo Synced, a Tempo Division combo) once
+  enabled -- Rate is hidden while Tempo Synced, since it's then ignored
+  entirely in favour of the tempo-derived rate. Amount's own slider
+  range is resolved per row from that parameter's own registered
+  `minValue`/`maxValue` span, rather than one hand-picked range per row
+  (impractical at ~90 rows). Same variable-total-height reporting
+  convention as the modifier stacks (`onHeightChanged` ->
+  `ParameterPanel::updateLayoutHeight()`), refreshed unconditionally in
+  `ParameterPanel::refreshFromModel()` (unlike the object-specific
+  categories below it, since Agitation stays meaningful with no object
+  selected at all). Full project rebuild + entire test suite green,
+  Standalone app launches/quits cleanly (build + no-crash launch only --
+  no automated visual check of the new tab's actual rendering was
+  possible in this environment).
 
 ## [0.2.0] - 2026-09-17
 ### Added

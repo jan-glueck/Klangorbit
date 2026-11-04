@@ -213,6 +213,7 @@ ParameterPanel::ParameterPanel()
     addCategoryButton ("Doppler", Category::Doppler);
     addCategoryButton ("Grains", Category::GrainCloud);
     addCategoryButton ("Delay", Category::Delay);
+    addCategoryButton ("Agitation", Category::Agitation);
 
     // --- Scene ------------------------------------------------------------
     // Purely visual -- the boundary keeps applying physically even while
@@ -261,6 +262,12 @@ ParameterPanel::ParameterPanel()
     addToLayout (*globalFieldRow, Vec3RowComponent::preferredHeight, Category::Scene);
 
     addSceneFloatRow ("Time Scale (timeScale)", &SceneSettings::timeScale, 0.05, 5.0, 0.01, Category::Scene);
+
+    // Agitation's tempo-sync fallback (feature/agitation-and-snapshots)
+    // -- only actually used while a tempo-synced Agitation row is
+    // enabled AND no host tempo is available (e.g. the Standalone
+    // build), see SceneSettings::standaloneTempoBpm's own comment.
+    addSceneFloatRow ("Agitation Tempo (BPM, Standalone fallback)", &SceneSettings::standaloneTempoBpm, 20.0, 300.0, 1.0, Category::Scene);
 
     // --- Acoustics ----------------------------------------------------------
     // Its own category, not a section within Scene -- see the class
@@ -784,6 +791,18 @@ ParameterPanel::ParameterPanel()
     content.addAndMakeVisible (*delayModifierStackEditor);
     addToLayout (*delayModifierStackEditor, delayModifierStackEditor->getPreferredHeight(), Category::Delay);
 
+    // Agitation (feature/agitation-and-snapshots) -- same variable-height
+    // reporting convention as the modifier stacks above, but the row list
+    // itself is built once (setAgitationModel(), called from the editor),
+    // not rebuilt here -- see AgitationEditor's own class comment.
+    agitationEditor.onHeightChanged = [this]
+    {
+        updateLayoutHeight (agitationEditor, agitationEditor.getPreferredHeight());
+        layoutContent();
+    };
+    content.addAndMakeVisible (agitationEditor);
+    addToLayout (agitationEditor, agitationEditor.getPreferredHeight(), Category::Agitation);
+
     updateCategoryButtonsEnabled();
     selectCategory (Category::Scene);
 }
@@ -944,6 +963,16 @@ void ParameterPanel::updateLayoutHeight (juce::Component& c, int newHeight)
 void ParameterPanel::setSceneSettings (SceneSettings* settings)
 {
     sceneSettings = settings;
+}
+
+void ParameterPanel::setAgitationModel (const ParameterRegistry* registry, AgitationEngine* engine)
+{
+    if (registry == nullptr || engine == nullptr)
+        return; // never actually called with nullptr in practice, see this method's own header comment
+
+    agitationEditor.setup (*registry, *engine);
+    updateLayoutHeight (agitationEditor, agitationEditor.getPreferredHeight());
+    layoutContent();
 }
 
 void ParameterPanel::rebuildOrbitReferenceItems (int numObjects, int selfId)
@@ -1128,6 +1157,15 @@ void ParameterPanel::refreshFromModel()
         showRoomBoundaryRow->setValueQuiet (sceneSettings->showRoomBoundary);
         globalFieldRow->setValueQuiet (sceneSettings->globalField);
     }
+
+    // Agitation (feature/agitation-and-snapshots) -- refreshed
+    // unconditionally, unlike everything below this point: it has its
+    // own Global-scope rows (meaningful with no object selected at all)
+    // and its Scope::SelectedObject rows stay meaningful too (bound to
+    // "whichever object gets selected", not to editedObject specifically
+    // -- see AgitationEditor's own class comment).
+    agitationEditor.refreshFromModel();
+    updateLayoutHeight (agitationEditor, agitationEditor.getPreferredHeight());
 
     if (editedObject == nullptr)
         return;

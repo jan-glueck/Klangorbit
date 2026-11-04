@@ -285,6 +285,7 @@ KlangorbitEditor::KlangorbitEditor (KlangorbitProcessor& p)
     cpuLoadLabel.setJustificationType (juce::Justification::centredLeft);
 
     parameterPanel.setSceneSettings (&audioProcessor.getTrajectoryEngine().getSceneSettings());
+    parameterPanel.setAgitationModel (&audioProcessor.getParameterRegistry(), &audioProcessor.getAgitationEngine());
     parameterPanel.refreshFromModel(); // show scene defaults (roomSize etc.) right away
     objectListPanel.refresh (audioProcessor.getTrajectoryEngine());
     lastKnownActiveObjectCount = audioProcessor.getTrajectoryEngine().getNumActiveObjects(); // matches the refresh() just above -- avoids a redundant one on the first timer tick

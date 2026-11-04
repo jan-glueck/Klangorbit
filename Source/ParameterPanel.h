@@ -10,6 +10,9 @@
 #include "DelayTap.h"
 #include "ParameterRowComponents.h"
 #include "ModifierStackEditor.h"
+#include "AgitationEditor.h"
+#include "ParameterRegistry.h"
+#include "AgitationEngine.h"
 
 /**
     Side panel: a fixed row of category buttons at the top, grouped into
@@ -65,12 +68,19 @@
 class ParameterPanel : public juce::Component
 {
 public:
-    enum class Category { Scene, Acoustics, Object, Attraction, Orbit, Doppler, GrainCloud, Delay };
+    enum class Category { Scene, Acoustics, Object, Attraction, Orbit, Doppler, GrainCloud, Delay, Agitation };
 
     ParameterPanel();
 
     // Set once by the editor (never null again afterwards).
     void setSceneSettings (SceneSettings* settings);
+
+    // Set once by the editor (never null again afterwards), same "both
+    // stable for the processor's whole lifetime" reasoning as
+    // setSceneSettings() above -- unlike setEditedGrainCloud()/
+    // setEditedDelayInstance(), this is NOT called again on every
+    // selection change, see AgitationEditor's own class comment for why.
+    void setAgitationModel (const ParameterRegistry* registry, AgitationEngine* engine);
 
     // nullptr = no selection. numObjects for the reference-object combo (orbit).
     void setEditedObject (SoundObject* obj, int objectIndexForHeader, int numObjects);
@@ -338,4 +348,9 @@ private:
     // role as grainModifierStackEditor above, Pitch not offered (see
     // DelayTap.h's own note on why).
     std::unique_ptr<ModifierStackEditor> delayModifierStackEditor;
+
+    // Agitation (feature/agitation-and-snapshots) -- see setAgitationModel()/
+    // AgitationEditor's own class comment for why this is built once,
+    // not rebound per selected object like the modifier stacks above.
+    AgitationEditor agitationEditor;
 };

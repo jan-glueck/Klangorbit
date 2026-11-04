@@ -218,6 +218,7 @@ target_sources(Klangorbit
         Source/PresetManager.cpp
         Source/ParameterPanel.cpp
         Source/ModifierStackEditor.cpp
+        Source/AgitationEditor.cpp
         Source/PropagationProcessor.cpp
         Source/GrainCloud.cpp
         Source/Camera3D.cpp

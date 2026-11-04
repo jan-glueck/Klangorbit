@@ -12,10 +12,9 @@ fixed 8-speaker circular array), Circular Array (any speaker count
 (5.1.2/5.1.4/7.1.2/7.1.4) -- or raw Ambisonics B-format at one of five
 orders, 1st through 5th (ACN/SN3D, AmbiX-compatible), to feed an external
 decoder such as SPARTA AmbiBIN/AmbiDEC or the IEM Plugin Suite instead.
-Every format above except Stereo/Binaural now pans each object directly
-to the real speakers via VBAP rather than decoding a shared Ambisonics
-bus (see the CHANGELOG) -- sharper localization than the earlier
-approach.
+Every format above except Stereo/Binaural pans each object directly to
+the real speakers via VBAP rather than decoding through a shared
+Ambisonics bus, for sharper localization.
 
 This guide covers how to use the plugin. For build instructions and
 internal architecture notes, see `README.md` in the project root.
@@ -252,22 +251,19 @@ Apply to the whole scene, not one object:
   physically even if hidden. Sits above Boundary Size/Behavior below --
   the natural first question ("do I even see this?") before tuning the
   boundary itself.
-- **Boundary Size** (formerly "Room Size") -- radius (meters) of an
-  invisible spherical boundary around the origin. 0 disables it (objects
-  can drift unbounded). Renamed since it's a physics boundary
-  (reflect/wrap/absorb), not an acoustic "room" -- no reverb or
-  reflection processing is tied to it.
+- **Boundary Size** -- radius (meters) of an invisible spherical
+  boundary around the origin. 0 disables it (objects can drift
+  unbounded). A physics boundary (reflect/wrap/absorb), not an acoustic
+  "room" -- no reverb or reflection processing is tied to it.
 - **Boundary Behavior** -- what happens when an object reaches that
   boundary: **Reflect** (bounces back, strength set by that object's
   Restitution), **Wrap** (reappears on the opposite side), or
   **Absorb** (stops there and goes silent).
-- **Force Field (Wind/Gravity)** (formerly "Global Field") -- a constant
-  force/mass applied to every Impulse-mode object, like a
-  directional wind or gravity -- genuinely pushes objects around. Not
-  the same thing as Propagation Wind (Acoustics category, below), which
-  only affects sound, never movement -- renamed, and moved to a separate
-  category from it, specifically to stop the two from reading as
-  duplicates.
+- **Force Field (Wind/Gravity)** -- a constant force/mass applied to
+  every Impulse-mode object, like a directional wind or gravity --
+  genuinely pushes objects around. Not the same thing as Propagation
+  Wind (Acoustics category, below), which only affects sound, never
+  movement.
 - **Time Scale** -- slows down (< 1) or speeds up (> 1) the whole
   simulation.
 
@@ -287,15 +283,11 @@ boundary/force vs. the acoustic medium itself):
 - **Temperature / Relative Humidity / Atmospheric Pressure** -- feed a
   simplified air-absorption model (a gentle lowpass that gets stronger
   with distance); not ISO-9613-1 accurate, but directionally correct.
-- **Propagation Wind (m/s)** (formerly "Wind") -- a directional vector
-  that shifts the effective speed of sound (tailwind speeds up arrival,
-  headwind slows/attenuates it) -- both a physically real effect and a
-  distinct creative tool. Renamed, and moved here from the Scene
-  category, to make clear it only affects *sound propagation*, never how
-  objects actually move (that's Force Field, Scene category, above) --
-  not moved into the (per-object) Doppler category below despite also
-  being sound-related, since it's scene-wide, not tied to any one
-  object.
+- **Propagation Wind (m/s)** -- a directional vector that shifts the
+  effective speed of sound (tailwind speeds up arrival, headwind slows/
+  attenuates it) -- both a physically real effect and a distinct
+  creative tool. Only affects *sound propagation*, never how objects
+  actually move (that's Force Field, Scene category, above).
 - **Doppler Enabled** (per object, top of the Doppler category) -- on by
   default. A quick on/off switch that doesn't touch the Doppler Factor
   dial below it -- turning it back on restores whatever factor was
@@ -511,108 +503,50 @@ setting, not tied to the scene or any object, so it lives in its own
 window (toolbar -> **Output...**) rather than the parameter panel:
 
 - **Output Format** -- one of 16 mutually exclusive formats, in dropdown
-  order. Full speaker angles/channel order verified directly against
-  `Source/SpeakerLayouts.h` (the source of truth, including its own
-  citations):
-  - **Stereo** -- a plain 2-speaker decode, L/R at +-30 deg (ITU-R
-    BS.775-4, the same standard defining 5.1/7.1 below). Not the same
-    thing as binaural -- no HRTF/head-related processing, just two
-    virtual loudspeakers. **The default output format** (for every
-    plugin format, not just AU) -- audible immediately, no external
-    decoder or manual switch needed.
+  order:
+  - **Stereo** -- a plain 2-speaker decode (ITU-R BS.775-4). Not the
+    same thing as Binaural -- no HRTF/head-related processing. **The
+    default output format** -- audible immediately, no external decoder
+    or manual switch needed.
   - **Binaural (HRTF)** -- HRTF-based headphone output, decoded
-    internally (no external AmbiBIN/BinauralDecoder needed for this
-    path); not a fixed loudspeaker layout. Technique: the Ambisonics bus
-    is decoded to a dense 50-point virtual speaker array (its own
-    dedicated technique, unaffected by the direct-VBAP-pan change to the
-    real-speaker formats below -- Binaural never went through that decode
-    path to begin with), then each virtual speaker's signal
-    is convolved through that direction's own measured left/right
-    head-related impulse response and summed to the output -- see
-    `BinauralDecoder.h` for the full breakdown. Selecting this format
-    reveals an **HRTF Dataset** picker in the same window:
+    internally; not a fixed loudspeaker layout. Selecting it reveals an
+    **HRTF Dataset** picker in the same window:
     - **KEMAR** (default) -- Gardner & Martin, MIT Media Lab. Bundled.
     - **SADIE II -- D1 (KU100)** -- University of York. Bundled.
-    - **KU100 -- 2deg Grid (TH Koeln / Bernschuetz)** -- Benjamin
-      Bernschütz, TH Köln, CC BY 3.0. The densest bundled grid (16020
-      points, full sphere). A different KU100 measurement from SADIE II
-      D1 above (same dummy head model, different lab/grid). Bundled.
+    - **KU100 -- 2deg Grid (TH Koeln / Bernschuetz)** -- the densest
+      bundled grid (full sphere). Bundled.
     - **Custom SOFA file...** -- import your own AES69/SOFA HRTF
       measurement via **Browse...**.
 
     All three bundled datasets require attribution -- see
     `THIRD_PARTY_LICENSES.md` in the project root. Switching datasets
     rebuilds the decoder immediately; expect a brief pause, longer for
-    SADIE II/KU100. CPU cost has not been measured on real hardware -- watch the
-    toolbar's CPU meter after switching. Interaural delay (fine timing
-    differences between the ears) is not applied in this version, only
-    each ear's amplitude/spectral HRIR shape -- see the CHANGELOG and
-    `BinauralDecoder.h`'s own comment.
-  - **Quad** -- conventional quadraphonic: L/R +-45 deg, Ls/Rs +-135 deg.
-    Not an ITU standard -- the conventional consumer layout.
-  - **Octophonic** -- fixed, named 8-speaker circular array: front L/R
-    +-22.5 deg, front-side L/R +-67.5 deg, rear-side L/R +-112.5 deg,
-    rear L/R +-157.5 deg. No ITU/IEM/AllRAD standard was found for this
-    exact layout during research -- matches Blue Ripple Sound's "O3A
-    Decoder -- Octagon" (the one concrete Ambisonics-ecosystem reference
-    product found); the channel order itself is this project's own
-    choice.
-  - **Circular Array** -- a generic circular array for any speaker
-    count without an established naming convention (evenly spaced
-    starting at front, channel index == sweep order; no standard, pure
-    geometry); set **Circular Array: Speaker Count** (4-24, **only shown
-    while this format is selected**) to match your actual setup.
-  - **5.1** -- ITU-R BS.775-4: L/R +-30 deg, C 0 deg, Ls/Rs +-110 deg.
-    Channel order (matches `juce::AudioChannelSet::create5point1()`
-    exactly): L R C LFE Ls Rs.
-  - **7.1** -- ITU-R BS.775-4: L/R +-30 deg, C 0 deg, side Lss/Rss
-    +-90 deg, rear Lrs/Rrs +-135 deg -- both within BS.775-4's own
-    permitted sectors (side 90-110 deg, rear 135-150 deg). Channel order
-    (matches `create7point1()`): L R C LFE Lss Rss Lrs Rrs.
-  - **5.1.2 / 5.1.4 / 7.1.2 / 7.1.4** -- Dolby-Atmos-bed-style layouts:
-    the matching 5.1/7.1 bed above, plus height channels at top-front
-    +-45 deg/+45 deg elevation, top-rear +-135 deg/+45 deg elevation,
-    top-side +-90 deg/+45 deg elevation. ITU-R BS.2051-2 only defines
-    permitted ANGLE SECTORS for these (e.g. top-front anywhere in
-    azimuth +-30..45 deg / elevation +30..55 deg), not single fixed
-    values -- the angles used are round numbers within those sectors,
-    cross-checked against Dolby's own published consumer height-speaker
-    guidance (45 deg front / 135 deg rear, 45 deg elevation cited as
-    "ideal"). Channel counts: 5.1.2 = 5.1 bed + top-side L/R (8ch);
-    5.1.4 = 5.1 bed + top-front L/R + top-rear L/R (10ch); 7.1.2 = 7.1
-    bed + top-side L/R (10ch); 7.1.4 = 7.1 bed + top-front L/R +
-    top-rear L/R (12ch -- the largest non-Ambisonics format, and Logic
-    Pro's own channel ceiling, see the AU sections above).
-  - **1st Order Ambisonics (4ch) / 2nd Order (9ch) / 3rd Order (16ch) /
-    4th Order (25ch) / 5th Order (36ch)** -- raw B-format
+    SADIE II/KU100.
+  - **Quad** -- conventional quadraphonic layout (not an ITU standard).
+  - **Octophonic** -- a fixed, named 8-speaker circular array.
+  - **Circular Array** -- a generic ring for any speaker count without
+    an established naming convention; set **Circular Array: Speaker
+    Count** (4-24, **only shown while this format is selected**) to
+    match your actual setup.
+  - **5.1 / 7.1** -- ITU-R BS.775-4.
+  - **5.1.2 / 5.1.4 / 7.1.2 / 7.1.4** -- Dolby-Atmos-bed-style layouts
+    (ITU-R BS.2051-2).
+  - **1st-5th Order Ambisonics (4/9/16/25/36ch)** -- raw B-format
     output (ACN channel ordering, SN3D normalization, AmbiX-compatible),
     no decoding at all; route to an external decoder (SPARTA AmbiBIN/
-    AmbiDEC, IEM BinauralDecoder) as before. 4th/5th order exist purely
-    for higher precision when decoding externally -- nothing in this
-    plugin's own decode paths uses them.
+    AmbiDEC, IEM BinauralDecoder) instead.
 
-  Octophonic and Circular Array are horizontal-only: a flat ring of
-  speakers cannot reproduce elevation/height at all, regardless of
-  decoder quality -- this is a property of the array itself, not a bug.
+  Octophonic and Circular Array are horizontal-only -- a flat ring of
+  speakers can't reproduce elevation/height, regardless of decoder
+  quality.
 
-  Every non-Ambisonics format except Stereo now pans each object DIRECTLY
-  to the real speakers via VBAP (Quad/Octophonic/Circular Array/5.1/7.1/
-  every Atmos-bed layout) -- replaced an earlier shared-Ambisonics-bus
-  decode (AllRAD for the irregular layouts, a simpler direct decode for
-  the regular ones) that measured too diffuse; see the CHANGELOG for the
-  full story and why. Stereo keeps its own simple 2-point Ambisonics
-  decode. Either way, there is no need to route to an external decoder
-  plugin for any of these. In VST3/Standalone, and in AU hosted by
-  anything other than Logic (e.g. Reaper), Output Format selection is
-  always available (the plugin exposes a fixed 36-channel output bus
-  regardless of which format is picked) -- switching formats never needs
-  the host/track reconfigured first anymore. Getting a wider format's
-  channels actually routed somewhere audible (real speakers, or an
-  external decoder plugin) is still the host's own native routing job,
-  same as for any wide-bus plugin. In Logic specifically, Output Format
-  availability IS still bounded by which track type you inserted
-  Klangorbit on (Logic negotiates a small, named bus once per track). See
-  the CHANGELOG for the full history.
+  Every format except Stereo/Binaural/raw Ambisonics pans each object
+  directly to the real speakers via VBAP, so there's no need to route
+  to an external decoder plugin for any of these. In VST3/Standalone,
+  and in AU hosted by anything other than Logic, every format is always
+  available (a fixed 36-channel output bus either way). In Logic
+  specifically, which formats are available depends on the track type
+  you inserted Klangorbit on.
 - **Bass Management (LFE from W)** -- **only shown for formats with an
   LFE channel** (5.1/7.1/5.1.2/5.1.4/7.1.2/7.1.4). Off by default --
   Ambisonics has no dedicated LFE signal, so this is a real, audible
@@ -785,9 +719,7 @@ Cloud/Delay) plus one "Global" group.
   themselves get recorded as host automation -- only automation the host
   itself plays back or writes shows up. Recording a manual mouse drag as
   automation isn't supported yet.
-- Session save/reload in the host now actually preserves the whole scene
-  (previously it did not) -- see the CHANGELOG for the "DAW automation"
-  entry and its own reasoning.
+- Session save/reload in the host preserves the whole scene.
 
 ## 21. Agitation (parameter panel -> Agitation category)
 

@@ -477,6 +477,61 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   Standalone app launches/quits cleanly (build + no-crash launch only --
   no automated visual check of the new window's actual rendering was
   possible in this environment).
+- **Snapshots, Stage 4: morphing + randomized variants -- completes
+  Branch 5** (`Source/SnapshotMorphEngine.h`,
+  `feature/agitation-and-snapshots`) -- the final piece of the
+  original spec: "weiches Ueberblenden (Morphing) zwischen zwei
+  Snapshots mit Glaettung", "'Zufaellige Variante aus Snapshot' mit
+  einstellbarer Staerke", and "'alles randomisieren' als haertere
+  Variante". New `SnapshotMorphEngine`: `morph` (0 = pure A, 1 = pure
+  B) is the UI's own target, smoothed by ONE shared one-pole filter
+  (`exp(-dt/smoothing)`, same shape as `VoiceFilter`'s cutoff drift)
+  and applied uniformly to every parameter, rather than giving each
+  its own independent smoother -- simpler, and every morphed parameter
+  reaches its target at the same felt rate. Only parameter ids present
+  in BOTH snapshots are ever morphed (one present in only A or only B
+  has no defined "other endpoint" -- silently excluded, not guessed
+  at). `setEndpoints()` always restarts `smoothedMorph` at pure A, so
+  the very first tick after loading a new pair always has a defined
+  point to smooth FROM instead of snapping straight to whatever
+  `morph` happens to already be set to.
+  `SnapshotManager::randomVariant()` (the soft "Zufaellige Variante"
+  -- offsets each entry's own captured value by a uniformly random
+  amount within +/- Strength of that parameter's own registered
+  range, clamped back into range; Strength 0 reproduces the snapshot
+  exactly) and `randomizeEverything()` (the harder variant -- ignores
+  the snapshot's own values entirely, draws a fresh value across each
+  parameter's full range) both return a brand-new `Snapshot` -- pure
+  data transforms, same "caller decides when to apply" split
+  `capture()`/`recall()` already established; both stay scoped to
+  exactly the categories the original snapshot was captured with.
+  `SnapshotPanel` gained a Randomize section (Strength slider +
+  "Randomize Variant"/"Randomize Everything" buttons, acting on
+  whichever snapshot was most recently loaded/saved via the plain
+  Load/Save above, disabled until one has been) and a Morph section
+  ("Load A..."/"Load B..." -- deliberately NOT auto-recalled, unlike
+  the plain Load above, since setting up a morph target shouldn't
+  itself jump the live state anywhere -- plus Morph/Smoothing
+  sliders, enabled once both are loaded). `KlangorbitProcessor` ticks
+  `snapshotMorphEngine.advance()` once per control-rate tick, same
+  cadence as `agitationEngine`. Dragging the Morph slider does NOT
+  itself refresh `ParameterPanel`'s visible values every tick (same
+  pre-existing limitation `AgitationEditor`'s own continuous wobble
+  already has) -- Randomize's own one-shot writes DO trigger a
+  refresh, same as a plain Load.
+  Verified via new `Tools/verify_snapshot_morph_engine.cpp` (9 cases:
+  endpoint intersection, pure-A/pure-B/halfway settling, smoothing
+  actually smooths, clear()/hasEndpoints()) and new cases added to
+  `Tools/verify_snapshot_manager.cpp` (`randomVariant()`'s strength-0
+  exact-reproduction and in-range/varying behavior at strength 1,
+  `randomizeEverything()`'s in-range/varying behavior ignoring the
+  snapshot's own value, both tolerating an unresolvable id). Full
+  project rebuild + entire 30-binary test suite green, Standalone app
+  launches/quits cleanly (build + no-crash launch only -- no automated
+  visual check of the new controls' actual rendering was possible in
+  this environment). **This completes Branch 5
+  (`feature/agitation-and-snapshots`)** and, with it, the full 6-branch
+  generative sound design effort (Branches 0-5).
 
 ## [0.2.0] - 2026-09-17
 ### Added

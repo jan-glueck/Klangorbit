@@ -2,6 +2,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "SnapshotPanel.h"
 #include "ParameterRegistry.h"
+#include "SnapshotMorphEngine.h"
 
 /**
     Standalone top-level window hosting SnapshotPanel -- opened via
@@ -16,10 +17,10 @@
 class SnapshotWindow : public juce::DocumentWindow
 {
 public:
-    // registryToShow: see SnapshotPanel's own constructor comment.
-    // onRecalled: forwarded straight to SnapshotPanel's own constructor
-    // parameter of the same name.
-    SnapshotWindow (const ParameterRegistry& registryToShow, std::function<void()> onRecalled);
+    // registryToShow/morphEngineToControl/onRecalled: see SnapshotPanel's
+    // own constructor comment -- forwarded straight through.
+    SnapshotWindow (const ParameterRegistry& registryToShow, SnapshotMorphEngine& morphEngineToControl,
+                     std::function<void()> onRecalled);
 
     // See HelpWindow.h's identical member for why this exists.
     std::function<void()> onClosed;

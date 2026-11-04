@@ -2,6 +2,7 @@
 #include <juce_core/juce_core.h>
 #include <vector>
 #include "ParameterRegistry.h"
+#include "RandomEngine.h"
 
 /**
     Captures/recalls a named "Snapshot" -- a whole parameter set, saved
@@ -66,6 +67,33 @@ namespace SnapshotManager
     // silently skipped, same tolerant handling AgitationEngine::
     // advanceAll() already applies to the identical situation.
     void recall (const Snapshot& snapshot, const ParameterRegistry& registry);
+
+    // "Zufaellige Variante aus Snapshot" (soft variant) -- for each
+    // entry, offsets its own captured value by a uniformly random
+    // amount within +/- `strength` of that PARAMETER'S OWN registered
+    // range (maxValue - minValue), clamped back into [minValue,
+    // maxValue]. strength 0 reproduces the snapshot exactly; 1 can
+    // reach the parameter's full range from either side of its own
+    // captured value. The BASE is the snapshot's own captured value,
+    // not whatever the live parameter happens to be right now --
+    // `registry` is only consulted to resolve each entry's own min/max
+    // (and is otherwise untouched; this returns a new Snapshot, it
+    // doesn't recall anything itself -- same "pure data transform,
+    // caller decides when to apply" split capture()/recall() already
+    // have). An entry whose id is no longer found in `registry` is
+    // passed through completely unchanged (there's no range to offset
+    // within), same tolerant handling as recall().
+    Snapshot randomVariant (const Snapshot& snapshot, const ParameterRegistry& registry,
+                             float strength, SeededRandom& rng);
+
+    // "alles randomisieren" (the harder variant) -- ignores the
+    // snapshot's own captured values entirely: each entry gets a fresh
+    // uniformly random value across its own FULL registered range.
+    // Still scoped to exactly the same set of parameter ids `snapshot`
+    // already covers (not "every registered parameter in existence")
+    // -- same "respect the original capture's own category scope"
+    // treatment randomVariant() above already has.
+    Snapshot randomizeEverything (const Snapshot& snapshot, const ParameterRegistry& registry, SeededRandom& rng);
 
     juce::var snapshotToVar (const Snapshot& snapshot);
     juce::Result snapshotFromVar (const juce::var& root, Snapshot& out);

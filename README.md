@@ -1540,18 +1540,36 @@ controlling it, so recalling one should never touch either of those.
 `Snapshots/factory/`/`Snapshots/user/` storage, same convention as
 `Presets/`/`MappingProfiles/`.
 
-A new "Snapshots..." toolbar button opens a standalone window
+A "Snapshots..." toolbar button opens a standalone window
 (`Source/SnapshotWindow.h/.cpp`/`SnapshotPanel.h/.cpp`) with a category
-checklist (the scope selector) and Load/Save Snapshot buttons --
-mirrors `MappingPanel`'s own Load/Save Profile workflow exactly, one
-file per snapshot. Recalling writes straight into the live model
-through the registry, so it also triggers `ParameterPanel::
-refreshFromModel()` via a callback (neither component references the
-other directly).
+checklist (the scope selector), Load/Save Snapshot buttons -- mirrors
+`MappingPanel`'s own Load/Save Profile workflow exactly, one file per
+snapshot, recalling writes straight into the live model through the
+registry (triggering `ParameterPanel::refreshFromModel()` via a
+callback, neither component referencing the other directly) -- plus
+two further sections:
 
-Branch 5 (`feature/agitation-and-snapshots`) is still in progress --
-morphing between two snapshots and randomized variants (Stage 4) have
-not been started at all.
+- **Morph** -- `SnapshotMorphEngine` soft-crossfades between two
+  loaded snapshots ("Load A..."/"Load B...", deliberately NOT
+  auto-recalled, unlike the plain Load above). `morph` (0 = pure A, 1
+  = pure B) is the UI's own target; `advance()` smooths ONE shared
+  value toward it (a one-pole filter, same shape as `VoiceFilter`'s
+  cutoff drift) and applies it uniformly across every parameter
+  common to BOTH snapshots -- a parameter present in only one has no
+  defined other endpoint, so it's excluded rather than guessed at.
+  Ticked once per control-rate tick from `KlangorbitProcessor`, same
+  cadence as `agitationEngine`.
+- **Randomize** -- `SnapshotManager::randomVariant()` (the soft
+  "Zufaellige Variante aus Snapshot", Strength-scaled offset from the
+  snapshot's own captured values, clamped to each parameter's own
+  range) and `randomizeEverything()` (the harder "alles
+  randomisieren" variant, ignoring the snapshot's own values
+  entirely) both return a new `Snapshot` -- pure data transforms, same
+  "caller decides when to apply" split `capture()`/`recall()` already
+  use.
+
+This completes Branch 5 (`feature/agitation-and-snapshots`) and, with
+it, the full 6-branch generative sound design effort.
 
 ## GUI design
 

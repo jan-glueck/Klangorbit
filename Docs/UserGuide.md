@@ -833,6 +833,27 @@ and your controller mappings (loading one touches neither of those).
   values straight back into the plugin -- the parameter panel updates
   immediately to show the recalled values.
 
-Only one snapshot is loaded/active at a time right now -- saving/
-loading two at once to blend between them, or randomizing from one,
-isn't available yet.
+**Randomize** -- works on whatever snapshot you just loaded or saved
+above:
+
+- **Strength** -- how far each parameter is allowed to wander from
+  that snapshot's own value (0 = no change at all; higher values can
+  reach further, up to a parameter's own full range).
+- **Randomize Variant** -- applies a random nudge (scaled by Strength)
+  to every parameter in the snapshot, immediately.
+- **Randomize Everything** -- the harder version: picks a completely
+  fresh random value for every parameter in the snapshot (ignoring
+  Strength and the snapshot's own values entirely), immediately.
+
+**Morph** -- a soft crossfade between two DIFFERENT loaded snapshots:
+
+- **Load A.../Load B...** -- load two snapshot files as the two ends
+  of the blend. Unlike the plain Load Snapshot above, loading A or B
+  does NOT itself change anything live yet -- it just sets up the two
+  endpoints.
+- **Morph A <-> B** -- 0 = fully A, 1 = fully B, anywhere in between
+  blends the two. Only parameters present in BOTH snapshots are
+  affected.
+- **Smoothing** -- how gradually the actual sound catches up to
+  wherever you just moved the Morph slider, instead of jumping there
+  instantly.

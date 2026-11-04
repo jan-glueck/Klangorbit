@@ -5,12 +5,13 @@
 
 /**
     Verifies SnapshotManager (feature/agitation-and-snapshots, Branch 5,
-    Stage 3) against a small, hand-built ParameterRegistry (same minimal
-    approach as verify_parameter_registry.cpp/verify_agitation_engine.cpp
-    -- no KlangorbitProcessor needed): capture()/recall() scope filtering,
-    the real JSON round-trip (snapshotToVar()/snapshotFromVar()), and the
-    real file save/load path (saveFile()/loadFile()) against actual temp
-    files on disk.
+    Stages 3-4) against a small, hand-built ParameterRegistry (same
+    minimal approach as verify_parameter_registry.cpp/
+    verify_agitation_engine.cpp -- no KlangorbitProcessor needed):
+    capture()/recall() scope filtering, the real JSON round-trip
+    (snapshotToVar()/snapshotFromVar()), the real file save/load path
+    (saveFile()/loadFile()) against actual temp files on disk, and
+    (Stage 4) randomVariant()/randomizeEverything().
 */
 namespace
 {
@@ -211,6 +212,75 @@ int main()
 
         auto missingResult = SnapshotManager::loadFile (tempFile, loaded);
         check (missingResult.failed(), "loadFile() fails cleanly for a file that doesn't exist");
+    }
+
+    // --- randomVariant(): strength 0 reproduces the snapshot exactly ------
+    {
+        float grainBacking = 0.0f, grainObjectBacking = 0.0f, delayBacking = 0.0f, sceneBacking = 0.0f;
+        auto registry = buildTestRegistry (grainBacking, grainObjectBacking, delayBacking, sceneBacking);
+
+        SnapshotManager::Snapshot snapshot;
+        snapshot.entries = { { "selectedObject.grain.rate", 50.0f }, { "scene.roomSize", 10.0f } };
+
+        SeededRandom rng (1);
+        auto variant = SnapshotManager::randomVariant (snapshot, registry, 0.0f, rng);
+        check (variant.entries.size() == 2, "randomVariant() preserves the entry count");
+        check (nearlyEqual (variant.entries[0].value, 50.0f) && nearlyEqual (variant.entries[1].value, 10.0f),
+               "randomVariant() with strength 0 reproduces the snapshot exactly");
+    }
+
+    // --- randomVariant(): strength > 0 actually offsets, stays in range ----
+    {
+        float grainBacking = 0.0f, grainObjectBacking = 0.0f, delayBacking = 0.0f, sceneBacking = 0.0f;
+        auto registry = buildTestRegistry (grainBacking, grainObjectBacking, delayBacking, sceneBacking);
+
+        SnapshotManager::Snapshot snapshot;
+        snapshot.entries = { { "selectedObject.grain.rate", 50.0f } }; // range 0..100
+
+        SeededRandom rng (2);
+        bool everDifferent = false;
+        for (int i = 0; i < 100; ++i)
+        {
+            auto variant = SnapshotManager::randomVariant (snapshot, registry, 1.0f, rng);
+            check (variant.entries[0].value >= 0.0f && variant.entries[0].value <= 100.0f,
+                   "randomVariant() never leaves the parameter's own registered range");
+            if (! nearlyEqual (variant.entries[0].value, 50.0f))
+                everDifferent = true;
+        }
+        check (everDifferent, "randomVariant() with strength > 0 actually produces different values over many draws");
+    }
+
+    // --- randomVariant(): an id not found in the registry passes through --
+    {
+        ParameterRegistry registry; // empty
+        SnapshotManager::Snapshot snapshot;
+        snapshot.entries = { { "ghost.param", 42.0f } };
+        SeededRandom rng (3);
+        auto variant = SnapshotManager::randomVariant (snapshot, registry, 1.0f, rng);
+        check (variant.entries.size() == 1 && nearlyEqual (variant.entries[0].value, 42.0f),
+               "randomVariant() passes an unresolvable id through completely unchanged");
+    }
+
+    // --- randomizeEverything(): ignores the snapshot's own value, stays ----
+    // within range, and actually varies across many draws
+    {
+        float grainBacking = 0.0f, grainObjectBacking = 0.0f, delayBacking = 0.0f, sceneBacking = 0.0f;
+        auto registry = buildTestRegistry (grainBacking, grainObjectBacking, delayBacking, sceneBacking);
+
+        SnapshotManager::Snapshot snapshot;
+        snapshot.entries = { { "selectedObject.grain.rate", 50.0f } }; // range 0..100
+
+        SeededRandom rng (4);
+        bool everDifferent = false;
+        for (int i = 0; i < 100; ++i)
+        {
+            auto variant = SnapshotManager::randomizeEverything (snapshot, registry, rng);
+            check (variant.entries[0].value >= 0.0f && variant.entries[0].value <= 100.0f,
+                   "randomizeEverything() stays within the parameter's own registered range");
+            if (! nearlyEqual (variant.entries[0].value, 50.0f))
+                everDifferent = true;
+        }
+        check (everDifferent, "randomizeEverything() actually produces different values over many draws, ignoring the snapshot's own value");
     }
 
     std::printf (g_failures == 0 ? "ALL TESTS PASSED (%d failures)\n" : "SOME TESTS FAILED (%d failures)\n", g_failures);

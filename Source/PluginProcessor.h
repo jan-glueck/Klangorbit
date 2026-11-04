@@ -12,6 +12,7 @@
 #include "GrainCloud.h"
 #include "ParameterRegistry.h"
 #include "AgitationEngine.h"
+#include "SnapshotMorphEngine.h"
 #include "AutomationParameterBridge.h"
 #include "CanonicalInput.h"
 #include "GamepadDriver.h"
@@ -218,6 +219,14 @@ public:
     // same cadence as trajectoryEngine.update()/GrainCloud::update().
     AgitationEngine& getAgitationEngine() { return agitationEngine; }
     const AgitationEngine& getAgitationEngine() const { return agitationEngine; }
+
+    // --- Snapshots (feature/agitation-and-snapshots, Branch 5, Stage 4) --
+    // The crossfade engine for "morph between two loaded Snapshots" --
+    // see SnapshotMorphEngine.h. Non-const: SnapshotPanel sets its
+    // endpoints/morph/smoothing directly, same plain-field-binding idiom
+    // as AgitationEngine above. Actually advanced once per control-rate
+    // tick in timerCallback(), same cadence as agitationEngine.
+    SnapshotMorphEngine& getSnapshotMorphEngine() { return snapshotMorphEngine; }
 
     // Processor-owned source of truth for "which object is currently
     // selected" -- moved here (rather than staying purely GUI/editor
@@ -494,6 +503,7 @@ private:
     // ::lastAppliedSeed/seedInitialized's own resync-on-change pattern
     // exactly (see resyncAgitationSeedIfChanged()).
     AgitationEngine agitationEngine;
+    SnapshotMorphEngine snapshotMorphEngine;
     SeededRandom agitationRng;
     juce::int64 lastAppliedAgitationSeed = 0;
     bool agitationSeedInitialized = false;

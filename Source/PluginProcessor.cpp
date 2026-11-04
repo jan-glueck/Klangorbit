@@ -353,6 +353,11 @@ void KlangorbitProcessor::timerCallback()
     // AgitationEngine::advanceAll()'s own comment.
     resyncAgitationSeedIfChanged();
     agitationEngine.advanceAll (parameterRegistry, (float) dt, resolveAgitationBpm(), agitationRng);
+
+    // Snapshot morph: control-rate update, same loop/rate as everything
+    // above -- a no-op while no two snapshots are currently set as
+    // endpoints (SnapshotMorphEngine::hasEndpoints() == false).
+    snapshotMorphEngine.advance (parameterRegistry, (float) dt);
 }
 
 void KlangorbitProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)

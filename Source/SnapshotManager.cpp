@@ -34,6 +34,56 @@ void SnapshotManager::recall (const Snapshot& snapshot, const ParameterRegistry&
     }
 }
 
+SnapshotManager::Snapshot SnapshotManager::randomVariant (const Snapshot& snapshot, const ParameterRegistry& registry,
+                                                             float strength, SeededRandom& rng)
+{
+    Snapshot result;
+    result.name = snapshot.name;
+    result.categories = snapshot.categories;
+    result.entries.reserve (snapshot.entries.size());
+
+    for (auto& entry : snapshot.entries)
+    {
+        const auto* descriptor = registry.find (entry.id);
+        if (descriptor == nullptr)
+        {
+            result.entries.push_back (entry); // no range to offset within -- pass through unchanged
+            continue;
+        }
+
+        const float range = descriptor->maxValue - descriptor->minValue;
+        const float offset = rng.nextBipolar() * strength * range;
+        const float newValue = juce::jlimit (descriptor->minValue, descriptor->maxValue, entry.value + offset);
+        result.entries.push_back ({ entry.id, newValue });
+    }
+
+    return result;
+}
+
+SnapshotManager::Snapshot SnapshotManager::randomizeEverything (const Snapshot& snapshot, const ParameterRegistry& registry,
+                                                                   SeededRandom& rng)
+{
+    Snapshot result;
+    result.name = snapshot.name;
+    result.categories = snapshot.categories;
+    result.entries.reserve (snapshot.entries.size());
+
+    for (auto& entry : snapshot.entries)
+    {
+        const auto* descriptor = registry.find (entry.id);
+        if (descriptor == nullptr)
+        {
+            result.entries.push_back (entry);
+            continue;
+        }
+
+        const float newValue = descriptor->minValue + rng.nextFloat01() * (descriptor->maxValue - descriptor->minValue);
+        result.entries.push_back ({ entry.id, newValue });
+    }
+
+    return result;
+}
+
 juce::var SnapshotManager::snapshotToVar (const Snapshot& snapshot)
 {
     auto* root = new juce::DynamicObject();

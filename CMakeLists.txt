@@ -804,6 +804,31 @@ target_link_libraries(verify_snapshot_manager
         juce::juce_recommended_warning_flags
 )
 
+# --- Snapshot morph engine verification (feature/agitation-and------------
+# snapshots, Branch 5, Stage 4) -- SnapshotMorphEngine against small,
+# hand-built ParameterRegistry descriptors: endpoint intersection,
+# smoothing toward the morph target, pure-endpoint/halfway cases. Header-
+# only/pure-math (no juce_audio dependency), so this stays a lightweight
+# juce_core-only console app like verify_agitation above.
+juce_add_console_app(verify_snapshot_morph_engine
+    PRODUCT_NAME "verify_snapshot_morph_engine"
+)
+
+target_sources(verify_snapshot_morph_engine
+    PRIVATE
+        Tools/verify_snapshot_morph_engine.cpp
+        Source/SnapshotManager.cpp
+        Source/ParameterRegistry.cpp
+)
+
+target_link_libraries(verify_snapshot_morph_engine
+    PRIVATE
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
 # --- DAW automation-parameter bridge verification ---------------------------
 # Runs buildAutomationParameterGroups()/RegistryAutomationParameter
 # (AutomationParameterBridge.h/.cpp) against synthetic ParameterRegistry

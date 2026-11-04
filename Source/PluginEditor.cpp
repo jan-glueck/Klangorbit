@@ -925,6 +925,7 @@ void KlangorbitEditor::showSnapshotClicked()
         // loadPresetClicked() already has for its own refreshFromModel()
         // call below.
         snapshotWindow = std::make_unique<SnapshotWindow> (audioProcessor.getParameterRegistry(),
+                                                              audioProcessor.getSnapshotMorphEngine(),
                                                               [this] { parameterPanel.refreshFromModel(); }); // constructor already makes it visible
         snapshotWindow->onClosed = [this] { bringEditorToFront(); };
     }

@@ -404,6 +404,7 @@ void GrainCloud::spawnGrain (int slot, Vec3 parentPosition, int writeHead, doubl
     g.modifierGainMultiplier = modOutcome.gainMultiplier;
     g.modifierFilters = modOutcome.filters;
     g.modifierMovement = modOutcome.movement;
+    g.modifierSpatialOffset = modOutcome.spatialOffset;
 
     g.grainLengthSamples = juce::jmax (1, (int) (g.lifetimeSeconds * sampleRate));
 
@@ -623,13 +624,17 @@ void GrainCloud::update (double dtSeconds, Vec3 parentPosition, Vec3 parentVeloc
         auto& g = grains[i];
         auto& s = snapshotBuffer[i];
         s.active = g.active;
-        // Modifier stack's own Movement-type slots (feature/modifier-
-        // stack, Stage 2) are composed onto g.position ONLY here, at
-        // publish time -- g.position itself stays exactly whatever this
-        // grain's own movementMode computes, see Grain.h's own comment
-        // on why (keeps the overlay purely cosmetic/rendering, never
-        // fed back into the grain's own physics).
-        s.position = ModifierStack::applyMovement (settings.modifiers, g.modifierMovement, g.position, parentPosition);
+        // Modifier stack's own Movement-type AND SpatialOffset-type
+        // slots (feature/modifier-stack, Stages 2-3) are composed onto
+        // g.position ONLY here, at publish time -- g.position itself
+        // stays exactly whatever this grain's own movementMode
+        // computes, see Grain.h's own comment on why (keeps the overlay
+        // purely cosmetic/rendering, never fed back into the grain's
+        // own physics). SpatialOffset is a constant per-grain
+        // translation (sampled once at spawn, never growing, unlike
+        // Movement's own accumulators), so it's simply added last.
+        s.position = ModifierStack::applyMovement (settings.modifiers, g.modifierMovement, g.position, parentPosition)
+                         + g.modifierSpatialOffset;
         s.velocity = g.velocity;
         s.ageFraction = g.lifetimeSeconds > 0.0f ? juce::jlimit (0.0f, 1.0f, g.age / g.lifetimeSeconds) : 1.0f;
         s.spawnGeneration = g.spawnGeneration;

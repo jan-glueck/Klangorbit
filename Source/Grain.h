@@ -429,4 +429,12 @@ struct Grain
     // (e.g. AttractRepelSiblings' n-body force still reacts to every
     // grain's true, un-adjusted position).
     ModifierStack::MovementBankState modifierMovement;
+
+    // SpatialOffset-type slots' own aggregate contribution (feature/
+    // modifier-stack, Stage 3) -- sampled ONCE at spawn (same event as
+    // modifierGainMultiplier above), CONSTANT for the grain's whole
+    // life. Composed the same way/place as modifierMovement above
+    // (Snapshot-publish time only, never touching `position` itself) --
+    // see GrainCloud::update()'s own comment.
+    Vec3 modifierSpatialOffset {};
 };

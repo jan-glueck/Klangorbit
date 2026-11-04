@@ -1344,7 +1344,7 @@ its own past output, so echoes actually decay over repeated passes.
   (spacing, orbiting vs. static, delay-time jitter, damping-cutoff
   mapping, feedback clamping) -- no GUI/audio device needed.
 
-## Modifier stack: per-voice Gain/TimeOffset/Filter/Pitch/Movement, stacked
+## Modifier stack: per-voice Gain/TimeOffset/Filter/Pitch/Movement/SpatialOffset, stacked
 
 Optional, per source (one independent stack each for GrainCloud and
 DelayInstance), empty by default. An ORDERED, reorderable list of
@@ -1428,6 +1428,21 @@ after the other.
   removed a slot, or changed numTaps/delayTime) and resample
   immediately, rather than leaving already-existing taps stuck with a
   stale value until some unrelated field happens to change too.
+- **SpatialOffset -- the "spatial start-position distribution
+  generator" the original spec asked for**, checked against what grain
+  spawning already does: every movement mode starts a grain exactly at
+  the parent's position (or, for `OrbitAroundParent`, at its own orbit
+  offset) -- there was no existing spread mechanism this would
+  duplicate. One sample of its own `RandomizedParam` ("probability
+  distribution" comes for free, no second mechanism) per shape:
+  **Sphere** (volume-uniform fill, radial cube-root correction),
+  **Spherical Shell** (surface only, no fill correction), **Ring**
+  (flat, a random angle at a given radius), **Line** (a signed offset
+  along one axis), **Cuboid** (the SAME `RandomizedParam` sampled three
+  independent times, once per axis, rather than needing three separate
+  ones). Sampled once per voice, CONSTANT for its whole life (composed
+  at the same point as Movement's own overlay, never fed back into the
+  voice's own physics) -- unlike Movement, it never grows.
 - **UI.** `ModifierStackEditor`/`ModifierRowComponent`
   (`Source/ModifierStackEditor.h/.cpp`) -- the one part of
   `ParameterPanel` with a genuinely variable-length, reorderable child-
@@ -1448,7 +1463,8 @@ after the other.
   each add their own integration tests (including the live-in-place-edit
   case for DelayInstance, and the Rotating-on-OrbitAroundParent
   accumulation case for GrainCloud); `Tools/verify_modifier_stack_preset.cpp`
-  round-trips a multi-slot, multi-type (including Movement) stack
+  round-trips a multi-slot, multi-type (including Movement/
+  SpatialOffset) stack
   through the real preset path for both sources.
 
 ## GUI design

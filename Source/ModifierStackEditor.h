@@ -76,6 +76,9 @@ private:
     std::unique_ptr<ComboRowComponent> movementShapeRow;
     std::unique_ptr<FloatRowComponent> movementSpeedRow, movementSpeedSpreadRow;
     std::unique_ptr<FloatRowComponent> movementAccelerationRow, movementAccelerationSpreadRow;
+
+    std::unique_ptr<ComboRowComponent> spatialShapeRow;
+    std::unique_ptr<FloatRowComponent> spatialRadiusRow, spatialRadiusSpreadRow;
 };
 
 class ModifierStackEditor : public juce::Component

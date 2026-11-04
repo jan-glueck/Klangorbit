@@ -219,6 +219,47 @@ version is 0, the rule is: every minor version (0.X.0) may break presets
   real), `Tools/verify_delay_instance.cpp` (Linear on the ring
   arrangement), and `Tools/verify_modifier_stack_preset.cpp` (round-trip
   including the new fields).
+- **Modifier stack, Stage 3: SpatialOffset (spatial start-position
+  distribution)** (`Source/Modifier.h`, `feature/modifier-stack`,
+  Branch 4) -- a sixth modifier type, the "spatial distribution
+  generator for start positions" the original spec asked for, checked
+  against what grain spawning already does: every movement mode starts
+  a grain exactly at the parent's position (or, for
+  `OrbitAroundParent`, at its own orbit offset) -- there was no
+  existing spread mechanism this would duplicate, so it's purely new
+  capability, not a parallel one. Five shapes (Sphere, SphericalShell,
+  Ring, Line, Cuboid), each reducing to one or three samples of a
+  single `RandomizedParam` (`spatialRadius`) -- "probability
+  distribution" (Uniform/Normal/Ramp/LogUniform/PowerLaw/Discrete)
+  comes for free from the existing Branch-0 primitive, no second
+  mechanism needed: Sphere volume-fills via a radial cube-root
+  correction on top of `randomUnitVector()`; SphericalShell skips that
+  correction (radius itself, no fill); Ring picks a random angle at a
+  given radius, flat in the X/Y plane (same convention as
+  `OrbitAroundParent`/DelayInstance's own ring); Line treats the sample
+  itself as a signed offset along one axis (no separate sign draw
+  needed, a `RandomizedParam` with base 0 already spans both
+  directions); Cuboid samples the same `RandomizedParam` three
+  independent times, once per axis, deliberately reusing one field
+  three times rather than adding three separate ones. Sampled once per
+  voice, CONSTANT for its whole life -- composed at the exact same
+  point as the Movement modifier's own overlay (Snapshot-publish time
+  for grains, straight onto `DelayTap::position` for taps), never fed
+  back into the voice's own physics, but unlike Movement it never
+  grows. New `ModifierStackEditor` rows (Shape/Radius/Radius Spread)
+  for both Grains and Delay categories. Persisted via new, fully
+  optional `spatialShape`/`spatialRadius` fields on existing
+  `modifiers` entries -- no schemaVersion bump. Verified via new cases
+  in `Tools/verify_modifier_stack.cpp` (one test per shape's own
+  geometric invariants -- bounds, flatness, axis-only movement,
+  independent per-axis draws -- plus the default-is-a-no-op and
+  multi-slot-summing cases), `Tools/verify_grain_cloud.cpp`/
+  `Tools/verify_delay_instance.cpp` (confirming the real integration
+  shifts the published position by exactly the sampled offset and
+  that it stays constant over time, unlike Movement's growing
+  contribution), and `Tools/verify_modifier_stack_preset.cpp`
+  (round-trip including the new fields). Full project rebuild + entire
+  test suite green, Standalone app launches/quits cleanly.
 
 ## [0.2.0] - 2026-09-17
 ### Added

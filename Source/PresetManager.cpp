@@ -268,17 +268,19 @@ namespace
             case ModifierType::Filter:     return "filter";
             case ModifierType::Pitch:      return "pitch";
             case ModifierType::Movement:   return "movement";
+            case ModifierType::SpatialOffset: return "spatialOffset";
         }
         return "gain";
     }
 
     bool modifierTypeFromString (const juce::String& s, ModifierType& out)
     {
-        if (s == "gain")       { out = ModifierType::Gain;       return true; }
-        if (s == "timeOffset") { out = ModifierType::TimeOffset; return true; }
-        if (s == "filter")     { out = ModifierType::Filter;     return true; }
-        if (s == "pitch")      { out = ModifierType::Pitch;      return true; }
-        if (s == "movement")   { out = ModifierType::Movement;   return true; }
+        if (s == "gain")          { out = ModifierType::Gain;          return true; }
+        if (s == "timeOffset")    { out = ModifierType::TimeOffset;    return true; }
+        if (s == "filter")        { out = ModifierType::Filter;        return true; }
+        if (s == "pitch")         { out = ModifierType::Pitch;         return true; }
+        if (s == "movement")      { out = ModifierType::Movement;      return true; }
+        if (s == "spatialOffset") { out = ModifierType::SpatialOffset; return true; }
         return false;
     }
 
@@ -299,6 +301,29 @@ namespace
         return false;
     }
 
+    juce::String spatialDistributionShapeToString (SpatialDistributionShape s)
+    {
+        switch (s)
+        {
+            case SpatialDistributionShape::Sphere:        return "sphere";
+            case SpatialDistributionShape::SphericalShell: return "sphericalShell";
+            case SpatialDistributionShape::Ring:           return "ring";
+            case SpatialDistributionShape::Line:           return "line";
+            case SpatialDistributionShape::Cuboid:         return "cuboid";
+        }
+        return "sphere";
+    }
+
+    bool spatialDistributionShapeFromString (const juce::String& s, SpatialDistributionShape& out)
+    {
+        if (s == "sphere")         { out = SpatialDistributionShape::Sphere;        return true; }
+        if (s == "sphericalShell") { out = SpatialDistributionShape::SphericalShell; return true; }
+        if (s == "ring")           { out = SpatialDistributionShape::Ring;          return true; }
+        if (s == "line")           { out = SpatialDistributionShape::Line;          return true; }
+        if (s == "cuboid")         { out = SpatialDistributionShape::Cuboid;        return true; }
+        return false;
+    }
+
     juce::var modifierToVar (const Modifier& m)
     {
         auto* obj = new juce::DynamicObject();
@@ -311,6 +336,8 @@ namespace
         obj->setProperty ("movementShape", movementModifierShapeToString (m.movementShape));
         obj->setProperty ("movementSpeed", randomizedParamToVar (m.movementSpeed));
         obj->setProperty ("movementAcceleration", randomizedParamToVar (m.movementAcceleration));
+        obj->setProperty ("spatialShape", spatialDistributionShapeToString (m.spatialShape));
+        obj->setProperty ("spatialRadius", randomizedParamToVar (m.spatialRadius));
         return juce::var (obj);
     }
 
@@ -349,6 +376,15 @@ namespace
             result.failed())
             return result;
         if (auto result = randomizedParamFromVar (mVar.getProperty ("movementAcceleration", juce::var()), out.movementAcceleration, fieldPathForErrors + ".movementAcceleration");
+            result.failed())
+            return result;
+        if (mVar.hasProperty ("spatialShape"))
+        {
+            const auto s = mVar.getProperty ("spatialShape", juce::var()).toString();
+            if (! spatialDistributionShapeFromString (s, out.spatialShape))
+                return juce::Result::fail ("'" + fieldPathForErrors + ".spatialShape': unknown value '" + s + "'.");
+        }
+        if (auto result = randomizedParamFromVar (mVar.getProperty ("spatialRadius", juce::var()), out.spatialRadius, fieldPathForErrors + ".spatialRadius");
             result.failed())
             return result;
         return juce::Result::ok();

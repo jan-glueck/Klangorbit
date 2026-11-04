@@ -27,6 +27,7 @@ ModifierRowComponent::ModifierRowComponent (std::function<std::vector<Modifier>*
     if (allowPitch)
         typeCombo.addItem ("Pitch", (int) ModifierType::Pitch + 1);
     typeCombo.addItem ("Movement", (int) ModifierType::Movement + 1);
+    typeCombo.addItem ("Spatial Offset", (int) ModifierType::SpatialOffset + 1);
     typeCombo.onChange = [this]
     {
         if (auto* m = current())
@@ -119,6 +120,27 @@ ModifierRowComponent::ModifierRowComponent (std::function<std::vector<Modifier>*
     movementAccelerationSpreadRow->onValueChanged = [this] (float v) { if (auto* m = current()) m->movementAcceleration.spread = v; };
     addAndMakeVisible (*movementAccelerationSpreadRow);
 
+    spatialShapeRow = std::make_unique<ComboRowComponent> ("Spatial Shape");
+    spatialShapeRow->combo.addItem ("Sphere", (int) SpatialDistributionShape::Sphere + 1);
+    spatialShapeRow->combo.addItem ("Spherical Shell", (int) SpatialDistributionShape::SphericalShell + 1);
+    spatialShapeRow->combo.addItem ("Ring", (int) SpatialDistributionShape::Ring + 1);
+    spatialShapeRow->combo.addItem ("Line", (int) SpatialDistributionShape::Line + 1);
+    spatialShapeRow->combo.addItem ("Cuboid", (int) SpatialDistributionShape::Cuboid + 1);
+    spatialShapeRow->onSelected = [this] (int)
+    {
+        if (auto* m = current())
+            m->spatialShape = (SpatialDistributionShape) (spatialShapeRow->combo.getSelectedId() - 1);
+    };
+    addAndMakeVisible (*spatialShapeRow);
+
+    spatialRadiusRow = std::make_unique<FloatRowComponent> ("Radius / Extent", -20.0, 20.0, 0.01);
+    spatialRadiusRow->onValueChanged = [this] (float v) { if (auto* m = current()) m->spatialRadius.base = v; };
+    addAndMakeVisible (*spatialRadiusRow);
+
+    spatialRadiusSpreadRow = std::make_unique<FloatRowComponent> ("Radius / Extent Spread", 0.0, 20.0, 0.01);
+    spatialRadiusSpreadRow->onValueChanged = [this] (float v) { if (auto* m = current()) m->spatialRadius.spread = v; };
+    addAndMakeVisible (*spatialRadiusSpreadRow);
+
     refreshFromModel();
 }
 
@@ -154,6 +176,9 @@ void ModifierRowComponent::refreshFromModel()
     movementSpeedSpreadRow->setValueQuiet (m->movementSpeed.spread);
     movementAccelerationRow->setValueQuiet (m->movementAcceleration.base);
     movementAccelerationSpreadRow->setValueQuiet (m->movementAcceleration.spread);
+    spatialShapeRow->combo.setSelectedId ((int) m->spatialShape + 1, juce::dontSendNotification);
+    spatialRadiusRow->setValueQuiet (m->spatialRadius.base);
+    spatialRadiusSpreadRow->setValueQuiet (m->spatialRadius.spread);
 
     refreshTypeVisibility();
 }
@@ -168,6 +193,7 @@ void ModifierRowComponent::refreshTypeVisibility()
     const bool isFilter = type == ModifierType::Filter;
     const bool isPitch = type == ModifierType::Pitch;
     const bool isMovement = type == ModifierType::Movement;
+    const bool isSpatialOffset = type == ModifierType::SpatialOffset;
 
     gainRow->setVisible (isGain);
     gainSpreadRow->setVisible (isGain);
@@ -184,6 +210,9 @@ void ModifierRowComponent::refreshTypeVisibility()
     movementSpeedSpreadRow->setVisible (isMovement);
     movementAccelerationRow->setVisible (isMovement);
     movementAccelerationSpreadRow->setVisible (isMovement);
+    spatialShapeRow->setVisible (isSpatialOffset);
+    spatialRadiusRow->setVisible (isSpatialOffset);
+    spatialRadiusSpreadRow->setVisible (isSpatialOffset);
 
     resized();
 }
@@ -202,6 +231,9 @@ int ModifierRowComponent::preferredHeightFor (ModifierType type)
 
         case ModifierType::Movement:
             return ComboRowComponent::preferredHeight + 4 * FloatRowComponent::preferredHeight + 4 * ModifierStackEditor::rowGap;
+
+        case ModifierType::SpatialOffset:
+            return ComboRowComponent::preferredHeight + 2 * FloatRowComponent::preferredHeight + 2 * ModifierStackEditor::rowGap;
     }
     return 0;
 }
@@ -269,6 +301,12 @@ void ModifierRowComponent::resized()
             layoutRow (*movementSpeedSpreadRow, FloatRowComponent::preferredHeight);
             layoutRow (*movementAccelerationRow, FloatRowComponent::preferredHeight);
             layoutRow (*movementAccelerationSpreadRow, FloatRowComponent::preferredHeight);
+            break;
+
+        case ModifierType::SpatialOffset:
+            layoutRow (*spatialShapeRow, ComboRowComponent::preferredHeight);
+            layoutRow (*spatialRadiusRow, FloatRowComponent::preferredHeight);
+            layoutRow (*spatialRadiusSpreadRow, FloatRowComponent::preferredHeight);
             break;
     }
 }

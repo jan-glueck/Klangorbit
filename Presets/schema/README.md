@@ -235,14 +235,16 @@ defaults for everything new.
         "modifiers": [
           {
             "enabled": true,
-            "type": "gain",            // gain | timeOffset | filter | pitch | movement ("pitch" not offered for delayInstance, see below)
+            "type": "gain",            // gain | timeOffset | filter | pitch | movement | spatialOffset ("pitch" not offered for delayInstance, see below)
             "gain": { "base": 1.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
             "timeOffset": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
             "filter": { "enabled": false, "type": "lowPass", "cutoffHz": { "base": 2000.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }, "resonance": { "base": 0.707, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }, "driftReversionRate": 1.0, "driftAmplitude": 0.0, "driftSmoothing": 0.2 },
             "pitchSemitones": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
             "movementShape": "linear",   // linear | rotating -- linear: movementSpeed/-Acceleration are m/s, m/s^2 along a random direction picked once per voice; rotating: rad/s, rad/s^2 around a random axis picked once per voice
             "movementSpeed": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
-            "movementAcceleration": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }
+            "movementAcceleration": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] },
+            "spatialShape": "sphere",    // sphere | sphericalShell | ring | line | cuboid -- see Modifier.h's own comment on what spatialRadius means for each
+            "spatialRadius": { "base": 0.0, "spread": 0.0, "distribution": "uniform", "rampTowardMax": true, "powerExponent": 2.0, "discreteValues": [], "quantizeToSet": false, "quantizeValues": [] }
           }
         ]
       },

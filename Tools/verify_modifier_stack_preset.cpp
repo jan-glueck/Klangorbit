@@ -65,7 +65,13 @@ namespace
         movement.movementSpeed = { 0.5f, 0.2f };
         movement.movementAcceleration = { 0.1f, 0.0f };
 
-        return { gain, timeOffset, filter, pitch, movement }; // order matters -- checked below
+        Modifier spatialOffset;
+        spatialOffset.enabled = true;
+        spatialOffset.type = ModifierType::SpatialOffset;
+        spatialOffset.spatialShape = SpatialDistributionShape::Cuboid;
+        spatialOffset.spatialRadius = { 0.0f, 2.5f };
+
+        return { gain, timeOffset, filter, pitch, movement, spatialOffset }; // order matters -- checked below
     }
 
     void checkStackRoundTrips (const std::vector<Modifier>& original, const std::vector<Modifier>& reloaded, const char* label)

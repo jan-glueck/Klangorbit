@@ -487,6 +487,43 @@ static void testDelayModifierStackLinearMovementAccumulatesOnTheRing()
            "DelayInstance: a Linear movement modifier keeps drifting a tap's published position at its own speed over time, even though the ring position is recomputed from scratch every tick");
 }
 
+static Modifier makeSpatialOffsetModifier (SpatialDistributionShape shape, float base, float spread = 0.0f)
+{
+    Modifier m;
+    m.type = ModifierType::SpatialOffset;
+    m.spatialShape = shape;
+    m.spatialRadius = { base, spread };
+    return m;
+}
+
+static void testDelayModifierStackSpatialOffsetShiftsTapPositionConstantly()
+{
+    DelayInstance delay;
+    delay.getSettings().enabled = true;
+    delay.getSettings().numTaps = 1;
+    delay.getSettings().tapSpreadRadius = 0.0f; // isolate the modifier's own contribution (ring radius 0 => ring position == parent)
+    delay.getSettings().modifiers = { makeSpatialOffsetModifier (SpatialDistributionShape::Line, 3.0f, 0.0f) };
+
+    const Vec3 parentPosition { 1.0f, 0.0f, 0.0f };
+    delay.update (0.01, parentPosition, kSampleRate);
+    DelayInstance::Snapshot snapAfter1Tick;
+    delay.getSnapshot (snapAfter1Tick);
+    const Vec3 positionAfter1Tick = snapAfter1Tick.taps[0].position;
+
+    std::printf ("       tap position right after first tick, with a Line SpatialOffset (base=3): (%.2f, %.2f, %.2f), parent at (%.2f, %.2f, %.2f)\n",
+                 positionAfter1Tick.x, positionAfter1Tick.y, positionAfter1Tick.z, parentPosition.x, parentPosition.y, parentPosition.z);
+    check (std::abs ((positionAfter1Tick - parentPosition).z - 3.0f) < 0.01f,
+           "DelayInstance: a SpatialOffset modifier shifts a tap's published position by exactly its own sampled offset");
+
+    for (int i = 0; i < 99; ++i) // another ~1s -- the offset must stay CONSTANT
+        delay.update (0.01, parentPosition, kSampleRate);
+    DelayInstance::Snapshot snapAfter1Sec;
+    delay.getSnapshot (snapAfter1Sec);
+
+    check ((snapAfter1Sec.taps[0].position - positionAfter1Tick).length() < 0.01f,
+           "DelayInstance: a SpatialOffset modifier's contribution stays exactly constant over time (not growing, unlike a Movement modifier)");
+}
+
 int main()
 {
     testFeedbackSettlesToGeometricSeriesGain();
@@ -508,6 +545,7 @@ int main()
     testDelayModifierStackFilterSlotsMatchStackOrder();
     testDelayModifierStackInPlaceEditTriggersResample();
     testDelayModifierStackLinearMovementAccumulatesOnTheRing();
+    testDelayModifierStackSpatialOffsetShiftsTapPositionConstantly();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

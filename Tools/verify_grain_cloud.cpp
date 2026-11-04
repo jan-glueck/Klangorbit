@@ -1535,6 +1535,54 @@ static void testModifierStackRotatingMovementAccumulatesOnOrbitAroundParent()
            "GrainCloud: a Rotating movement modifier keeps visibly moving the grain in the SECOND second too, confirming it accumulates rather than resetting to one tick's worth each time OrbitAroundParent recomputes position from scratch");
 }
 
+static Modifier makeSpatialOffsetModifier (SpatialDistributionShape shape, float base, float spread = 0.0f)
+{
+    Modifier m;
+    m.type = ModifierType::SpatialOffset;
+    m.spatialShape = shape;
+    m.spatialRadius = { base, spread };
+    return m;
+}
+
+static void testModifierStackSpatialOffsetShiftsSpawnPositionConstantly()
+{
+    GrainCloud cloud (4);
+    cloud.getSettings().enabled = true;
+    cloud.getSettings().grainRate = 1.0f;
+    cloud.getSettings().grainDuration = 5.0f;
+    cloud.getSettings().maxConcurrentGrains = 4;
+    cloud.getSettings().seed = 603;
+    cloud.getSettings().movementMode = GrainMovementMode::RandomWalk;
+    cloud.getSettings().randomWalkSpeed = 0.0f; // isolate the modifier's own contribution
+    cloud.getSettings().modifiers = { makeSpatialOffsetModifier (SpatialDistributionShape::Line, 5.0f, 0.0f) };
+
+    int budget = 8;
+    const Vec3 parentPosition { 2.0f, 0.0f, 0.0f };
+    cloud.setRingBufferContext (0, kSampleRate);
+    for (int i = 0; i < 100; ++i) // grainRate=1 => force the spawn
+        cloud.update (0.01, parentPosition, {}, budget);
+
+    std::vector<GrainCloud::Snapshot> snap;
+    cloud.getSnapshot (snap);
+    int slot = -1;
+    for (size_t i = 0; i < snap.size(); ++i) if (snap[i].active) { slot = (int) i; break; }
+    check (slot >= 0, "GrainCloud: SpatialOffset test setup actually spawned a grain");
+    const Vec3 positionRightAfterSpawn = snap[(size_t) slot].position;
+
+    std::printf ("       grain position right after spawn, with a Line SpatialOffset (base=5) and RandomWalk speed=0: (%.2f, %.2f, %.2f), parent at (%.2f, %.2f, %.2f)\n",
+                 positionRightAfterSpawn.x, positionRightAfterSpawn.y, positionRightAfterSpawn.z, parentPosition.x, parentPosition.y, parentPosition.z);
+    check (std::abs ((positionRightAfterSpawn - parentPosition).z - 5.0f) < 0.01f,
+           "GrainCloud: a SpatialOffset modifier shifts the grain's published spawn position by exactly its own sampled offset");
+
+    for (int i = 0; i < 100; ++i) // another 1s -- the offset must stay CONSTANT, unlike Movement's growing contribution
+        cloud.update (0.01, parentPosition, {}, budget);
+    cloud.getSnapshot (snap);
+    const Vec3 positionAfter1s = snap[(size_t) slot].position;
+
+    check ((positionAfter1s - positionRightAfterSpawn).length() < 0.01f,
+           "GrainCloud: a SpatialOffset modifier's contribution stays exactly constant over the grain's life (not growing, unlike a Movement modifier)");
+}
+
 int main()
 {
     testRenderGrainBlock();
@@ -1568,6 +1616,7 @@ int main()
     testModifierStackEmptyByDefaultLeavesGrainsUnaffected();
     testModifierStackLinearMovementDriftsGrainOverTime();
     testModifierStackRotatingMovementAccumulatesOnOrbitAroundParent();
+    testModifierStackSpatialOffsetShiftsSpawnPositionConstantly();
 
     std::printf ("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED",
                  g_failures, g_failures == 1 ? "" : "s");

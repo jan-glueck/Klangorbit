@@ -62,7 +62,8 @@ enum class ModifierType
     TimeOffset,
     Filter,
     Pitch,
-    Movement
+    Movement,
+    SpatialOffset
 };
 
 // Movement-type slot only. Linear: a constant speed (+ optional
@@ -86,6 +87,53 @@ enum class MovementModifierShape
 {
     Linear,
     Rotating
+};
+
+// SpatialOffset-type slot only -- the "spatial distribution generator
+// for start positions" the original spec asked for, checked against
+// what grain spawning already does: today every movement mode starts a
+// grain exactly at the parent's position (or, for OrbitAroundParent, at
+// its own orbit offset) -- there is no existing spread mechanism this
+// would duplicate. Sampled ONCE per voice (same event as every other
+// spawn/config-time-decided modifier) and added, CONSTANT for the
+// voice's whole life, to wherever its own movement mode/ring
+// arrangement already puts it -- not a one-off "nudge at t=0" that a
+// recompute-from-scratch primary mode (OrbitAroundParent; DelayInstance's
+// ring) would immediately erase (same risk Movement's own split guards
+// against, see applyMovement()'s comment), but a per-voice constant
+// translation that persists for as long as the voice exists.
+//
+// Each shape reduces to ONE sample of spatialRadius (a RandomizedParam,
+// so "probability distribution" -- Uniform/Normal/Ramp/LogUniform/
+// PowerLaw/Discrete -- comes for free, no second mechanism needed) per
+// axis/draw it needs:
+//  - Sphere: volume-uniform fill (radial cube-root correction) within a
+//    sphere of radius spatialRadius.sample(), direction random on the
+//    sphere (randomUnitVector()).
+//  - SphericalShell: direction random on the sphere, radius EXACTLY
+//    spatialRadius.sample() (no internal volume-fill correction) -- a
+//    spread > 0 gives a "fuzzy" shell of varying radius rather than a
+//    razor-thin one.
+//  - Ring: a uniformly random angle around a flat (X/Y plane) circle of
+//    radius spatialRadius.sample() -- same plane convention as
+//    OrbitAroundParent/DelayInstance's own ring, just a random angle
+//    per voice instead of an even arrangement.
+//  - Line: spatialRadius.sample() itself is the signed offset along a
+//    fixed (Z) axis -- a RandomizedParam with base 0 and some spread
+//    already produces a symmetric range either side of center, so no
+//    separate sign/angle draw is needed.
+//  - Cuboid: spatialRadius sampled THREE independent times, once per
+//    axis -- base 0 + spread S on all three gives a uniform fill of a
+//    cube with half-extent S; this is deliberately a cube, not an
+//    arbitrary box, to reuse the one RandomizedParam three times rather
+//    than needing three independent ones.
+enum class SpatialDistributionShape
+{
+    Sphere,
+    SphericalShell,
+    Ring,
+    Line,
+    Cuboid
 };
 
 /**
@@ -136,6 +184,16 @@ struct Modifier
     RandomizedParam movementSpeed { 0.0f, 0.0f };
     RandomizedParam movementAcceleration { 0.0f, 0.0f };
 
+    // SpatialOffset: see SpatialDistributionShape's own comment above
+    // for what each shape means and how spatialRadius (sampled once,
+    // up to three times for Cuboid) turns into a 3D offset. base 0,
+    // spread 0 (the default) samples to exactly zero for every shape,
+    // i.e. a freshly-added SpatialOffset slot is a no-op until actually
+    // dialed in, same "inert until configured" convention as a fresh
+    // Gain slot (base 1, spread 0) or Filter slot.
+    SpatialDistributionShape spatialShape = SpatialDistributionShape::Sphere;
+    RandomizedParam spatialRadius { 0.0f, 0.0f };
+
     // Deliberate bit-exact field comparison -- lets a long-lived voice
     // (DelayInstance's taps, which have no per-spawn "redecide" moment
     // the way a short-lived grain does) detect "did the user actually
@@ -148,7 +206,8 @@ struct Modifier
             && gain == other.gain && timeOffset == other.timeOffset
             && filter == other.filter && pitchSemitones == other.pitchSemitones
             && movementShape == other.movementShape
-            && movementSpeed == other.movementSpeed && movementAcceleration == other.movementAcceleration;
+            && movementSpeed == other.movementSpeed && movementAcceleration == other.movementAcceleration
+            && spatialShape == other.spatialShape && spatialRadius == other.spatialRadius;
     }
     bool operator!= (const Modifier& other) const { return ! (*this == other); }
 };
@@ -202,18 +261,56 @@ namespace ModifierStack
     };
 
     // Result of processing a stack once (control rate, at voice spawn/
-    // config time) for ONE voice. Gain/TimeOffset/Pitch are pre-reduced
-    // to single aggregate scalars (see this file's own class comment on
-    // why that's valid); Filter/Movement slots keep their stack-order-
-    // preserving lists.
+    // config time) for ONE voice. Gain/TimeOffset/Pitch/SpatialOffset
+    // are pre-reduced to single aggregate scalars (see this file's own
+    // class comment on why that's valid for the first three;
+    // SpatialOffset's own Vec3 sum is commutative the same way, see
+    // SpatialDistributionShape's own comment); Filter/Movement slots
+    // keep their stack-order-preserving lists.
     struct Outcome
     {
         float gainMultiplier = 1.0f;
         float timeOffsetSeconds = 0.0f;
         float pitchSemitones = 0.0f;
+        Vec3 spatialOffset;
         FilterBankState filters;
         MovementBankState movement;
     };
+
+    // Draws ONE SpatialOffset-type slot's own 3D offset -- see
+    // SpatialDistributionShape's own comment for what each shape means
+    // and why reusing spatialRadius (sampled once, or three times for
+    // Cuboid) covers "shape + probability distribution" with no second
+    // mechanism. A free function (not inlined into sample()'s switch)
+    // purely for readability -- the shape dispatch is its own small
+    // switch, nested inside sample()'s would read awkwardly.
+    inline Vec3 sampleSpatialOffset (const Modifier& m, SeededRandom& rng)
+    {
+        switch (m.spatialShape)
+        {
+            case SpatialDistributionShape::Sphere:
+            {
+                const float maxRadius = m.spatialRadius.sample (rng);
+                const float fill = std::cbrt (rng.nextFloat01()); // volume-uniform radial scaling
+                return randomUnitVector (rng) * (maxRadius * fill);
+            }
+            case SpatialDistributionShape::SphericalShell:
+                return randomUnitVector (rng) * m.spatialRadius.sample (rng);
+
+            case SpatialDistributionShape::Ring:
+            {
+                const float r = m.spatialRadius.sample (rng);
+                const float angle = rng.nextFloat01() * juce::MathConstants<float>::twoPi;
+                return { std::cos (angle) * r, std::sin (angle) * r, 0.0f };
+            }
+            case SpatialDistributionShape::Line:
+                return { 0.0f, 0.0f, m.spatialRadius.sample (rng) };
+
+            case SpatialDistributionShape::Cuboid:
+                return { m.spatialRadius.sample (rng), m.spatialRadius.sample (rng), m.spatialRadius.sample (rng) };
+        }
+        return {};
+    }
 
     // Samples every ENABLED slot once, in stack order, for one voice.
     // Must be called from the control thread (touches SeededRandom) --
@@ -270,6 +367,10 @@ namespace ModifierStack
                         out.movement.currentSpeed[(size_t) i] = m.movementSpeed.sample (rng);
                         out.movement.acceleration[(size_t) i] = m.movementAcceleration.sample (rng);
                     }
+                    break;
+
+                case ModifierType::SpatialOffset:
+                    out.spatialOffset += sampleSpatialOffset (m, rng);
                     break;
             }
         }

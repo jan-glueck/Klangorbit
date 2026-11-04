@@ -424,7 +424,7 @@ trajectory. Turn it on with **Enabled**.
   modifiers underneath everything above, empty by default. Each slot
   has an **Enabled** checkbox, a **Type** chooser, and **Up/Down/
   Remove** buttons; **Add Modifier** appends a new one (up to 8 per
-  stack). Five types:
+  stack). Six types:
   - *Gain* -- a volume multiplier for this one grain. Several Gain
     slots multiply together.
   - *Time Offset* -- shifts how far back into the recording this grain
@@ -447,6 +447,13 @@ trajectory. Turn it on with **Enabled**.
     several Rotating slots (or one mixed with anything else that moves
     the grain) -- several Linear-only slots stay order-independent,
     same as Gain/Time Offset/Pitch.
+  - *Spatial Offset* -- shifts where this grain starts, for its whole
+    life, in one of five **Shapes**: *Sphere* (fills a ball),
+    *Spherical Shell* (sits on a sphere's surface), *Ring* (a flat
+    circle, random angle), *Line* (back and forth along one axis), or
+    *Cuboid* (fills a box, each axis picked independently). **Radius /
+    Extent** controls the shape's own size (for Line, it's how far
+    either side of center).
   Every slot's own value can have a **Spread** too (most slots show a
   second slider for it) -- 0 keeps it exact, higher values add some
   random per-grain variation around the base value, picked once when
@@ -482,10 +489,10 @@ over time, like a real analog/tape delay.
   spaced around a circle of this radius, centered on the object's
   current position. Angular Speed (0 by default = static) optionally
   spins the whole ring of taps slowly around the object.
-- **Modifiers** -- the same stackable Gain/Time Offset/Filter/Movement
-  list as Grains above (section 11), applied per tap instead of per
-  grain; no Pitch option here (a tap can't be pitch-shifted the way a
-  grain can, see its own note there).
+- **Modifiers** -- the same stackable Gain/Time Offset/Filter/Movement/
+  Spatial Offset list as Grains above (section 11), applied per tap
+  instead of per grain; no Pitch option here (a tap can't be
+  pitch-shifted the way a grain can, see its own note there).
 
 ## 13. Output format (toolbar -> Output...)
 

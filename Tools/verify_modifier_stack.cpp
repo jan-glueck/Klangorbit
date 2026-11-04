@@ -59,6 +59,15 @@ namespace
         m.movementAcceleration = { acceleration, 0.0f };
         return m;
     }
+
+    Modifier makeSpatialOffset (SpatialDistributionShape shape, float base, float spread = 0.0f)
+    {
+        Modifier m;
+        m.type = ModifierType::SpatialOffset;
+        m.spatialShape = shape;
+        m.spatialRadius = { base, spread };
+        return m;
+    }
 }
 
 int main()
@@ -360,6 +369,96 @@ int main()
                      actualOffsetDistance, expectedOffsetDistance);
         check (std::abs (actualOffsetDistance - expectedOffsetDistance) < 0.02f,
                "applyMovement(): the modifier's own contribution keeps accumulating over the voice's whole life even when the primary position is recomputed from scratch every tick, not just one tick's worth");
+    }
+
+    // --- SpatialOffset (spatial start-position distribution) -----------------
+    {
+        // Default (base=0, spread=0) must sample to exactly zero, for every shape.
+        SeededRandom rng (10);
+        bool allZero = true;
+        for (auto shape : { SpatialDistributionShape::Sphere, SpatialDistributionShape::SphericalShell,
+                             SpatialDistributionShape::Ring, SpatialDistributionShape::Line, SpatialDistributionShape::Cuboid })
+        {
+            Modifier m = makeSpatialOffset (shape, 0.0f, 0.0f);
+            for (int i = 0; i < 20; ++i)
+                if (ModifierStack::sampleSpatialOffset (m, rng).length() > 1.0e-5f)
+                    allZero = false;
+        }
+        check (allZero, "sampleSpatialOffset(): base=0/spread=0 (the default) samples to exactly zero for every shape -- a freshly-added slot is a no-op");
+    }
+    {
+        Modifier m = makeSpatialOffset (SpatialDistributionShape::Sphere, 5.0f, 0.0f);
+        SeededRandom rng (11);
+        bool allWithinRadius = true, anyVariation = false;
+        float firstLength = -1.0f;
+        for (int i = 0; i < 100; ++i)
+        {
+            const float len = ModifierStack::sampleSpatialOffset (m, rng).length();
+            if (len > 5.001f) allWithinRadius = false;
+            if (firstLength < 0.0f) firstLength = len;
+            else if (std::abs (len - firstLength) > 0.01f) anyVariation = true;
+        }
+        check (allWithinRadius, "sampleSpatialOffset(): Sphere never samples a point further than its own maxRadius from the center");
+        check (anyVariation, "sampleSpatialOffset(): Sphere fills the VOLUME (sampled radii vary, not all sitting on the surface)");
+    }
+    {
+        Modifier m = makeSpatialOffset (SpatialDistributionShape::SphericalShell, 5.0f, 0.0f);
+        SeededRandom rng (12);
+        bool allOnShell = true;
+        for (int i = 0; i < 50; ++i)
+            if (std::abs (ModifierStack::sampleSpatialOffset (m, rng).length() - 5.0f) > 0.01f) allOnShell = false;
+        check (allOnShell, "sampleSpatialOffset(): SphericalShell (spread=0) samples exactly on the shell's own radius every time, unlike Sphere's volume fill");
+    }
+    {
+        Modifier m = makeSpatialOffset (SpatialDistributionShape::Ring, 3.0f, 0.0f);
+        SeededRandom rng (13);
+        bool allOnRingRadiusAndFlat = true;
+        for (int i = 0; i < 50; ++i)
+        {
+            const Vec3 p = ModifierStack::sampleSpatialOffset (m, rng);
+            if (std::abs (p.length() - 3.0f) > 0.01f) allOnRingRadiusAndFlat = false;
+            if (std::abs (p.z) > 1.0e-4f) allOnRingRadiusAndFlat = false;
+        }
+        check (allOnRingRadiusAndFlat, "sampleSpatialOffset(): Ring samples lie exactly at its own radius, flat in the X/Y plane (z == 0)");
+    }
+    {
+        Modifier m = makeSpatialOffset (SpatialDistributionShape::Line, 0.0f, 2.0f);
+        SeededRandom rng (14);
+        bool allOnAxis = true, anyNegative = false, anyPositive = false;
+        for (int i = 0; i < 50; ++i)
+        {
+            const Vec3 p = ModifierStack::sampleSpatialOffset (m, rng);
+            if (std::abs (p.x) > 1.0e-4f || std::abs (p.y) > 1.0e-4f) allOnAxis = false;
+            if (p.z < 0.0f) anyNegative = true;
+            if (p.z > 0.0f) anyPositive = true;
+        }
+        check (allOnAxis, "sampleSpatialOffset(): Line samples only ever move along the Z axis (x == y == 0)");
+        check (anyNegative && anyPositive, "sampleSpatialOffset(): Line with base=0 samples both sides of center (a signed RandomizedParam offset, no separate sign draw needed)");
+    }
+    {
+        Modifier m = makeSpatialOffset (SpatialDistributionShape::Cuboid, 0.0f, 1.0f);
+        SeededRandom rng (15);
+        bool allWithinHalfExtent = true;
+        std::vector<float> xs, ys, zs;
+        for (int i = 0; i < 50; ++i)
+        {
+            const Vec3 p = ModifierStack::sampleSpatialOffset (m, rng);
+            if (std::abs (p.x) > 1.001f || std::abs (p.y) > 1.001f || std::abs (p.z) > 1.001f) allWithinHalfExtent = false;
+            xs.push_back (p.x); ys.push_back (p.y); zs.push_back (p.z);
+        }
+        const bool xVariesIndependentlyOfY = xs[0] != ys[0] || xs[1] != ys[1]; // extremely unlikely to collide if truly independent draws
+        check (allWithinHalfExtent, "sampleSpatialOffset(): Cuboid stays within its own half-extent on every axis");
+        check (xVariesIndependentlyOfY, "sampleSpatialOffset(): Cuboid's three axes are independent draws, not the same value repeated");
+    }
+    {
+        // sample(): multiple SpatialOffset slots sum (commutative Vec3 addition).
+        std::vector<Modifier> stack {
+            makeSpatialOffset (SpatialDistributionShape::Line, 1.0f, 0.0f),
+            makeSpatialOffset (SpatialDistributionShape::Line, 2.0f, 0.0f)
+        };
+        SeededRandom rng (16);
+        auto out = ModifierStack::sample (stack, rng);
+        check (std::abs (out.spatialOffset.z - 3.0f) < 1.0e-3f, "sample(): multiple SpatialOffset slots sum (1.0 + 2.0 == 3.0 along Z)");
     }
 
     std::printf (g_failures == 0 ? "ALL TESTS PASSED (%d failures)\n" : "SOME TESTS FAILED (%d failures)\n", g_failures);

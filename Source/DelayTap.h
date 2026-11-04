@@ -124,6 +124,14 @@ struct DelayTap
     // no feedback-loop risk from folding the overlay straight in.
     ModifierStack::MovementBankState modifierMovement;
 
+    // SpatialOffset-type slots' own aggregate contribution (feature/
+    // modifier-stack, Stage 3) -- sampled once at the same
+    // resyncTapConfigIfChanged() event as modifierTimeOffsetSeconds
+    // above, CONSTANT until the next resync. Composed onto `position`
+    // the same way/place as modifierMovement above (safe to add
+    // straight in, same reasoning).
+    Vec3 modifierSpatialOffset {};
+
     // Bumped every time DelayInstance::resyncTapConfigIfChanged()
     // resamples this tap's modifier outcome above -- lets the audio
     // thread detect "this tap's filter slots were just (re)configured"

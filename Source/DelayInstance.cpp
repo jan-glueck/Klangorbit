@@ -76,6 +76,7 @@ void DelayInstance::resyncTapConfigIfChanged()
         taps[(size_t) i].modifierGainMultiplier = modOutcome.gainMultiplier;
         taps[(size_t) i].modifierFilters = modOutcome.filters;
         taps[(size_t) i].modifierMovement = modOutcome.movement;
+        taps[(size_t) i].modifierSpatialOffset = modOutcome.spatialOffset;
         ++taps[(size_t) i].modifierConfigGeneration;
     }
 
@@ -143,7 +144,8 @@ void DelayInstance::update (double dtSeconds, Vec3 parentPosition, double sample
         // is already recomputed from scratch every tick above, never
         // persistently accumulated).
         ModifierStack::advanceMovement (settings.modifiers, fdt, tap.modifierMovement);
-        tap.position = ModifierStack::applyMovement (settings.modifiers, tap.modifierMovement, tap.position, parentPosition);
+        tap.position = ModifierStack::applyMovement (settings.modifiers, tap.modifierMovement, tap.position, parentPosition)
+                            + tap.modifierSpatialOffset;
     }
 
     juce::ScopedLock lock (snapshotLock);
